@@ -13,6 +13,7 @@ public class AppDbContext : DbContext
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<PaymentSource> PaymentSources => Set<PaymentSource>();
     public DbSet<SubscriptionCatalogItem> SubscriptionCatalog => Set<SubscriptionCatalogItem>();
+    public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
