@@ -1,0 +1,49 @@
+#!/bin/sh
+# Hard stop: block any commit that introduces a secret.
+# Backed by detect-secrets (https://github.com/Yelp/detect-secrets) against
+# the repo baseline at .secrets.baseline. This hook cannot be bypassed with
+# a flag - if it fails, the fix is to remove the secret, not to force the commit.
+
+set -e
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+if [ -z "$STAGED_FILES" ]; then
+  exit 0
+fi
+
+# Block known-dangerous filenames outright, regardless of content.
+BLOCKED_PATTERN='(^|/)\.env($|\.[^/]*$)|\.pfx$|\.p12$|\.pem$|\.key$|id_rsa($|\.)|id_ed25519($|\.)|\.pkcs12$'
+BLOCKED_HITS=$(echo "$STAGED_FILES" | grep -E -i "$BLOCKED_PATTERN" || true)
+if [ -n "$BLOCKED_HITS" ]; then
+  echo "COMMIT BLOCKED: staged file(s) match a disallowed secret-bearing filename pattern:"
+  echo "$BLOCKED_HITS"
+  echo "Remove these from the commit (git restore --staged <file>) - secrets/keys/certs are never committed."
+  exit 1
+fi
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "COMMIT BLOCKED: python3 not found, cannot run detect-secrets pre-commit scan."
+  echo "Install Python 3 and 'pip install detect-secrets', or contact the repo owner."
+  exit 1
+fi
+
+if [ ! -f .secrets.baseline ]; then
+  echo "COMMIT BLOCKED: .secrets.baseline is missing. Run:"
+  echo "  python3 -m detect_secrets scan > .secrets.baseline"
+  echo "and commit the baseline before committing other changes."
+  exit 1
+fi
+
+# shellcheck disable=SC2086
+if ! python3 -m detect_secrets.pre_commit_hook --baseline .secrets.baseline $STAGED_FILES; then
+  echo ""
+  echo "COMMIT BLOCKED: detect-secrets found a potential secret in staged changes."
+  echo "If this is a real secret: remove it, use User Secrets/environment variables instead."
+  echo "If this is a false positive: run 'python3 -m detect_secrets scan --baseline .secrets.baseline'"
+  echo "then 'python3 -m detect_secrets audit .secrets.baseline' to mark it, and re-stage the baseline."
+  echo "This hook is a hard stop - do not bypass with --no-verify."
+  exit 1
+fi
+
+exit 0
