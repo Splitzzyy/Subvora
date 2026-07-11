@@ -5,10 +5,12 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using SubVora.Application.Auth;
 using SubVora.Application.Categories;
+using SubVora.Application.Currency;
 using SubVora.Application.Dashboard;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Infrastructure.Auth;
+using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Repositories;
 
@@ -42,6 +44,13 @@ builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePayment
 
 // Stateless pure logic, no per-request dependencies - safe as a singleton.
 builder.Services.AddSingleton<IBurnRateCalculator, BurnRateCalculator>();
+
+builder.Services.AddScoped<IFxRateService, FxRateService>();
+builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(client =>
+{
+    client.BaseAddress = new Uri("https://api.exchangerate.host/");
+});
+builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
