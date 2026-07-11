@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using SubVora.Application.Auth;
 using SubVora.Application.Categories;
+using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Data;
@@ -34,6 +35,9 @@ builder.Services.AddScoped<IValidator<CreateSubscriptionRequest>, CreateSubscrip
 
 builder.Services.AddScoped<ICategoryRepository, CategoryRepository>();
 builder.Services.AddScoped<IValidator<CreateCategoryRequest>, CreateCategoryRequestValidator>();
+
+builder.Services.AddScoped<IPaymentSourceRepository, PaymentSourceRepository>();
+builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePaymentSourceRequestValidator>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
