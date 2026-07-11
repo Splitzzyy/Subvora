@@ -14,6 +14,8 @@ public class AppDbContext : DbContext
     public DbSet<PaymentSource> PaymentSources => Set<PaymentSource>();
     public DbSet<SubscriptionCatalogItem> SubscriptionCatalog => Set<SubscriptionCatalogItem>();
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
+    public DbSet<FxRate> FxRates => Set<FxRate>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
