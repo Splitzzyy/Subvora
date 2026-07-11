@@ -8,7 +8,9 @@ public static class AppDbContextOptionsFactory
     public static DbContextOptions<AppDbContext> Build(string connectionString)
     {
         return new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(connectionString, o => o.MapEnum<PaymentSourceType>("payment_source_type"))
+            .UseNpgsql(connectionString, o => o
+                .MapEnum<PaymentSourceType>("payment_source_type")
+                .UseVector())
             .UseSnakeCaseNamingConvention()
             .Options;
     }
