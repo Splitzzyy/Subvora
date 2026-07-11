@@ -11,4 +11,6 @@ public interface ISubscriptionRepository
     Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
     Task<SubscriptionDto?> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default);
+
+    Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 }

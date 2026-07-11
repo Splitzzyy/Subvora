@@ -117,5 +117,19 @@ public class SubscriptionsController : ControllerBase
         return updated is null ? NotFound() : Ok(updated);
     }
 
+    /// <summary>Deletes a subscription owned by the authenticated user.</summary>
+    /// <response code="204">The subscription was deleted.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="404">No such subscription owned by the caller.</response>
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var deleted = await _subscriptionRepository.DeleteAsync(id, GetUserId(), cancellationToken);
+        return deleted ? NoContent() : NotFound();
+    }
+
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

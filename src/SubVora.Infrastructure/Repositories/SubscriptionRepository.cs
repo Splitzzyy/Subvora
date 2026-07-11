@@ -52,6 +52,20 @@ public class SubscriptionRepository : ISubscriptionRepository
         return await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken);
     }
 
+    public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    {
+        var subscription = await _dbContext.UserSubscriptions
+            .SingleOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
+        if (subscription is null)
+        {
+            return false;
+        }
+
+        _dbContext.UserSubscriptions.Remove(subscription);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
     private IQueryable<SubscriptionDto> BuildDtoQuery(Guid userId) =>
         from s in _dbContext.UserSubscriptions.AsNoTracking()
         where s.UserId == userId

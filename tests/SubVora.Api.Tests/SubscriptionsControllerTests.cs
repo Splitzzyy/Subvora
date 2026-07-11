@@ -326,4 +326,64 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    [Fact]
+    public async Task DeleteSubscription_RemovesRecord()
+    {
+        var client = await CreateAuthenticatedClientAsync($"delete-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var deleteResponse = await client.DeleteAsync($"/api/v1/subscriptions/{created!.Id}");
+
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var getResponse = await client.GetAsync($"/api/v1/subscriptions/{created.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+
+        var listResponse = await client.GetAsync("/api/v1/subscriptions");
+        var list = await listResponse.Content.ReadFromJsonAsync<List<SubscriptionDto>>(JsonOptions);
+        Assert.DoesNotContain(list!, s => s.Id == created.Id);
+    }
+
+    [Fact]
+    public async Task DeleteSubscription_ForAnotherUsersRecord_Returns404()
+    {
+        var ownerClient = await CreateAuthenticatedClientAsync($"delete-owner-{Guid.NewGuid()}@example.com");
+        var attackerClient = await CreateAuthenticatedClientAsync($"delete-attacker-{Guid.NewGuid()}@example.com");
+
+        var createResponse = await ownerClient.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var deleteResponse = await attackerClient.DeleteAsync($"/api/v1/subscriptions/{created!.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, deleteResponse.StatusCode);
+
+        // The owner's record must be unaffected by the attacker's failed delete attempt.
+        var ownerGetResponse = await ownerClient.GetAsync($"/api/v1/subscriptions/{created.Id}");
+        Assert.Equal(HttpStatusCode.OK, ownerGetResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteSubscription_AlreadyDeleted_Returns404()
+    {
+        var client = await CreateAuthenticatedClientAsync($"delete-twice-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var firstDelete = await client.DeleteAsync($"/api/v1/subscriptions/{created!.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, firstDelete.StatusCode);
+
+        var secondDelete = await client.DeleteAsync($"/api/v1/subscriptions/{created.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, secondDelete.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteSubscription_WithoutAuth_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.DeleteAsync($"/api/v1/subscriptions/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
 }
