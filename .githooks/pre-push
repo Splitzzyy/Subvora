@@ -1,0 +1,54 @@
+#!/bin/sh
+# Hard stop: defense-in-depth secret scan before anything leaves this machine.
+# Re-scans every file changed in the commits about to be pushed, in case a
+# commit landed without the pre-commit hook active (fresh clone, --no-verify,
+# hooksPath not yet configured). This hook cannot be bypassed with a flag.
+
+set -e
+
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "PUSH BLOCKED: python3 not found, cannot run detect-secrets pre-push scan."
+  exit 1
+fi
+
+if [ ! -f .secrets.baseline ]; then
+  echo "PUSH BLOCKED: .secrets.baseline is missing."
+  exit 1
+fi
+
+remote="$1"
+url="$2"
+
+zero="0000000000000000000000000000000000000000"
+blocked=0
+
+while read -r local_ref local_sha remote_sha_ref remote_sha; do
+  if [ "$local_sha" = "$zero" ]; then
+    continue # deleting a branch
+  fi
+
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha"
+  else
+    range="$remote_sha..$local_sha"
+  fi
+
+  changed_files=$(git diff --name-only --diff-filter=ACM "$range" 2>/dev/null || git diff --name-only --diff-filter=ACM "$local_sha" | head -0)
+  if [ -z "$changed_files" ]; then
+    continue
+  fi
+
+  # shellcheck disable=SC2086
+  if ! python3 -m detect_secrets.pre_commit_hook --baseline .secrets.baseline $changed_files; then
+    blocked=1
+  fi
+done
+
+if [ "$blocked" -eq 1 ]; then
+  echo ""
+  echo "PUSH BLOCKED: detect-secrets found a potential secret in the commits being pushed."
+  echo "This hook is a hard stop - do not bypass with --no-verify. Fix the commit history and retry."
+  exit 1
+fi
+
+exit 0

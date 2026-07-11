@@ -56,3 +56,12 @@ Update this file once that structure exists for real, including actual build/tes
 1. Check `docs/TECHNICAL_REQUIREMENTS.md` §6 for the specific feature's data model and behavior before writing code.
 2. Match the DDL in `docs/Design.md` unless there's a reason to deviate — if you do deviate, update `docs/Design.md` in the same change.
 3. Keep secrets (OpenAI key, DB connection string, JWT signing key) out of source control — use user-secrets/environment config locally, a managed vault in deployed environments.
+
+## Secret Scanning (hard stop)
+
+This repo blocks commits/pushes that introduce secrets, via [`detect-secrets`](https://github.com/Yelp/detect-secrets) wired up as a git hook.
+
+- **One-time setup per clone:** run `git config core.hooksPath .githooks` (this is a local git config, not versioned — every clone/worktree needs to run it once) and `pip install detect-secrets`.
+- Hooks live in `.githooks/pre-commit` and `.githooks/pre-push`, checked against `.secrets.baseline` at the repo root.
+- **This is a hard stop, not a suggestion.** If a hook blocks a commit/push, fix the actual issue (remove the secret, use User Secrets/env vars) or mark a genuine false positive via `detect-secrets audit .secrets.baseline` and re-commit the updated baseline. Do not bypass with `--no-verify` or `git commit -n`.
+- If the baseline needs to be regenerated after legitimate changes: `python3 -m detect_secrets scan --baseline .secrets.baseline`.
