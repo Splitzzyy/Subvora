@@ -10,6 +10,7 @@ public static class AppDbContextOptionsFactory
         return new DbContextOptionsBuilder<AppDbContext>()
             .UseNpgsql(connectionString, o => o
                 .MapEnum<PaymentSourceType>("payment_source_type")
+                .MapEnum<BillingCycleType>("billing_cycle_type")
                 .UseVector())
             .UseSnakeCaseNamingConvention()
             .Options;
