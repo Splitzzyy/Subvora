@@ -5,4 +5,8 @@ namespace SubVora.Application.Subscriptions;
 public interface ISubscriptionRepository
 {
     Task<UserSubscription> AddAsync(UserSubscription subscription, CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<SubscriptionDto>> GetAllForUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 }

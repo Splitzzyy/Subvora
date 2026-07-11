@@ -23,6 +23,33 @@ public class SubscriptionsController : ControllerBase
         _createValidator = createValidator;
     }
 
+    /// <summary>Lists the authenticated user's subscriptions.</summary>
+    /// <response code="200">Returns the caller's subscriptions.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<SubscriptionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> GetAll(CancellationToken cancellationToken)
+    {
+        var subscriptions = await _subscriptionRepository.GetAllForUserAsync(GetUserId(), cancellationToken);
+        return Ok(subscriptions);
+    }
+
+    /// <summary>Gets a single subscription owned by the authenticated user.</summary>
+    /// <remarks>Returns 404 (not 403) when the subscription exists but belongs to another user, to avoid revealing its existence.</remarks>
+    /// <response code="200">Returns the subscription.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="404">No such subscription owned by the caller.</response>
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        var subscription = await _subscriptionRepository.GetByIdAsync(id, GetUserId(), cancellationToken);
+        return subscription is null ? NotFound() : Ok(subscription);
+    }
+
     /// <summary>Creates a subscription for the authenticated user.</summary>
     /// <response code="201">The subscription was created.</response>
     /// <response code="400">The payload failed validation.</response>
@@ -39,7 +66,7 @@ public class SubscriptionsController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
-        var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var userId = GetUserId();
 
         var subscription = new UserSubscription
         {
@@ -60,23 +87,12 @@ public class SubscriptionsController : ControllerBase
 
         var created = await _subscriptionRepository.AddAsync(subscription, cancellationToken);
 
-        return CreatedAtAction(nameof(Create), new { id = created.Id }, ToDto(created));
+        // Re-fetch through the joined DTO query so the create response has the same shape
+        // (resolved category name/payment source label/catalog logo) as GetById/GetAll.
+        var dto = await _subscriptionRepository.GetByIdAsync(created.Id, userId, cancellationToken);
+
+        return CreatedAtAction(nameof(GetById), new { id = created.Id }, dto);
     }
 
-    private static SubscriptionDto ToDto(UserSubscription subscription) => new()
-    {
-        Id = subscription.Id,
-        CustomName = subscription.CustomName,
-        CostAmount = subscription.CostAmount,
-        Currency = subscription.Currency,
-        CycleCadence = subscription.CycleCadence,
-        PurchaseDate = subscription.PurchaseDate,
-        NextBillingDate = subscription.NextBillingDate,
-        AlertDaysAdvance = subscription.AlertDaysAdvance,
-        CategoryId = subscription.CategoryId,
-        PaymentSourceId = subscription.PaymentSourceId,
-        IsFreeTrial = subscription.IsFreeTrial,
-        IsActive = subscription.IsActive,
-        CreatedAt = subscription.CreatedAt,
-    };
+    private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }
