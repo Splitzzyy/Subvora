@@ -90,6 +90,28 @@ public class AuthService : IAuthService
         return RefreshResult.Success(tokens);
     }
 
+    public async Task LogoutAsync(Guid userId, string presentedRefreshToken, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(presentedRefreshToken))
+        {
+            return;
+        }
+
+        var presentedHash = _jwtTokenService.HashRefreshToken(presentedRefreshToken);
+        var token = await _dbContext.RefreshTokens
+            .SingleOrDefaultAsync(t => t.TokenHash == presentedHash && t.UserId == userId, cancellationToken);
+
+        // Idempotent and quiet on a missing/foreign/already-revoked token - logout should
+        // never leak whether a given token string exists or belongs to someone else.
+        if (token is null || token.RevokedAt is not null)
+        {
+            return;
+        }
+
+        token.RevokedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<AuthTokenResponse> IssueTokenPairAsync(User user, CancellationToken cancellationToken)
     {
         var accessToken = _jwtTokenService.GenerateAccessToken(user.Id, user.Email);

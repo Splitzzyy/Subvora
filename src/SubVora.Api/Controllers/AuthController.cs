@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SubVora.Application.Auth;
 
@@ -68,5 +70,14 @@ public class AuthController : ControllerBase
         }
 
         return Ok(result.Tokens);
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout([FromBody] RefreshRequest request, CancellationToken cancellationToken)
+    {
+        var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        await _authService.LogoutAsync(userId, request.RefreshToken, cancellationToken);
+        return NoContent();
     }
 }
