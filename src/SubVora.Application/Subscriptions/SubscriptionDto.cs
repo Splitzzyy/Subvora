@@ -13,7 +13,10 @@ public class SubscriptionDto
     public DateOnly NextBillingDate { get; set; }
     public int AlertDaysAdvance { get; set; }
     public Guid? CategoryId { get; set; }
+    public string? CategoryName { get; set; }
     public Guid? PaymentSourceId { get; set; }
+    public string? PaymentSourceLabel { get; set; }
+    public string? CatalogLogoUrl { get; set; }
     public bool IsFreeTrial { get; set; }
     public bool IsActive { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
