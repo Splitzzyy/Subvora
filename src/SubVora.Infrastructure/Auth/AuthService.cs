@@ -52,6 +52,46 @@ public class AuthService : IAuthService
             return LoginResult.Failed();
         }
 
+        var tokens = await IssueTokenPairAsync(user, cancellationToken);
+        return LoginResult.Success(tokens);
+    }
+
+    public async Task<RefreshResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(presentedRefreshToken))
+        {
+            return RefreshResult.Failed();
+        }
+
+        var presentedHash = _jwtTokenService.HashRefreshToken(presentedRefreshToken);
+        var existingToken = await _dbContext.RefreshTokens.SingleOrDefaultAsync(t => t.TokenHash == presentedHash, cancellationToken);
+        if (existingToken is null)
+        {
+            return RefreshResult.Failed();
+        }
+
+        if (existingToken.RevokedAt is not null)
+        {
+            // Reuse of an already-rotated token is a signal of token theft - revoke the
+            // whole chain (every active token for this user) rather than just this one.
+            await RevokeAllActiveTokensForUserAsync(existingToken.UserId, cancellationToken);
+            return RefreshResult.Failed();
+        }
+
+        if (existingToken.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            return RefreshResult.Failed();
+        }
+
+        var user = await _dbContext.Users.SingleAsync(u => u.Id == existingToken.UserId, cancellationToken);
+
+        existingToken.RevokedAt = DateTimeOffset.UtcNow;
+        var tokens = await IssueTokenPairAsync(user, cancellationToken);
+        return RefreshResult.Success(tokens);
+    }
+
+    private async Task<AuthTokenResponse> IssueTokenPairAsync(User user, CancellationToken cancellationToken)
+    {
         var accessToken = _jwtTokenService.GenerateAccessToken(user.Id, user.Email);
         var refreshToken = _jwtTokenService.GenerateRefreshToken();
 
@@ -64,12 +104,27 @@ public class AuthService : IAuthService
         });
         await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return LoginResult.Success(new AuthTokenResponse
+        return new AuthTokenResponse
         {
             AccessToken = accessToken.Token,
             AccessTokenExpiresAt = accessToken.ExpiresAt,
             RefreshToken = refreshToken.PlainToken,
             RefreshTokenExpiresAt = refreshToken.ExpiresAt,
-        });
+        };
+    }
+
+    private async Task RevokeAllActiveTokensForUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var activeTokens = await _dbContext.RefreshTokens
+            .Where(t => t.UserId == userId && t.RevokedAt == null)
+            .ToListAsync(cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var token in activeTokens)
+        {
+            token.RevokedAt = now;
+        }
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 }
