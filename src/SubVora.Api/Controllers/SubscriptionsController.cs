@@ -94,5 +94,28 @@ public class SubscriptionsController : ControllerBase
         return CreatedAtAction(nameof(GetById), new { id = created.Id }, dto);
     }
 
+    /// <summary>Updates a subscription owned by the authenticated user.</summary>
+    /// <remarks>Uses the same request shape and validation rules as create - the editable field set is identical.</remarks>
+    /// <response code="200">Returns the updated subscription.</response>
+    /// <response code="400">The payload failed validation.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="404">No such subscription owned by the caller.</response>
+    [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] CreateSubscriptionRequest request, CancellationToken cancellationToken)
+    {
+        var validationResult = await _createValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        var updated = await _subscriptionRepository.UpdateAsync(id, GetUserId(), request, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

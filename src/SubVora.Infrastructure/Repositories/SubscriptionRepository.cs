@@ -27,6 +27,31 @@ public class SubscriptionRepository : ISubscriptionRepository
     public async Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
         await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken);
 
+    public async Task<SubscriptionDto?> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default)
+    {
+        var subscription = await _dbContext.UserSubscriptions
+            .SingleOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
+        if (subscription is null)
+        {
+            return null;
+        }
+
+        subscription.CustomName = request.CustomName;
+        subscription.CostAmount = request.CostAmount;
+        subscription.Currency = request.Currency.ToUpperInvariant();
+        subscription.CycleCadence = request.CycleCadence;
+        subscription.PurchaseDate = request.PurchaseDate;
+        subscription.NextBillingDate = request.NextBillingDate;
+        subscription.AlertDaysAdvance = request.AlertDaysAdvance;
+        subscription.CategoryId = request.CategoryId;
+        subscription.PaymentSourceId = request.PaymentSourceId;
+        subscription.IsFreeTrial = request.IsFreeTrial;
+
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken);
+    }
+
     private IQueryable<SubscriptionDto> BuildDtoQuery(Guid userId) =>
         from s in _dbContext.UserSubscriptions.AsNoTracking()
         where s.UserId == userId

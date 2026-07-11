@@ -262,4 +262,68 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
         Assert.Equal("Visa •9999", dto.PaymentSourceLabel);
         Assert.Equal("https://example.com/netflix.png", dto.CatalogLogoUrl);
     }
+
+    [Fact]
+    public async Task UpdateSubscription_ChangesPersist()
+    {
+        var client = await CreateAuthenticatedClientAsync($"update-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var updateRequest = ValidRequest();
+        updateRequest.CustomName = "Netflix Standard";
+        updateRequest.CostAmount = 12.49m;
+        updateRequest.Currency = "EUR";
+
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", updateRequest, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.OK, updateResponse.StatusCode);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal("Netflix Standard", updated!.CustomName);
+        Assert.Equal(12.49m, updated.CostAmount);
+        Assert.Equal("EUR", updated.Currency);
+
+        var getResponse = await client.GetAsync($"/api/v1/subscriptions/{created.Id}");
+        var reloaded = await getResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal("Netflix Standard", reloaded!.CustomName);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_ForAnotherUsersRecord_Returns404()
+    {
+        var ownerClient = await CreateAuthenticatedClientAsync($"update-owner-{Guid.NewGuid()}@example.com");
+        var attackerClient = await CreateAuthenticatedClientAsync($"update-attacker-{Guid.NewGuid()}@example.com");
+
+        var createResponse = await ownerClient.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var updateResponse = await attackerClient.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", ValidRequest(), JsonOptions);
+
+        Assert.Equal(HttpStatusCode.NotFound, updateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_WithInvalidPayload_Returns400()
+    {
+        var client = await CreateAuthenticatedClientAsync($"update-invalid-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var invalidUpdate = ValidRequest();
+        invalidUpdate.CostAmount = -5m;
+
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", invalidUpdate, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, updateResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_NonexistentId_Returns404()
+    {
+        var client = await CreateAuthenticatedClientAsync($"update-missing-{Guid.NewGuid()}@example.com");
+
+        var response = await client.PutAsJsonAsync($"/api/v1/subscriptions/{Guid.NewGuid()}", ValidRequest(), JsonOptions);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }
