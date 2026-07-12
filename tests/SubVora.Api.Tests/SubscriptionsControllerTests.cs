@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SubVora.Application.Auth;
+using SubVora.Application.Matching;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
 using SubVora.Infrastructure.Data;
@@ -385,5 +386,47 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
         var response = await client.DeleteAsync($"/api/v1/subscriptions/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Resolve_WithoutAuth_Returns401()
+    {
+        var client = _factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "nflx" }, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Resolve_WithEmptyInput_Returns400()
+    {
+        var client = await CreateAuthenticatedClientAsync($"resolve-empty-{Guid.NewGuid()}@example.com");
+
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "" }, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Resolve_RepeatedCall_EventuallyAutoFillsFromTheEntryTheFirstCallCreated()
+    {
+        // FakeEmbeddingClient returns the same vector for every input, so once any resolve call
+        // (in this test or an earlier one sharing the same test database) has created a catalog
+        // row, every subsequent call is an exact (distance 0) match against it.
+        var client = await CreateAuthenticatedClientAsync($"resolve-repeat-{Guid.NewGuid()}@example.com");
+
+        var firstResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "nflx mobile plan" }, JsonOptions);
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        var first = await firstResponse.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
+        Assert.NotNull(first);
+        Assert.True(first!.Tier is MatchConfidenceTier.Manual or MatchConfidenceTier.AutoFill);
+
+        var secondResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "some other free text" }, JsonOptions);
+        Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
+        var second = await secondResponse.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
+        Assert.NotNull(second);
+        Assert.Equal(MatchConfidenceTier.AutoFill, second!.Tier);
+        Assert.NotNull(second.CatalogId);
     }
 }

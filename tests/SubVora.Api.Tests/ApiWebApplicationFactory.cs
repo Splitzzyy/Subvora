@@ -1,8 +1,11 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using SubVora.Application.Matching;
 using SubVora.Infrastructure.Data;
 using Testcontainers.PostgreSql;
 
@@ -29,7 +32,17 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
                 ["Jwt:Secret"] = TestJwtSecret,
                 ["Jwt:Issuer"] = "SubVora.Tests",
                 ["Jwt:Audience"] = "SubVora.Tests",
+                // Never a real key: IEmbeddingClient is swapped for a fake below, so nothing ever
+                // dials out to OpenAI in tests, but the typed HttpClient factory still requires a
+                // non-null value at registration time.
+                ["OpenAI:ApiKey"] = "test-only-openai-key-never-used-in-ci",
             });
+        });
+
+        builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<IEmbeddingClient>();
+            services.AddScoped<IEmbeddingClient, FakeEmbeddingClient>();
         });
     }
 

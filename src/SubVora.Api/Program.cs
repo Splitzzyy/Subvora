@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json.Serialization;
 using FluentValidation;
@@ -7,9 +8,11 @@ using SubVora.Application.Auth;
 using SubVora.Application.Categories;
 using SubVora.Application.Currency;
 using SubVora.Application.Dashboard;
+using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
+using SubVora.Infrastructure.Ai;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
@@ -42,6 +45,18 @@ builder.Services.AddScoped<IValidator<CreateCategoryRequest>, CreateCategoryRequ
 
 builder.Services.AddScoped<IPaymentSourceRepository, PaymentSourceRepository>();
 builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePaymentSourceRequestValidator>();
+
+builder.Services.AddScoped<ISubscriptionCatalogSearchRepository, SubscriptionCatalogSearchRepository>();
+builder.Services.AddScoped<ISubscriptionMatchService, SubscriptionMatchService>();
+builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscriptionRequestValidator>();
+builder.Services.AddHttpClient<IEmbeddingClient, OpenAiEmbeddingClient>((sp, client) =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var apiKey = configuration["OpenAI:ApiKey"]
+        ?? throw new InvalidOperationException("OpenAI:ApiKey is not configured.");
+    client.BaseAddress = new Uri("https://api.openai.com/v1/");
+    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+});
 
 // Scoped, not singleton - depends on IFxRateService, which holds a scoped DbContext.
 builder.Services.AddScoped<IBurnRateCalculator, BurnRateCalculator>();
