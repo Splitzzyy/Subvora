@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: subvora
       POSTGRES_PASSWORD: subvora_dev_password
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - subvora_pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -15,6 +15,19 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: src/SubVora.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Docker
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   subvora_pg_data:

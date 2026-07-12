@@ -1,0 +1,33 @@
+name: Database Migration (Production)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore src/SubVora.Infrastructure/SubVora.Infrastructure.csproj
+
+      - name: Install EF Core tools
+        run: dotnet tool install --global dotnet-ef
+
+      - name: Build migration bundle
+        run: |
+          dotnet ef migrations bundle \
+            --project src/SubVora.Infrastructure \
+            --startup-project src/SubVora.Infrastructure \
+            --configuration Release \
+            --self-contained \
+            -o migrate
+
+      - name: Apply migrations
+        run: ./migrate --connection "${{ secrets.PROD_DB_CONNECTION_STRING }}"

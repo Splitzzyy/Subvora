@@ -1,11 +1,6 @@
-using System.Net.Http.Headers;
-using System.Security.Claims;
-using System.Text;
-using System.Text.Json.Serialization;
-using System.Threading.RateLimiting;
 using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using SubVora.Application.Alerts;
 using SubVora.Application.Auth;
@@ -22,6 +17,11 @@ using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Repositories;
+using System.Net.Http.Headers;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -138,8 +138,17 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// "Docker" is the compose-local environment (see docker-compose.yml / appsettings.Docker.json) -
+// same dev convenience as Development, just against the containerized db service instead of localhost.
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
 {
+    // Dev convenience only - production migrations run as an explicit deploy step
+    // (see .github/workflows/db-migrate.yml), never on app startup.
+    using (var scope = app.Services.CreateScope())
+    {
+        scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    }
+
     app.MapOpenApi();
 
     // Swagger UI reads the spec .NET's native OpenAPI generator already produces above -
@@ -151,7 +160,12 @@ if (app.Environment.IsDevelopment())
     });
 }
 
-app.UseHttpsRedirection();
+// No HTTPS endpoint is configured inside the container (see Dockerfile / ASPNETCORE_HTTP_PORTS) -
+// TLS termination there is expected to happen upstream, so redirect only applies outside Docker.
+if (!app.Environment.IsEnvironment("Docker"))
+{
+    app.UseHttpsRedirection();
+}
 
 app.UseAuthentication();
 app.UseAuthorization();
