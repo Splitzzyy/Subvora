@@ -1,12 +1,13 @@
+using SubVora.Application.Currency;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
 
 namespace SubVora.Application.Dashboard;
 
 /// <summary>
-/// Pure in-memory aggregation, no EF/DB dependency - the caller (DashboardController) is
-/// responsible for fetching the subscriptions first. Kept this way so the burn-rate math is
-/// unit-testable without a database.
+/// In-memory aggregation over already-fetched subscriptions, converting each one's native-currency
+/// cost to the caller's home currency via cached <see cref="IFxRateService"/> rates before summing -
+/// never a live API call, and never a mutation of the subscription's stored currency/amount.
 /// </summary>
 public class BurnRateCalculator : IBurnRateCalculator
 {
@@ -14,11 +15,19 @@ public class BurnRateCalculator : IBurnRateCalculator
     private const int MonthlyDays = 30;
     private const int YearlyDays = 365;
 
-    public BurnRateResult Calculate(IEnumerable<SubscriptionDto> subscriptions)
+    private readonly IFxRateService _fxRateService;
+
+    public BurnRateCalculator(IFxRateService fxRateService)
+    {
+        _fxRateService = fxRateService;
+    }
+
+    public async Task<BurnRateResult> CalculateAsync(IEnumerable<SubscriptionDto> subscriptions, string homeCurrency, CancellationToken cancellationToken = default)
     {
         var currentYear = DateTime.UtcNow.Year;
         var dailyRateSum = 0m;
         var oneTimeThisYear = 0m;
+        var unresolvedSubscriptionIds = new List<Guid>();
 
         foreach (var subscription in subscriptions)
         {
@@ -27,11 +36,20 @@ public class BurnRateCalculator : IBurnRateCalculator
                 continue;
             }
 
+            var rate = await ResolveRateAsync(subscription.Currency, homeCurrency, cancellationToken);
+            if (rate is null)
+            {
+                unresolvedSubscriptionIds.Add(subscription.Id);
+                continue;
+            }
+
+            var convertedCost = subscription.CostAmount * rate.Value;
+
             if (subscription.CycleCadence == BillingCycleType.OneTime)
             {
                 if (subscription.PurchaseDate.Year == currentYear)
                 {
-                    oneTimeThisYear += subscription.CostAmount;
+                    oneTimeThisYear += convertedCost;
                 }
 
                 continue;
@@ -52,7 +70,7 @@ public class BurnRateCalculator : IBurnRateCalculator
                 _ => throw new ArgumentOutOfRangeException(nameof(subscriptions), subscription.CycleCadence, "Unexpected billing cycle for a recurring subscription."),
             };
 
-            dailyRateSum += subscription.CostAmount / cycleDays;
+            dailyRateSum += convertedCost / cycleDays;
         }
 
         return new BurnRateResult
@@ -60,7 +78,19 @@ public class BurnRateCalculator : IBurnRateCalculator
             Weekly = Math.Round(dailyRateSum * WeeklyDays, 2),
             Monthly = Math.Round(dailyRateSum * MonthlyDays, 2),
             Yearly = Math.Round(dailyRateSum * YearlyDays, 2),
-            OneTimeThisYear = oneTimeThisYear,
+            OneTimeThisYear = Math.Round(oneTimeThisYear, 2),
+            HomeCurrency = homeCurrency,
+            UnresolvedSubscriptionIds = unresolvedSubscriptionIds,
         };
+    }
+
+    private async Task<decimal?> ResolveRateAsync(string subscriptionCurrency, string homeCurrency, CancellationToken cancellationToken)
+    {
+        if (string.Equals(subscriptionCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
+        {
+            return 1m;
+        }
+
+        return await _fxRateService.GetRateAsync(subscriptionCurrency, homeCurrency, cancellationToken);
     }
 }

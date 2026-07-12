@@ -4,5 +4,5 @@ namespace SubVora.Application.Dashboard;
 
 public interface IBurnRateCalculator
 {
-    BurnRateResult Calculate(IEnumerable<SubscriptionDto> subscriptions);
+    Task<BurnRateResult> CalculateAsync(IEnumerable<SubscriptionDto> subscriptions, string homeCurrency, CancellationToken cancellationToken = default);
 }
