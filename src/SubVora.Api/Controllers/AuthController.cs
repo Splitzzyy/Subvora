@@ -2,6 +2,7 @@ using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SubVora.Application.Auth;
 
 namespace SubVora.Api.Controllers;
@@ -31,6 +32,7 @@ public class AuthController : ControllerBase
     /// <response code="400">The email or password failed validation.</response>
     /// <response code="409">An account with this email already exists.</response>
     [HttpPost("register")]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(RegisteredUserResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -56,6 +58,7 @@ public class AuthController : ControllerBase
     /// <response code="400">The email or password failed validation.</response>
     /// <response code="401">Invalid email or password.</response>
     [HttpPost("login")]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
@@ -84,6 +87,7 @@ public class AuthController : ControllerBase
     /// <response code="200">Returns a new access/refresh token pair.</response>
     /// <response code="401">The refresh token is invalid, expired, or was already rotated.</response>
     [HttpPost("refresh")]
+    [EnableRateLimiting("auth")]
     [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken cancellationToken)
