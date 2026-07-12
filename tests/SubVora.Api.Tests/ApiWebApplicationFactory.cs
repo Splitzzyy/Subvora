@@ -36,6 +36,10 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
                 // dials out to OpenAI in tests, but the typed HttpClient factory still requires a
                 // non-null value at registration time.
                 ["OpenAI:ApiKey"] = "test-only-openai-key-never-used-in-ci",
+                // Small on purpose: lets rate-limit tests exceed the window with a handful of
+                // requests instead of the production default (30/min).
+                ["RateLimiting:AiResolve:PermitLimit"] = "3",
+                ["RateLimiting:AiResolve:WindowSeconds"] = "60",
             });
         });
 

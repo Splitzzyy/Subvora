@@ -2,6 +2,7 @@ using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using SubVora.Application.Matching;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Entities;
@@ -149,10 +150,13 @@ public class SubscriptionsController : ControllerBase
     /// <response code="200">Returns the resolution result.</response>
     /// <response code="400">The payload failed validation.</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="429">The caller exceeded the per-user rate limit for this endpoint.</response>
     [HttpPost("resolve")]
+    [EnableRateLimiting("ai-resolve")]
     [ProducesResponseType(typeof(ResolveSubscriptionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
     public async Task<IActionResult> Resolve([FromBody] ResolveSubscriptionRequest request, CancellationToken cancellationToken)
     {
         var validationResult = await _resolveValidator.ValidateAsync(request, cancellationToken);
