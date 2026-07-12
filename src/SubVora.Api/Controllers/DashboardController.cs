@@ -30,7 +30,9 @@ public class DashboardController : ControllerBase
     /// Every subscription's native-currency cost is converted to the caller's preferred_currency via
     /// cached FX rates before summing. A subscription whose currency pair has no cached rate is
     /// excluded from the totals and reported via UnresolvedSubscriptionIds rather than failing the
-    /// whole request. Active free trials and one-time purchases are excluded from the recurring totals.
+    /// whole request. Active free trials and one-time purchases are excluded from the recurring totals
+    /// and from the per-category breakdown (ByCategory); subscriptions with no assigned category are
+    /// grouped under "Uncategorized".
     /// </remarks>
     /// <response code="200">Returns the burn-rate totals.</response>
     /// <response code="401">The caller is not authenticated.</response>

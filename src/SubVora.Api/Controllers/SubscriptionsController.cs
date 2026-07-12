@@ -2,6 +2,8 @@ using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using SubVora.Application.Matching;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Entities;
 
@@ -16,11 +18,19 @@ public class SubscriptionsController : ControllerBase
 {
     private readonly ISubscriptionRepository _subscriptionRepository;
     private readonly IValidator<CreateSubscriptionRequest> _createValidator;
+    private readonly ISubscriptionMatchService _subscriptionMatchService;
+    private readonly IValidator<ResolveSubscriptionRequest> _resolveValidator;
 
-    public SubscriptionsController(ISubscriptionRepository subscriptionRepository, IValidator<CreateSubscriptionRequest> createValidator)
+    public SubscriptionsController(
+        ISubscriptionRepository subscriptionRepository,
+        IValidator<CreateSubscriptionRequest> createValidator,
+        ISubscriptionMatchService subscriptionMatchService,
+        IValidator<ResolveSubscriptionRequest> resolveValidator)
     {
         _subscriptionRepository = subscriptionRepository;
         _createValidator = createValidator;
+        _subscriptionMatchService = subscriptionMatchService;
+        _resolveValidator = resolveValidator;
     }
 
     /// <summary>Lists the authenticated user's subscriptions.</summary>
@@ -129,6 +139,34 @@ public class SubscriptionsController : ControllerBase
     {
         var deleted = await _subscriptionRepository.DeleteAsync(id, GetUserId(), cancellationToken);
         return deleted ? NoContent() : NotFound();
+    }
+
+    /// <summary>Resolves free-text subscription input (e.g. "nflx mobile plan") to a catalog match via AI embedding + cosine similarity.</summary>
+    /// <remarks>
+    /// Similarity ≥0.85 auto-fills from the matched catalog entry; 0.70-0.85 returns the same match
+    /// flagged for user confirmation; below 0.70 (or an empty catalog) returns no match and records
+    /// the input as a new subscription_catalog entry for future matching.
+    /// </remarks>
+    /// <response code="200">Returns the resolution result.</response>
+    /// <response code="400">The payload failed validation.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="429">The caller exceeded the per-user rate limit for this endpoint.</response>
+    [HttpPost("resolve")]
+    [EnableRateLimiting("ai-resolve")]
+    [ProducesResponseType(typeof(ResolveSubscriptionResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status429TooManyRequests)]
+    public async Task<IActionResult> Resolve([FromBody] ResolveSubscriptionRequest request, CancellationToken cancellationToken)
+    {
+        var validationResult = await _resolveValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        var result = await _subscriptionMatchService.ResolveAsync(request.Input, cancellationToken);
+        return Ok(result);
     }
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);

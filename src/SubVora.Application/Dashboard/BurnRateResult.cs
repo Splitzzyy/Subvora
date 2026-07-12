@@ -10,4 +10,7 @@ public class BurnRateResult
 
     /// <summary>Subscriptions excluded from the totals above because no cached fx_rates pair covers their currency.</summary>
     public IReadOnlyList<Guid> UnresolvedSubscriptionIds { get; set; } = [];
+
+    /// <summary>Monthly recurring spend grouped by category, in home currency. Excludes one-time purchases and active trials.</summary>
+    public IReadOnlyList<CategoryBreakdownItem> ByCategory { get; set; } = [];
 }

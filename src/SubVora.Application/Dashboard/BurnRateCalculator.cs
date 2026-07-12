@@ -24,10 +24,13 @@ public class BurnRateCalculator : IBurnRateCalculator
 
     public async Task<BurnRateResult> CalculateAsync(IEnumerable<SubscriptionDto> subscriptions, string homeCurrency, CancellationToken cancellationToken = default)
     {
+        const string uncategorizedName = "Uncategorized";
+
         var currentYear = DateTime.UtcNow.Year;
         var dailyRateSum = 0m;
         var oneTimeThisYear = 0m;
         var unresolvedSubscriptionIds = new List<Guid>();
+        var categoryDailyRates = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
 
         foreach (var subscription in subscriptions)
         {
@@ -70,8 +73,22 @@ public class BurnRateCalculator : IBurnRateCalculator
                 _ => throw new ArgumentOutOfRangeException(nameof(subscriptions), subscription.CycleCadence, "Unexpected billing cycle for a recurring subscription."),
             };
 
-            dailyRateSum += convertedCost / cycleDays;
+            var subscriptionDailyRate = convertedCost / cycleDays;
+            dailyRateSum += subscriptionDailyRate;
+
+            var categoryKey = (subscription.CategoryId, subscription.CategoryName ?? uncategorizedName);
+            categoryDailyRates[categoryKey] = categoryDailyRates.GetValueOrDefault(categoryKey) + subscriptionDailyRate;
         }
+
+        var byCategory = categoryDailyRates
+            .Select(kvp => new CategoryBreakdownItem
+            {
+                CategoryId = kvp.Key.CategoryId,
+                CategoryName = kvp.Key.CategoryName,
+                MonthlyAmount = Math.Round(kvp.Value * MonthlyDays, 2),
+            })
+            .OrderByDescending(item => item.MonthlyAmount)
+            .ToList();
 
         return new BurnRateResult
         {
@@ -81,6 +98,7 @@ public class BurnRateCalculator : IBurnRateCalculator
             OneTimeThisYear = Math.Round(oneTimeThisYear, 2),
             HomeCurrency = homeCurrency,
             UnresolvedSubscriptionIds = unresolvedSubscriptionIds,
+            ByCategory = byCategory,
         };
     }
 
