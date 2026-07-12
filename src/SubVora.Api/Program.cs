@@ -2,7 +2,12 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Events;
+using Serilog.Formatting.Compact;
+using SubVora.Api;
 using SubVora.Application.Alerts;
+using SubVora.Application.Devices;
 using SubVora.Application.Auth;
 using SubVora.Application.Categories;
 using SubVora.Application.Currency;
@@ -24,6 +29,15 @@ using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Structured JSON logs to console, provider-agnostic (no APM vendor chosen yet - just makes
+// logs parseable by whatever log aggregator ends up watching stdout). Levels mirror the
+// previous default Logging:LogLevel values (Default: Information, Microsoft.AspNetCore: Warning).
+builder.Host.UseSerilog((_, cfg) => cfg
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.Console(new CompactJsonFormatter()));
 
 // Add services to the container.
 
@@ -50,6 +64,9 @@ builder.Services.AddScoped<IValidator<CreateCategoryRequest>, CreateCategoryRequ
 
 builder.Services.AddScoped<IPaymentSourceRepository, PaymentSourceRepository>();
 builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePaymentSourceRequestValidator>();
+
+builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
+builder.Services.AddScoped<IValidator<RegisterDeviceTokenRequest>, RegisterDeviceTokenRequestValidator>();
 
 builder.Services.AddScoped<ISubscriptionCatalogSearchRepository, SubscriptionCatalogSearchRepository>();
 builder.Services.AddScoped<ISubscriptionMatchService, SubscriptionMatchService>();
@@ -128,12 +145,36 @@ builder.Services.AddRateLimiter(options =>
             QueueLimit = 0,
         });
     });
+
+    // Pre-auth endpoints (register/login/refresh) have no user claim yet, so this partitions
+    // on caller IP instead - guards against credential-stuffing/brute-force.
+    options.AddPolicy("auth", httpContext =>
+    {
+        var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var permitLimit = configuration.GetValue("RateLimiting:Auth:PermitLimit", 10);
+        var windowSeconds = configuration.GetValue("RateLimiting:Auth:WindowSeconds", 60);
+        var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+
+        return RateLimitPartition.GetFixedWindowLimiter(ipAddress, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = permitLimit,
+            Window = TimeSpan.FromSeconds(windowSeconds),
+            QueueLimit = 0,
+        });
+    });
 });
 
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
+
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.AddProblemDetails();
+
+builder.Services.AddHealthChecks()
+    .AddNpgSql(sp => sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")
+        ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured."));
 
 var app = builder.Build();
 
@@ -159,6 +200,10 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
         options.RoutePrefix = "swagger";
     });
 }
+
+app.UseExceptionHandler();
+
+app.MapHealthChecks("/health");
 
 // No HTTPS endpoint is configured inside the container (see Dockerfile / ASPNETCORE_HTTP_PORTS) -
 // TLS termination there is expected to happen upstream, so redirect only applies outside Docker.

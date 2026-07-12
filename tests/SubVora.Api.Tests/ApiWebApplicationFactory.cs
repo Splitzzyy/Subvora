@@ -40,6 +40,12 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
                 // requests instead of the production default (30/min).
                 ["RateLimiting:AiResolve:PermitLimit"] = "3",
                 ["RateLimiting:AiResolve:WindowSeconds"] = "60",
+                // High on purpose: register/login are used as setup by nearly every controller
+                // test class (via a shared per-class factory + rate limiter instance), so this
+                // must not trip during normal test runs. AuthRateLimitTests overrides this down
+                // to a small value on its own WithWebHostBuilder-derived factory instead.
+                ["RateLimiting:Auth:PermitLimit"] = "1000",
+                ["RateLimiting:Auth:WindowSeconds"] = "60",
             });
         });
 

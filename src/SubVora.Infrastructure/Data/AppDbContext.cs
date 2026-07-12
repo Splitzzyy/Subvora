@@ -17,6 +17,7 @@ public class AppDbContext : DbContext
     public DbSet<FxRate> FxRates => Set<FxRate>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<NotificationLog> NotificationsLog => Set<NotificationLog>();
+    public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
