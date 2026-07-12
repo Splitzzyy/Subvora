@@ -7,6 +7,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using SubVora.Application.Alerts;
 using SubVora.Application.Auth;
 using SubVora.Application.Categories;
 using SubVora.Application.Currency;
@@ -16,6 +17,7 @@ using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
 using SubVora.Infrastructure.Ai;
+using SubVora.Infrastructure.Alerts;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
@@ -71,6 +73,9 @@ builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(clie
     client.BaseAddress = new Uri("https://api.exchangerate.host/");
 });
 builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
+
+builder.Services.AddSingleton<IRenewalAlertScanner, RenewalAlertScanner>();
+builder.Services.AddHostedService<RenewalAlertBackgroundService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
