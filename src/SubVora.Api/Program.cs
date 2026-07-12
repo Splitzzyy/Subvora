@@ -9,6 +9,7 @@ using SubVora.Application.Currency;
 using SubVora.Application.Dashboard;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
+using SubVora.Application.Users;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
@@ -42,8 +43,9 @@ builder.Services.AddScoped<IValidator<CreateCategoryRequest>, CreateCategoryRequ
 builder.Services.AddScoped<IPaymentSourceRepository, PaymentSourceRepository>();
 builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePaymentSourceRequestValidator>();
 
-// Stateless pure logic, no per-request dependencies - safe as a singleton.
-builder.Services.AddSingleton<IBurnRateCalculator, BurnRateCalculator>();
+// Scoped, not singleton - depends on IFxRateService, which holds a scoped DbContext.
+builder.Services.AddScoped<IBurnRateCalculator, BurnRateCalculator>();
+builder.Services.AddScoped<IUserRepository, UserRepository>();
 
 builder.Services.AddScoped<IFxRateService, FxRateService>();
 builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(client =>

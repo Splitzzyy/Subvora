@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SubVora.Application.Dashboard;
 using SubVora.Application.Subscriptions;
+using SubVora.Application.Users;
 
 namespace SubVora.Api.Controllers;
 
@@ -15,18 +16,21 @@ public class DashboardController : ControllerBase
 {
     private readonly ISubscriptionRepository _subscriptionRepository;
     private readonly IBurnRateCalculator _burnRateCalculator;
+    private readonly IUserRepository _userRepository;
 
-    public DashboardController(ISubscriptionRepository subscriptionRepository, IBurnRateCalculator burnRateCalculator)
+    public DashboardController(ISubscriptionRepository subscriptionRepository, IBurnRateCalculator burnRateCalculator, IUserRepository userRepository)
     {
         _subscriptionRepository = subscriptionRepository;
         _burnRateCalculator = burnRateCalculator;
+        _userRepository = userRepository;
     }
 
     /// <summary>Weekly/monthly/yearly recurring spend, plus one-time purchases this year.</summary>
     /// <remarks>
-    /// Single-currency for now (each subscription's native currency, unconverted) - home-currency
-    /// conversion via cached FX rates lands in a later slice. Active free trials and one-time
-    /// purchases are excluded from the recurring totals.
+    /// Every subscription's native-currency cost is converted to the caller's preferred_currency via
+    /// cached FX rates before summing. A subscription whose currency pair has no cached rate is
+    /// excluded from the totals and reported via UnresolvedSubscriptionIds rather than failing the
+    /// whole request. Active free trials and one-time purchases are excluded from the recurring totals.
     /// </remarks>
     /// <response code="200">Returns the burn-rate totals.</response>
     /// <response code="401">The caller is not authenticated.</response>
@@ -36,8 +40,9 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> GetBurnRate(CancellationToken cancellationToken)
     {
         var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var preferredCurrency = await _userRepository.GetPreferredCurrencyAsync(userId, cancellationToken) ?? "USD";
         var subscriptions = await _subscriptionRepository.GetAllForUserAsync(userId, cancellationToken);
-        var result = _burnRateCalculator.Calculate(subscriptions);
+        var result = await _burnRateCalculator.CalculateAsync(subscriptions, preferredCurrency, cancellationToken);
         return Ok(result);
     }
 }

@@ -29,4 +29,10 @@ public class FxRateService : IFxRateService
                 cancellationToken);
         }
     }
+
+    public async Task<decimal?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default) =>
+        await _dbContext.FxRates.AsNoTracking()
+            .Where(r => r.BaseCurrency == baseCurrency && r.TargetCurrency == targetCurrency)
+            .Select(r => (decimal?)r.Rate)
+            .SingleOrDefaultAsync(cancellationToken);
 }
