@@ -15,7 +15,7 @@ public class BurnRateCalculatorTests
         _calculator = new BurnRateCalculator(_fxRateService);
     }
 
-    private static SubscriptionDto RecurringSubscription(decimal cost, BillingCycleType cycle, bool isFreeTrial = false, bool isActive = true, string currency = "USD") => new()
+    private static SubscriptionDto RecurringSubscription(decimal cost, BillingCycleType cycle, bool isFreeTrial = false, bool isActive = true, string currency = "USD", Guid? categoryId = null, string? categoryName = null) => new()
     {
         Id = Guid.NewGuid(),
         CustomName = "Test Subscription",
@@ -25,6 +25,8 @@ public class BurnRateCalculatorTests
         PurchaseDate = new DateOnly(DateTime.UtcNow.Year, 1, 1),
         NextBillingDate = new DateOnly(DateTime.UtcNow.Year, 2, 1),
         AlertDaysAdvance = 3,
+        CategoryId = categoryId,
+        CategoryName = categoryName,
         IsFreeTrial = isFreeTrial,
         IsActive = isActive,
         CreatedAt = DateTimeOffset.UtcNow,
@@ -175,6 +177,49 @@ public class BurnRateCalculatorTests
         // Only the USD subscription contributes; JPY has no cached rate and is excluded, not zeroed.
         Assert.Equal(30m, result.Monthly);
         Assert.Equal([unresolvedSubscription.Id], result.UnresolvedSubscriptionIds);
+    }
+
+    [Fact]
+    public async Task GroupsMonthlySpendByCategory_ExcludingOneTimeAndTrials()
+    {
+        var streamingCategoryId = Guid.NewGuid();
+        var utilitiesCategoryId = Guid.NewGuid();
+        var thisYear = DateTime.UtcNow.Year;
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly, categoryId: streamingCategoryId, categoryName: "Streaming"),
+            RecurringSubscription(30m, BillingCycleType.Monthly, categoryId: streamingCategoryId, categoryName: "Streaming"),
+            RecurringSubscription(30m, BillingCycleType.Monthly, categoryId: utilitiesCategoryId, categoryName: "Utilities"),
+            RecurringSubscription(30m, BillingCycleType.Monthly, categoryId: streamingCategoryId, categoryName: "Streaming", isFreeTrial: true),
+            OneTimeSubscription(99m, new DateOnly(thisYear, 3, 15)),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Equal(2, result.ByCategory.Count);
+        var streaming = result.ByCategory.Single(c => c.CategoryId == streamingCategoryId);
+        Assert.Equal("Streaming", streaming.CategoryName);
+        Assert.Equal(60m, streaming.MonthlyAmount);
+        var utilities = result.ByCategory.Single(c => c.CategoryId == utilitiesCategoryId);
+        Assert.Equal("Utilities", utilities.CategoryName);
+        Assert.Equal(30m, utilities.MonthlyAmount);
+    }
+
+    [Fact]
+    public async Task SubscriptionsWithNoCategory_GroupUnderUncategorized()
+    {
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly),
+            RecurringSubscription(30m, BillingCycleType.Monthly),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        var uncategorized = Assert.Single(result.ByCategory);
+        Assert.Null(uncategorized.CategoryId);
+        Assert.Equal("Uncategorized", uncategorized.CategoryName);
+        Assert.Equal(60m, uncategorized.MonthlyAmount);
     }
 
     private sealed class FakeFxRateService : IFxRateService
