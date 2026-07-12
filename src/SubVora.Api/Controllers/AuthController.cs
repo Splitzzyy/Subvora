@@ -16,15 +16,21 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IValidator<RegisterRequest> _registerValidator;
     private readonly IValidator<LoginRequest> _loginValidator;
+    private readonly IValidator<ForgotPasswordRequest> _forgotPasswordValidator;
+    private readonly IValidator<ResetPasswordRequest> _resetPasswordValidator;
 
     public AuthController(
         IAuthService authService,
         IValidator<RegisterRequest> registerValidator,
-        IValidator<LoginRequest> loginValidator)
+        IValidator<LoginRequest> loginValidator,
+        IValidator<ForgotPasswordRequest> forgotPasswordValidator,
+        IValidator<ResetPasswordRequest> resetPasswordValidator)
     {
         _authService = authService;
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
+        _forgotPasswordValidator = forgotPasswordValidator;
+        _resetPasswordValidator = resetPasswordValidator;
     }
 
     /// <summary>Creates a new account.</summary>
@@ -105,6 +111,54 @@ public class AuthController : ControllerBase
     /// <remarks>Requires a valid access token. Always returns 204, even if the presented refresh token is missing, already revoked, or does not belong to the caller - logout never reveals whether a given token exists.</remarks>
     /// <response code="204">The token was revoked (or the request was otherwise a no-op).</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <summary>Requests a password-reset code by email.</summary>
+    /// <remarks>Always returns 200, even if no account matches the email - this endpoint never reveals whether a given email is registered.</remarks>
+    /// <response code="200">The request was accepted (regardless of whether the email matched an account).</response>
+    /// <response code="400">The email failed validation.</response>
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var validationResult = await _forgotPasswordValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        await _authService.ForgotPasswordAsync(request.Email, cancellationToken);
+        return Ok();
+    }
+
+    /// <summary>Sets a new password using a code obtained from <c>forgot-password</c>.</summary>
+    /// <response code="200">The password was updated.</response>
+    /// <response code="400">The payload failed validation, or the code is wrong, expired, already used, or over the attempt limit.</response>
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        var validationResult = await _resetPasswordValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        var result = await _authService.ResetPasswordAsync(request, cancellationToken);
+        if (!result.Succeeded)
+        {
+            return ValidationProblem(new ValidationProblemDetails
+            {
+                Title = "Invalid or expired reset code.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        return Ok();
+    }
+
     [Authorize]
     [HttpPost("logout")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

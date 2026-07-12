@@ -121,6 +121,92 @@ CREATE INDEX ON subscription_catalog
 USING hnsw (semantic_embedding vector_cosine_ops);
 ```
 
+### Additional Tables (added post-v1, kept in sync with `src/SubVora.Infrastructure/Migrations/`)
+
+The blueprint above predates several tables that shipped afterward. This section is the authoritative DDL for those - transcribed directly from the EF Core migrations, not re-derived, so column names/types match the real schema exactly (including the `id`/`snake_case` naming EF Core's Npgsql provider generates, which differs from the illustrative `user_id`-as-PK style above).
+
+```sql
+-- 7. User-defined and system-default subscription categories
+CREATE TYPE payment_source_type AS ENUM ('bank_account', 'card', 'other', 'wallet');
+
+CREATE TABLE categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE, -- NULL = system default category
+    name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE UNIQUE INDEX ix_categories_user_id_name ON categories(user_id, name);
+
+-- 8. A user's own payment methods (cards/accounts/wallets), attachable to subscriptions
+CREATE TABLE payment_sources (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label VARCHAR(100) NOT NULL,
+    source_type payment_source_type NOT NULL DEFAULT 'other',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE INDEX ix_payment_sources_user_id ON payment_sources(user_id);
+
+-- 9. Cached FX conversion rates - burn-rate totals are converted at read time from this
+-- cache, never by mutating a subscription's stored native currency/amount (see CLAUDE.md).
+CREATE TABLE fx_rates (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    base_currency VARCHAR(3) NOT NULL,
+    target_currency VARCHAR(3) NOT NULL,
+    rate NUMERIC(18, 8) NOT NULL,
+    fetched_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE UNIQUE INDEX ix_fx_rates_base_currency_target_currency ON fx_rates(base_currency, target_currency);
+
+-- 10. Opaque refresh tokens (JWT access tokens are stateless and not stored) - only the
+-- SHA-256 hash is persisted, never the plaintext token.
+CREATE TABLE refresh_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(512) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+
+-- 11. Idempotency guard for the renewal-alert background job - one row per (subscription,
+-- alert_days_advance, day) prevents duplicate push notifications on a re-run.
+CREATE TABLE notifications_log (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_subscription_id UUID NOT NULL REFERENCES user_subscriptions(id) ON DELETE CASCADE,
+    sent_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    alert_days_advance INT NOT NULL
+);
+CREATE UNIQUE INDEX ix_notifications_log_user_subscription_id_alert_days_advance_s
+    ON notifications_log(user_subscription_id, alert_days_advance, sent_at);
+
+-- 12. Password-reset codes - the 6-digit code is never stored in plaintext, only its
+-- SHA-256 hash, mirroring refresh_tokens. 15-minute expiry, max 5 verify attempts.
+CREATE TABLE password_reset_codes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash CHAR(64) NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    attempt_count INT NOT NULL DEFAULT 0,
+    used_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE INDEX ix_password_reset_codes_user_id ON password_reset_codes(user_id);
+
+-- 13. Push-notification device tokens - one row per device, supports multiple
+-- simultaneous devices per user. Pruned when FCM reports a token as unregistered.
+CREATE TABLE device_tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL,
+    platform VARCHAR(10) NOT NULL, -- 'Android' | 'iOS'
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+CREATE UNIQUE INDEX ix_device_tokens_user_id_token ON device_tokens(user_id, token);
+```
+
 ---
 
 ## 🤖 AI Capability Flow

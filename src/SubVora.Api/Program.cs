@@ -8,6 +8,8 @@ using Serilog.Formatting.Compact;
 using SubVora.Api;
 using SubVora.Application.Alerts;
 using SubVora.Application.Devices;
+using SubVora.Application.Notifications;
+using SubVora.Infrastructure.Notifications;
 using SubVora.Application.Auth;
 using SubVora.Application.Categories;
 using SubVora.Application.Currency;
@@ -55,6 +57,9 @@ builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IValidator<RegisterRequest>, RegisterRequestValidator>();
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
+builder.Services.AddScoped<IValidator<ForgotPasswordRequest>, ForgotPasswordRequestValidator>();
+builder.Services.AddScoped<IValidator<ResetPasswordRequest>, ResetPasswordRequestValidator>();
+builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
 
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IValidator<CreateSubscriptionRequest>, CreateSubscriptionRequestValidator>();
@@ -92,6 +97,10 @@ builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(clie
 builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 
 builder.Services.AddSingleton<IRenewalAlertScanner, RenewalAlertScanner>();
+builder.Services.AddHttpClient<IPushNotificationSender, FcmPushNotificationSender>(client =>
+{
+    client.BaseAddress = new Uri("https://fcm.googleapis.com/");
+});
 builder.Services.AddHostedService<RenewalAlertBackgroundService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SubVora.Application.Alerts;
+using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
 
@@ -16,7 +17,10 @@ public class RenewalAlertBackgroundService : BackgroundService
     private readonly IRenewalAlertScanner _scanner;
     private readonly ILogger<RenewalAlertBackgroundService> _logger;
 
-    public RenewalAlertBackgroundService(IServiceScopeFactory scopeFactory, IRenewalAlertScanner scanner, ILogger<RenewalAlertBackgroundService> logger)
+    public RenewalAlertBackgroundService(
+        IServiceScopeFactory scopeFactory,
+        IRenewalAlertScanner scanner,
+        ILogger<RenewalAlertBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
         _scanner = scanner;
@@ -72,14 +76,64 @@ public class RenewalAlertBackgroundService : BackgroundService
 
         foreach (var subscription in dueSubscriptions)
         {
-            // TODO(future push-delivery slice): actually send via FCM/APNs. Out of scope for
-            // this PRD - this job only records that a renewal alert is due.
             dbContext.NotificationsLog.Add(new NotificationLog
             {
                 UserSubscriptionId = subscription.Id,
                 AlertDaysAdvance = subscription.AlertDaysAdvance,
                 SentAt = DateTimeOffset.UtcNow,
             });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        // Resolved lazily (not constructor-injected) and guarded here: if push isn't configured
+        // yet (no Firebase credentials - see technical_requirements.backend-hardening.md [HITL]),
+        // this must degrade to "skip push delivery" rather than crash the whole host at startup,
+        // since RenewalAlertBackgroundService is a singleton hosted service.
+        IPushNotificationSender pushNotificationSender;
+        try
+        {
+            pushNotificationSender = scope.ServiceProvider.GetRequiredService<IPushNotificationSender>();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Push notification sender is not available; notifications_log was still written, but no push was sent this scan.");
+            return;
+        }
+
+        foreach (var subscription in dueSubscriptions)
+        {
+            await SendPushForSubscriptionAsync(dbContext, pushNotificationSender, subscription, cancellationToken);
+        }
+    }
+
+    private async Task SendPushForSubscriptionAsync(AppDbContext dbContext, IPushNotificationSender pushNotificationSender, UserSubscription subscription, CancellationToken cancellationToken)
+    {
+        var deviceTokens = await dbContext.DeviceTokens
+            .Where(d => d.UserId == subscription.UserId)
+            .ToListAsync(cancellationToken);
+
+        foreach (var deviceToken in deviceTokens)
+        {
+            try
+            {
+                var result = await pushNotificationSender.SendAsync(
+                    deviceToken.Token,
+                    "Subscription renewing soon",
+                    $"{subscription.CustomName} renews on {subscription.NextBillingDate:yyyy-MM-dd}.",
+                    cancellationToken);
+
+                if (result == PushSendResult.TokenInvalid)
+                {
+                    dbContext.DeviceTokens.Remove(deviceToken);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // One bad device token/transient FCM failure must not block delivery to the
+                // user's other devices or the rest of this scan's due subscriptions.
+                _logger.LogWarning(ex, "Push send failed for a device token; will retry on the next scan.");
+            }
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

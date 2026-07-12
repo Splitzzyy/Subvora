@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SubVora.Application.Alerts;
+using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
 using SubVora.Domain.Enums;
 using SubVora.Infrastructure.Alerts;
@@ -33,6 +34,8 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
         var services = new ServiceCollection();
         services.AddScoped(_ => new AppDbContext(AppDbContextOptionsFactory.Build(_fixture.ConnectionString)));
         services.AddSingleton<IRenewalAlertScanner, RenewalAlertScanner>();
+        services.AddSingleton<FakePushNotificationSender>();
+        services.AddSingleton<IPushNotificationSender>(sp => sp.GetRequiredService<FakePushNotificationSender>());
         services.AddLogging();
         _serviceProvider = services.BuildServiceProvider();
     }
@@ -49,6 +52,21 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
         var scanner = _serviceProvider.GetRequiredService<IRenewalAlertScanner>();
         var logger = _serviceProvider.GetRequiredService<ILogger<RenewalAlertBackgroundService>>();
         return new RenewalAlertBackgroundService(scopeFactory, scanner, logger);
+    }
+
+    private async Task<DeviceToken> CreateDeviceTokenAsync(Guid userId, string? token = null)
+    {
+        var deviceToken = new DeviceToken
+        {
+            UserId = userId,
+            Token = token ?? $"device-token-{Guid.NewGuid()}",
+            Platform = "Android",
+            CreatedAt = DateTimeOffset.UtcNow,
+            LastSeenAt = DateTimeOffset.UtcNow,
+        };
+        _dbContext.DeviceTokens.Add(deviceToken);
+        await _dbContext.SaveChangesAsync();
+        return deviceToken;
     }
 
     private async Task<UserSubscription> CreateSubscriptionAsync(int alertDaysAdvance, bool isActive = true, DateOnly? nextBillingDate = null)
@@ -126,5 +144,34 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
 
         var hasLog = await _dbContext.NotificationsLog.AsNoTracking().AnyAsync(n => n.UserSubscriptionId == subscription.Id);
         Assert.False(hasLog);
+    }
+
+    [Fact]
+    public async Task RenewalScan_SendsPushToEachRegisteredDeviceForDueSubscription()
+    {
+        var subscription = await CreateSubscriptionAsync(alertDaysAdvance: 3);
+        var deviceOne = await CreateDeviceTokenAsync(subscription.UserId);
+        var deviceTwo = await CreateDeviceTokenAsync(subscription.UserId);
+
+        await BuildService().ScanOnceAsync(Today);
+
+        var fakeSender = _serviceProvider.GetRequiredService<FakePushNotificationSender>();
+        Assert.Contains(fakeSender.SentPushes, p => p.DeviceToken == deviceOne.Token);
+        Assert.Contains(fakeSender.SentPushes, p => p.DeviceToken == deviceTwo.Token);
+    }
+
+    [Fact]
+    public async Task RenewalScan_PrunesDeviceTokenOnTokenInvalidResult()
+    {
+        var subscription = await CreateSubscriptionAsync(alertDaysAdvance: 3);
+        var staleDevice = await CreateDeviceTokenAsync(subscription.UserId);
+
+        var fakeSender = _serviceProvider.GetRequiredService<FakePushNotificationSender>();
+        fakeSender.InvalidTokens.Add(staleDevice.Token);
+
+        await BuildService().ScanOnceAsync(Today);
+
+        var stillExists = await _dbContext.DeviceTokens.AsNoTracking().AnyAsync(d => d.Id == staleDevice.Id);
+        Assert.False(stillExists);
     }
 }
