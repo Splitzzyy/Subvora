@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SubVora.Application.Matching;
+using SubVora.Application.Notifications;
 using SubVora.Infrastructure.Data;
 using Testcontainers.PostgreSql;
 
@@ -53,6 +54,19 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
         {
             services.RemoveAll<IEmbeddingClient>();
             services.AddScoped<IEmbeddingClient, FakeEmbeddingClient>();
+
+            // Singleton (not scoped) so tests can resolve the same instance post-request and
+            // assert on FakeEmailSender.SentEmails - a fresh scoped instance per request would
+            // be unobservable from the outside.
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<FakeEmailSender>();
+            services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<FakeEmailSender>());
+
+            // RenewalAlertBackgroundService is a hosted service that resolves IPushNotificationSender
+            // eagerly at host startup - FcmPushNotificationSender would throw immediately (no real
+            // Firebase config in tests) without this swap.
+            services.RemoveAll<IPushNotificationSender>();
+            services.AddSingleton<IPushNotificationSender, FakePushNotificationSender>();
         });
     }
 

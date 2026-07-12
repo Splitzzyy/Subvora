@@ -1,5 +1,7 @@
+using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using SubVora.Application.Auth;
+using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
 
@@ -7,15 +9,20 @@ namespace SubVora.Infrastructure.Auth;
 
 public class AuthService : IAuthService
 {
+    private static readonly TimeSpan PasswordResetCodeLifetime = TimeSpan.FromMinutes(15);
+    private const int MaxPasswordResetAttempts = 5;
+
     private readonly AppDbContext _dbContext;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IEmailSender _emailSender;
 
-    public AuthService(AppDbContext dbContext, IPasswordHasher passwordHasher, IJwtTokenService jwtTokenService)
+    public AuthService(AppDbContext dbContext, IPasswordHasher passwordHasher, IJwtTokenService jwtTokenService, IEmailSender emailSender)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
+        _emailSender = emailSender;
     }
 
     public async Task<RegisterResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
@@ -110,6 +117,75 @@ public class AuthService : IAuthService
 
         token.RevokedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task ForgotPasswordAsync(string email, CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+
+        var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
+        if (user is null)
+        {
+            // No enumeration - caller gets the same outcome either way.
+            return;
+        }
+
+        var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+
+        _dbContext.PasswordResetCodes.Add(new PasswordResetCode
+        {
+            UserId = user.Id,
+            CodeHash = HashResetCode(code),
+            ExpiresAt = DateTimeOffset.UtcNow.Add(PasswordResetCodeLifetime),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        await _emailSender.SendAsync(
+            user.Email,
+            "Your SubVora password reset code",
+            $"Your password reset code is {code}. It expires in 15 minutes.",
+            cancellationToken);
+    }
+
+    public async Task<ResetPasswordResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+        var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
+        if (user is null)
+        {
+            return ResetPasswordResult.Failed();
+        }
+
+        var resetCode = await _dbContext.PasswordResetCodes
+            .Where(c => c.UserId == user.Id && c.UsedAt == null)
+            .OrderByDescending(c => c.CreatedAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (resetCode is null || resetCode.ExpiresAt <= DateTimeOffset.UtcNow || resetCode.AttemptCount >= MaxPasswordResetAttempts)
+        {
+            return ResetPasswordResult.Failed();
+        }
+
+        if (resetCode.CodeHash != HashResetCode(request.Code))
+        {
+            resetCode.AttemptCount++;
+            await _dbContext.SaveChangesAsync(cancellationToken);
+            return ResetPasswordResult.Failed();
+        }
+
+        user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        resetCode.UsedAt = DateTimeOffset.UtcNow;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return ResetPasswordResult.Success();
+    }
+
+    private static string HashResetCode(string plainCode)
+    {
+        var hashBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(plainCode));
+        return Convert.ToHexStringLower(hashBytes);
     }
 
     private async Task<AuthTokenResponse> IssueTokenPairAsync(User user, CancellationToken cancellationToken)
