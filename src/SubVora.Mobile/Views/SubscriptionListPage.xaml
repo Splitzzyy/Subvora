@@ -3,10 +3,65 @@
     x:Class="SubVora.Mobile.Views.SubscriptionListPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
+    xmlns:dtos="clr-namespace:SubVora.Mobile.Api.Dtos"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:DataType="viewModels:SubscriptionListViewModel"
     Title="Subscriptions">
 
-    <VerticalStackLayout Padding="30" Spacing="10" VerticalOptions="Center" HorizontalOptions="Center">
-        <Label Text="Subscriptions" FontSize="24" HorizontalOptions="Center" />
-    </VerticalStackLayout>
+    <ContentPage.Resources>
+        <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+    </ContentPage.Resources>
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="Add" Command="{Binding AddCommand}" />
+    </ContentPage.ToolbarItems>
+
+    <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
+        <Grid RowDefinitions="Auto,Auto,*">
+
+            <Label Grid.Row="0"
+                   Text="Offline — showing last synced data"
+                   TextColor="OrangeRed"
+                   FontAttributes="Italic"
+                   Margin="20,10,20,0"
+                   IsVisible="{Binding IsShowingCachedData}" />
+
+            <Label Grid.Row="1"
+                   Text="{Binding ErrorMessage}"
+                   TextColor="Red"
+                   Margin="20,10,20,0"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+            <CollectionView Grid.Row="2" ItemsSource="{Binding Subscriptions}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="dtos:SubscriptionDto">
+                        <Grid Padding="20,12" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=SelectSubscriptionCommand}"
+                                    CommandParameter="{Binding Id}" />
+                            </Grid.GestureRecognizers>
+
+                            <Label Grid.Row="0" Grid.Column="0" Text="{Binding CustomName}" FontAttributes="Bold" />
+                            <Label Grid.Row="0" Grid.Column="1" Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
+
+                            <Label Grid.Row="1" Grid.Column="0">
+                                <Label.FormattedText>
+                                    <FormattedString>
+                                        <Span Text="{Binding CategoryName}" />
+                                        <Span Text=" · Next: " />
+                                        <Span Text="{Binding NextBillingDate}" />
+                                    </FormattedString>
+                                </Label.FormattedText>
+                            </Label>
+                            <Label Grid.Row="1" Grid.Column="1" Text="{Binding Currency}" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+        </Grid>
+    </RefreshView>
 
 </ContentPage>
