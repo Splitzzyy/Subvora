@@ -91,6 +91,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<IDebouncer, Debouncer>();
 		builder.Services.AddTransient<SubscriptionDetailViewModel>();
 		builder.Services.AddTransient<SubscriptionDetailPage>();
+		builder.Services.AddTransient<PaymentSourcesViewModel>();
+		builder.Services.AddTransient<PaymentSourcesPage>();
 
 		return builder.Build();
 	}
