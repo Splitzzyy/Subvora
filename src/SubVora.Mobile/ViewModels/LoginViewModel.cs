@@ -48,12 +48,11 @@ public partial class LoginViewModel : ObservableObject
                 return;
             }
 
-            ErrorMessage = response.StatusCode switch
-            {
-                HttpStatusCode.Unauthorized => "Invalid email or password.",
-                HttpStatusCode.BadRequest => ApiValidationErrorParser.ExtractFirstMessage(response) ?? "Please check your email and password.",
-                _ => "Something went wrong. Please try again.",
-            };
+            // Login's own 401 means bad credentials, not an expired session - keep that
+            // specific wording rather than the mapper's generic "session expired" message.
+            ErrorMessage = response.StatusCode == HttpStatusCode.Unauthorized
+                ? "Invalid email or password."
+                : ApiErrorMapper.ToDisplayMessage(response);
         }
         finally
         {

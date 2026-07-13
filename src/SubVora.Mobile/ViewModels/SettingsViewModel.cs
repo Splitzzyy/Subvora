@@ -54,9 +54,9 @@ public partial class SettingsViewModel : ObservableObject
             PreferredCurrency = profile.PreferredCurrency;
             DefaultAlertDaysAdvance = profile.DefaultAlertDaysAdvance;
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            ErrorMessage = "Couldn't load your settings. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally
         {
@@ -81,7 +81,7 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (ApiException ex)
         {
-            ErrorMessage = ApiValidationErrorParser.ExtractFirstMessage(ex) ?? "Couldn't save your settings. Please check the form and try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally
         {

@@ -66,7 +66,7 @@ public partial class DashboardViewModel : ObservableObject
                 ByCategory = [.. result.ByCategory],
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             var cached = (await _localCacheService.GetAllAsync<CachedBurnRate>()).FirstOrDefault();
             if (cached is not null)
@@ -76,7 +76,7 @@ public partial class DashboardViewModel : ObservableObject
             }
             else
             {
-                ErrorMessage = "Couldn't load your dashboard. Please try again.";
+                ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
                 IsShowingCachedData = false;
             }
         }

@@ -49,9 +49,9 @@ public partial class PaymentSourcesViewModel : ObservableObject
                 PaymentSources.Add(paymentSource);
             }
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            ErrorMessage = "Couldn't load payment sources. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally
         {
@@ -72,7 +72,7 @@ public partial class PaymentSourcesViewModel : ObservableObject
         }
         catch (ApiException ex)
         {
-            ErrorMessage = ApiValidationErrorParser.ExtractFirstMessage(ex) ?? "Couldn't add that payment source. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
     }
 
@@ -98,9 +98,9 @@ public partial class PaymentSourcesViewModel : ObservableObject
                 PaymentSources.Remove(toRemove);
             }
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            ErrorMessage = "Couldn't delete this payment source. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
     }
 }

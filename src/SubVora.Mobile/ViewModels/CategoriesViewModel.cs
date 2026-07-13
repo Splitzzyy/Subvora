@@ -42,9 +42,9 @@ public partial class CategoriesViewModel : ObservableObject
                 Categories.Add(category);
             }
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            ErrorMessage = "Couldn't load categories. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally
         {
@@ -64,10 +64,10 @@ public partial class CategoriesViewModel : ObservableObject
         }
         catch (ApiException ex)
         {
-            ErrorMessage = ApiValidationErrorParser.ExtractFirstMessage(ex)
-                ?? (ex.StatusCode == System.Net.HttpStatusCode.Conflict
-                    ? "A category with this name already exists."
-                    : "Couldn't add that category. Please try again.");
+            // 409 (duplicate name) isn't in the mapper's table - keep that specific wording.
+            ErrorMessage = ex.StatusCode == System.Net.HttpStatusCode.Conflict
+                ? "A category with this name already exists."
+                : ApiErrorMapper.ToDisplayMessage(ex);
         }
     }
 }

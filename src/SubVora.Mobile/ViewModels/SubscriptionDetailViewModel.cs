@@ -135,10 +135,17 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         {
             result = await _subscriptionsApi.ResolveAsync(new ResolveSubscriptionRequest { Input = input });
         }
-        catch (ApiException)
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
         {
-            // Includes 429 (client-side debouncing is a courtesy, not a guarantee against the
-            // server's own rate limit) - a resolve failure degrades silently, no error banner.
+            // Client-side debouncing is a courtesy, not a guarantee against the server's own
+            // rate limit - a 429 degrades silently, no error banner for that keystroke.
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Any other resolve failure (including being offline) is still worth surfacing,
+            // since the user may not realize their typing isn't being resolved at all.
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
             return;
         }
 
@@ -218,9 +225,9 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
                 PaymentSources.Add(paymentSource);
             }
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            ErrorMessage = "Couldn't load categories/payment sources. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
     }
 
@@ -249,9 +256,9 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         {
             SubscriptionNotFound?.Invoke(this, EventArgs.Empty);
         }
-        catch (ApiException)
+        catch (ApiException ex)
         {
-            ErrorMessage = "Couldn't load this subscription. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
     }
 
@@ -276,7 +283,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         }
         catch (ApiException ex)
         {
-            ErrorMessage = ApiValidationErrorParser.ExtractFirstMessage(ex) ?? "Couldn't save this subscription. Please check the form and try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally
         {

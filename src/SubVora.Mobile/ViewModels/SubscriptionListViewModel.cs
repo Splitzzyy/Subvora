@@ -61,7 +61,7 @@ public partial class SubscriptionListViewModel : ObservableObject
                 await _localCacheService.UpsertAsync(CachedSubscription.FromDto(subscription));
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             var cached = await _localCacheService.GetAllAsync<CachedSubscription>();
             if (cached.Count > 0)
@@ -76,7 +76,7 @@ public partial class SubscriptionListViewModel : ObservableObject
             }
             else
             {
-                ErrorMessage = "Couldn't load your subscriptions. Please try again.";
+                ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
                 IsShowingCachedData = false;
             }
         }
@@ -121,9 +121,9 @@ public partial class SubscriptionListViewModel : ObservableObject
                 await _localCacheService.UpsertAsync(CachedSubscription.FromDto(subscription));
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            ErrorMessage = "Couldn't delete this subscription. Please try again.";
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
     }
 }
