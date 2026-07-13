@@ -77,6 +77,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<LoginPage>();
 		builder.Services.AddTransient<RegisterViewModel>();
 		builder.Services.AddTransient<RegisterPage>();
+		builder.Services.AddTransient<DashboardViewModel>();
+		builder.Services.AddTransient<DashboardPage>();
 
 		return builder.Build();
 	}

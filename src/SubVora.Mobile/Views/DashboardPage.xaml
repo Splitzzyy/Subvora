@@ -3,10 +3,84 @@
     x:Class="SubVora.Mobile.Views.DashboardPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
+    xmlns:dtos="clr-namespace:SubVora.Mobile.Api.Dtos"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:DataType="viewModels:DashboardViewModel"
     Title="Dashboard">
 
-    <VerticalStackLayout Padding="30" Spacing="10" VerticalOptions="Center" HorizontalOptions="Center">
-        <Label Text="Dashboard" FontSize="24" HorizontalOptions="Center" />
-    </VerticalStackLayout>
+    <ContentPage.Resources>
+        <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+    </ContentPage.Resources>
+
+    <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
+        <ScrollView>
+            <VerticalStackLayout Padding="20" Spacing="16">
+
+                <Label Text="{Binding ErrorMessage}"
+                       TextColor="Red"
+                       IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+                <Label FontSize="20">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="You are spending " />
+                            <Span Text="{Binding Weekly, StringFormat='{0:N2}'}" FontAttributes="Bold" />
+                            <Span Text=" " />
+                            <Span Text="{Binding HomeCurrency}" FontAttributes="Bold" />
+                            <Span Text=" per week" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label FontSize="16">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="Monthly: " />
+                            <Span Text="{Binding Monthly, StringFormat='{0:N2}'}" FontAttributes="Bold" />
+                            <Span Text=" " />
+                            <Span Text="{Binding HomeCurrency}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label FontSize="16">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="Yearly: " />
+                            <Span Text="{Binding Yearly, StringFormat='{0:N2}'}" FontAttributes="Bold" />
+                            <Span Text=" " />
+                            <Span Text="{Binding HomeCurrency}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label FontSize="16">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="One-time this year: " />
+                            <Span Text="{Binding OneTimeThisYear, StringFormat='{0:N2}'}" FontAttributes="Bold" />
+                            <Span Text=" " />
+                            <Span Text="{Binding HomeCurrency}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label Text="By category" FontSize="18" FontAttributes="Bold" Margin="0,10,0,0" />
+
+                <CollectionView ItemsSource="{Binding ByCategory}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="dtos:CategoryBreakdownItem">
+                            <Grid Padding="0,6" ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0" Text="{Binding CategoryName}" />
+                                <Label Grid.Column="1" Text="{Binding MonthlyAmount, StringFormat='{0:N2}'}" />
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+            </VerticalStackLayout>
+        </ScrollView>
+    </RefreshView>
 
 </ContentPage>
