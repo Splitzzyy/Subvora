@@ -30,6 +30,8 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<ITokenStore, SecureStorageTokenStore>();
 
+		builder.Services.AddSingleton<IUserPrompt, ShellUserPrompt>();
+
 		builder.Services.AddSingleton<ILocalCacheService>(_ =>
 			new SqliteLocalCacheService(Path.Combine(FileSystem.AppDataDirectory, "subvora_cache.db3")));
 

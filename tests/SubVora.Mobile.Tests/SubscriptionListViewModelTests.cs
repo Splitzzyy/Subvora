@@ -22,13 +22,19 @@ public class SubscriptionListViewModelTests
         CreatedAt = DateTimeOffset.UtcNow,
     };
 
+    private static SubscriptionListViewModel CreateViewModel(
+        FakeSubscriptionsApi? api = null,
+        FakeLocalCacheService? cache = null,
+        FakeUserPrompt? userPrompt = null) =>
+        new(api ?? new FakeSubscriptionsApi(), cache ?? new FakeLocalCacheService(), userPrompt ?? new FakeUserPrompt());
+
     [Fact]
     public async Task LoadAsync_OnSuccess_PopulatesListAndUpsertsCache()
     {
         var subscription = SampleSubscription();
         var api = new FakeSubscriptionsApi { GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>([subscription]) };
         var cache = new FakeLocalCacheService();
-        var viewModel = new SubscriptionListViewModel(api, cache);
+        var viewModel = CreateViewModel(api, cache);
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -50,7 +56,7 @@ public class SubscriptionListViewModelTests
         await cache.UpsertAsync(CachedSubscription.FromDto(subscription));
 
         var api = new FakeSubscriptionsApi { GetAllHandler = () => throw new HttpRequestException("network down") };
-        var viewModel = new SubscriptionListViewModel(api, cache);
+        var viewModel = CreateViewModel(api, cache);
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -65,12 +71,66 @@ public class SubscriptionListViewModelTests
     {
         var api = new FakeSubscriptionsApi { GetAllHandler = () => throw new HttpRequestException("network down") };
         var cache = new FakeLocalCacheService();
-        var viewModel = new SubscriptionListViewModel(api, cache);
+        var viewModel = CreateViewModel(api, cache);
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
         Assert.Empty(viewModel.Subscriptions);
         Assert.False(viewModel.IsShowingCachedData);
+        Assert.NotNull(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task DeleteSubscriptionAsync_WhenConfirmed_CallsDeleteAndRemovesFromListAndCache()
+    {
+        var subscription = SampleSubscription();
+        var api = new FakeSubscriptionsApi { GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>([subscription]) };
+        var cache = new FakeLocalCacheService();
+        var userPrompt = new FakeUserPrompt { ConfirmResult = true };
+        var viewModel = CreateViewModel(api, cache, userPrompt);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.DeleteSubscriptionCommand.ExecuteAsync(subscription.Id);
+
+        Assert.Empty(viewModel.Subscriptions);
+        Assert.Single(api.DeleteCalls);
+        Assert.Equal(subscription.Id, api.DeleteCalls[0]);
+
+        var cached = await cache.GetAllAsync<CachedSubscription>();
+        Assert.Empty(cached);
+    }
+
+    [Fact]
+    public async Task DeleteSubscriptionAsync_WhenDeclined_MakesNoApiCallAndLeavesItemInPlace()
+    {
+        var subscription = SampleSubscription();
+        var api = new FakeSubscriptionsApi { GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>([subscription]) };
+        var userPrompt = new FakeUserPrompt { ConfirmResult = false };
+        var viewModel = CreateViewModel(api, userPrompt: userPrompt);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.DeleteSubscriptionCommand.ExecuteAsync(subscription.Id);
+
+        Assert.Single(viewModel.Subscriptions);
+        Assert.Empty(api.DeleteCalls);
+    }
+
+    [Fact]
+    public async Task DeleteSubscriptionAsync_OnApiFailure_ShowsErrorAndLeavesItemInList()
+    {
+        var subscription = SampleSubscription();
+        var api = new FakeSubscriptionsApi
+        {
+            GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>([subscription]),
+            DeleteHandler = _ => throw new HttpRequestException("network down"),
+        };
+        var userPrompt = new FakeUserPrompt { ConfirmResult = true };
+        var viewModel = CreateViewModel(api, userPrompt: userPrompt);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        await viewModel.DeleteSubscriptionCommand.ExecuteAsync(subscription.Id);
+
+        Assert.Single(viewModel.Subscriptions);
         Assert.NotNull(viewModel.ErrorMessage);
     }
 }

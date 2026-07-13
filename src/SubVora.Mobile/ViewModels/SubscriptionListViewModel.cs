@@ -12,6 +12,7 @@ public partial class SubscriptionListViewModel : ObservableObject
 {
     private readonly ISubscriptionsApi _subscriptionsApi;
     private readonly ILocalCacheService _localCacheService;
+    private readonly IUserPrompt _userPrompt;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -24,16 +25,17 @@ public partial class SubscriptionListViewModel : ObservableObject
 
     public ObservableCollection<SubscriptionDto> Subscriptions { get; } = [];
 
-    /// <summary>Raised when a row is tapped. The detail screen doesn't exist yet (a later slice).</summary>
+    /// <summary>Raised when a row is tapped, to navigate to the detail screen in edit mode.</summary>
     public event EventHandler<Guid>? SubscriptionSelected;
 
-    /// <summary>Raised by the Add toolbar button. The add screen doesn't exist yet (a later slice).</summary>
+    /// <summary>Raised by the Add toolbar button, to navigate to the detail screen in add mode.</summary>
     public event EventHandler? AddRequested;
 
-    public SubscriptionListViewModel(ISubscriptionsApi subscriptionsApi, ILocalCacheService localCacheService)
+    public SubscriptionListViewModel(ISubscriptionsApi subscriptionsApi, ILocalCacheService localCacheService, IUserPrompt userPrompt)
     {
         _subscriptionsApi = subscriptionsApi;
         _localCacheService = localCacheService;
+        _userPrompt = userPrompt;
     }
 
     [RelayCommand]
@@ -89,4 +91,39 @@ public partial class SubscriptionListViewModel : ObservableObject
 
     [RelayCommand]
     private void Add() => AddRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private async Task DeleteSubscriptionAsync(Guid id)
+    {
+        var confirmed = await _userPrompt.ConfirmAsync(
+            "Delete subscription",
+            "Are you sure you want to delete this subscription?",
+            "Delete",
+            "Cancel");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _subscriptionsApi.DeleteAsync(id);
+
+            var toRemove = Subscriptions.FirstOrDefault(s => s.Id == id);
+            if (toRemove is not null)
+            {
+                Subscriptions.Remove(toRemove);
+            }
+
+            await _localCacheService.ClearAsync<CachedSubscription>();
+            foreach (var subscription in Subscriptions)
+            {
+                await _localCacheService.UpsertAsync(CachedSubscription.FromDto(subscription));
+            }
+        }
+        catch (Exception)
+        {
+            ErrorMessage = "Couldn't delete this subscription. Please try again.";
+        }
+    }
 }
