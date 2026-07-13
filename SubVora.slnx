@@ -4,10 +4,12 @@
     <Project Path="src/SubVora.Application/SubVora.Application.csproj" />
     <Project Path="src/SubVora.Domain/SubVora.Domain.csproj" />
     <Project Path="src/SubVora.Infrastructure/SubVora.Infrastructure.csproj" />
+    <Project Path="src/SubVora.Mobile/SubVora.Mobile.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SubVora.Api.Tests/SubVora.Api.Tests.csproj" />
     <Project Path="tests/SubVora.Application.Tests/SubVora.Application.Tests.csproj" />
     <Project Path="tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.csproj" />
+    <Project Path="tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj" />
   </Folder>
 </Solution>
