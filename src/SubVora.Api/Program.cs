@@ -88,6 +88,7 @@ builder.Services.AddHttpClient<IEmbeddingClient, OpenAiEmbeddingClient>((sp, cli
 // Scoped, not singleton - depends on IFxRateService, which holds a scoped DbContext.
 builder.Services.AddScoped<IBurnRateCalculator, BurnRateCalculator>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IValidator<UpdateUserProfileRequest>, UpdateUserProfileRequestValidator>();
 
 builder.Services.AddScoped<IFxRateService, FxRateService>();
 builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(client =>
