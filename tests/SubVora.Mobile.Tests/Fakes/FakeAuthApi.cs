@@ -19,6 +19,7 @@ public class FakeAuthApi : IAuthApi
 
     public List<RegisterRequest> RegisterCalls { get; } = [];
     public List<LoginRequest> LoginCalls { get; } = [];
+    public List<RefreshRequest> LogoutCalls { get; } = [];
 
     public Task<IApiResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
@@ -35,8 +36,11 @@ public class FakeAuthApi : IAuthApi
     public Task<IApiResponse<AuthTokenResponse>> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken = default) =>
         RefreshHandler(request);
 
-    public Task<IApiResponse> LogoutAsync(RefreshRequest request, CancellationToken cancellationToken = default) =>
-        Task.FromResult(CreateResponse(HttpStatusCode.NoContent));
+    public Task<IApiResponse> LogoutAsync(RefreshRequest request, CancellationToken cancellationToken = default)
+    {
+        LogoutCalls.Add(request);
+        return Task.FromResult(CreateResponse(HttpStatusCode.NoContent));
+    }
 
     public static AuthTokenResponse SampleTokens() => new()
     {

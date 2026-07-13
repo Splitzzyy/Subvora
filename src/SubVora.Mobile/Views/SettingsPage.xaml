@@ -3,10 +3,40 @@
     x:Class="SubVora.Mobile.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:DataType="viewModels:SettingsViewModel"
     Title="Settings">
 
-    <VerticalStackLayout Padding="30" Spacing="10" VerticalOptions="Center" HorizontalOptions="Center">
-        <Label Text="Settings" FontSize="24" HorizontalOptions="Center" />
-    </VerticalStackLayout>
+    <ContentPage.Resources>
+        <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+        <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="12">
+
+            <Label Text="{Binding ErrorMessage}"
+                   TextColor="Red"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+            <Label Text="Preferred currency" FontAttributes="Bold" />
+            <Entry Text="{Binding PreferredCurrency}" Placeholder="USD" MaxLength="3" />
+
+            <Label Text="Default alert lead time (days)" FontAttributes="Bold" />
+            <Entry Text="{Binding DefaultAlertDaysAdvance}" Keyboard="Numeric" />
+
+            <Button Text="Save"
+                    Command="{Binding SaveCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    Margin="0,20,0,0" />
+
+            <Button Text="Sign Out"
+                    Command="{Binding SignOutCommand}"
+                    BackgroundColor="Red"
+                    Margin="0,30,0,0" />
+
+        </VerticalStackLayout>
+    </ScrollView>
 
 </ContentPage>
