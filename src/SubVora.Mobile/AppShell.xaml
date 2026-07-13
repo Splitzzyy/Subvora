@@ -6,6 +6,18 @@
     xmlns:views="clr-namespace:SubVora.Mobile.Views"
     Title="SubVora">
 
+    <Shell.TitleView>
+        <Label x:Name="OfflineBanner"
+               Text="You're offline — showing saved data"
+               BackgroundColor="OrangeRed"
+               TextColor="White"
+               HorizontalOptions="Fill"
+               HorizontalTextAlignment="Center"
+               VerticalTextAlignment="Center"
+               Padding="4"
+               IsVisible="False" />
+    </Shell.TitleView>
+
     <TabBar>
         <ShellContent
             Title="Dashboard"

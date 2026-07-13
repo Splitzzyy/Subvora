@@ -52,12 +52,10 @@ public partial class RegisterViewModel : ObservableObject
             var registerResponse = await _authApi.RegisterAsync(new RegisterRequest { Email = Email, Password = Password });
             if (!registerResponse.IsSuccessStatusCode)
             {
-                ErrorMessage = registerResponse.StatusCode switch
-                {
-                    HttpStatusCode.Conflict => "An account with this email already exists.",
-                    HttpStatusCode.BadRequest => ApiValidationErrorParser.ExtractFirstMessage(registerResponse) ?? "Please check your email and password.",
-                    _ => "Something went wrong. Please try again.",
-                };
+                // 409 (duplicate email) isn't in the mapper's table - keep that specific wording.
+                ErrorMessage = registerResponse.StatusCode == HttpStatusCode.Conflict
+                    ? "An account with this email already exists."
+                    : ApiErrorMapper.ToDisplayMessage(registerResponse);
                 return;
             }
 

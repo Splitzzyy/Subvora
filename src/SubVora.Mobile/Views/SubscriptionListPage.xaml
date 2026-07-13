@@ -36,27 +36,38 @@
             <CollectionView Grid.Row="2" ItemsSource="{Binding Subscriptions}">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="dtos:SubscriptionDto">
-                        <Grid Padding="20,12" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                            <Grid.GestureRecognizers>
-                                <TapGestureRecognizer
-                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=SelectSubscriptionCommand}"
-                                    CommandParameter="{Binding Id}" />
-                            </Grid.GestureRecognizers>
+                        <SwipeView>
+                            <SwipeView.RightItems>
+                                <SwipeItems>
+                                    <SwipeItem Text="Delete"
+                                               BackgroundColor="Red"
+                                               Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=DeleteSubscriptionCommand}"
+                                               CommandParameter="{Binding Id}" />
+                                </SwipeItems>
+                            </SwipeView.RightItems>
 
-                            <Label Grid.Row="0" Grid.Column="0" Text="{Binding CustomName}" FontAttributes="Bold" />
-                            <Label Grid.Row="0" Grid.Column="1" Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
+                            <Grid Padding="20,12" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=SelectSubscriptionCommand}"
+                                        CommandParameter="{Binding Id}" />
+                                </Grid.GestureRecognizers>
 
-                            <Label Grid.Row="1" Grid.Column="0">
-                                <Label.FormattedText>
-                                    <FormattedString>
-                                        <Span Text="{Binding CategoryName}" />
-                                        <Span Text=" · Next: " />
-                                        <Span Text="{Binding NextBillingDate}" />
-                                    </FormattedString>
-                                </Label.FormattedText>
-                            </Label>
-                            <Label Grid.Row="1" Grid.Column="1" Text="{Binding Currency}" />
-                        </Grid>
+                                <Label Grid.Row="0" Grid.Column="0" Text="{Binding CustomName}" FontAttributes="Bold" />
+                                <Label Grid.Row="0" Grid.Column="1" Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
+
+                                <Label Grid.Row="1" Grid.Column="0">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="{Binding CategoryName}" />
+                                            <Span Text=" · Next: " />
+                                            <Span Text="{Binding NextBillingDate}" />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding Currency}" />
+                            </Grid>
+                        </SwipeView>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>

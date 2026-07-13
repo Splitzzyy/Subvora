@@ -30,6 +30,10 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<ITokenStore, SecureStorageTokenStore>();
 
+		builder.Services.AddSingleton<IUserPrompt, ShellUserPrompt>();
+
+		builder.Services.AddSingleton<IConnectivityService, ConnectivityService>();
+
 		builder.Services.AddSingleton<ILocalCacheService>(_ =>
 			new SqliteLocalCacheService(Path.Combine(FileSystem.AppDataDirectory, "subvora_cache.db3")));
 
@@ -84,6 +88,15 @@ public static class MauiProgram
 		builder.Services.AddTransient<DashboardPage>();
 		builder.Services.AddTransient<SubscriptionListViewModel>();
 		builder.Services.AddTransient<SubscriptionListPage>();
+		builder.Services.AddTransient<CategoriesViewModel>();
+		builder.Services.AddTransient<CategoriesPage>();
+		builder.Services.AddTransient<IDebouncer, Debouncer>();
+		builder.Services.AddTransient<SubscriptionDetailViewModel>();
+		builder.Services.AddTransient<SubscriptionDetailPage>();
+		builder.Services.AddTransient<PaymentSourcesViewModel>();
+		builder.Services.AddTransient<PaymentSourcesPage>();
+		builder.Services.AddTransient<SettingsViewModel>();
+		builder.Services.AddTransient<SettingsPage>();
 
 		return builder.Build();
 	}

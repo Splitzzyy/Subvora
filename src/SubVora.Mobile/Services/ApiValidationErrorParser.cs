@@ -9,9 +9,12 @@ namespace SubVora.Mobile.Services;
 /// </summary>
 public static class ApiValidationErrorParser
 {
-    public static string? ExtractFirstMessage(IApiResponse response)
+    public static string? ExtractFirstMessage(IApiResponse response) =>
+        ExtractFirstMessage(response.Error as ApiException);
+
+    public static string? ExtractFirstMessage(ApiException? exception)
     {
-        var content = (response.Error as ApiException)?.Content;
+        var content = exception?.Content;
         if (string.IsNullOrWhiteSpace(content))
         {
             return null;

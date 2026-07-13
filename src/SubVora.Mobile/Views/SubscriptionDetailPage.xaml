@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<ContentPage
+    x:Class="SubVora.Mobile.Views.SubscriptionDetailPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:DataType="viewModels:SubscriptionDetailViewModel"
+    Title="{Binding PageTitle}">
+
+    <ContentPage.Resources>
+        <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+        <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+        <toolkit:IsNotNullConverter x:Key="IsNotNullConverter" />
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="12">
+
+            <Label Text="{Binding ErrorMessage}"
+                   TextColor="Red"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+            <Label Text="Name" FontAttributes="Bold" />
+            <Entry Text="{Binding CustomName}" Placeholder="e.g. Netflix" />
+
+            <Border IsVisible="{Binding SuggestedTier, Converter={StaticResource IsNotNullConverter}}"
+                    Padding="10"
+                    BackgroundColor="{StaticResource Primary}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <Image Grid.Column="0" Source="{Binding SuggestedLogoUrl}" WidthRequest="32" HeightRequest="32" />
+                    <Label Grid.Column="1"
+                           Text="{Binding SuggestedProviderName, StringFormat='Looks like {0} — use this?'}"
+                           TextColor="White"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="2" Text="Use" Command="{Binding AcceptSuggestionCommand}" />
+                </Grid>
+            </Border>
+
+            <Label Text="Cost" FontAttributes="Bold" />
+            <Entry Text="{Binding CostAmount}" Keyboard="Numeric" Placeholder="0.00" />
+
+            <Label Text="Currency" FontAttributes="Bold" />
+            <Entry Text="{Binding Currency}" Placeholder="USD" MaxLength="3" />
+
+            <Label Text="Billing cycle" FontAttributes="Bold" />
+            <Picker ItemsSource="{Binding BillingCycleTypes}" SelectedItem="{Binding CycleCadence}" />
+
+            <Label Text="Purchase date" FontAttributes="Bold" />
+            <DatePicker Date="{Binding PurchaseDate}" />
+
+            <Label Text="Next billing date" FontAttributes="Bold" />
+            <DatePicker Date="{Binding NextBillingDate}" />
+
+            <Label Text="Alert days in advance" FontAttributes="Bold" />
+            <Entry Text="{Binding AlertDaysAdvance}" Keyboard="Numeric" />
+
+            <HorizontalStackLayout Spacing="10">
+                <Label Text="Free trial" VerticalOptions="Center" />
+                <Switch IsToggled="{Binding IsFreeTrial}" />
+            </HorizontalStackLayout>
+
+            <Label Text="Category" FontAttributes="Bold" />
+            <Picker ItemsSource="{Binding Categories}" ItemDisplayBinding="{Binding Name}" SelectedItem="{Binding SelectedCategory}" />
+
+            <Label Text="Payment source" FontAttributes="Bold" />
+            <Picker ItemsSource="{Binding PaymentSources}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedPaymentSource}" />
+
+            <Button Text="{Binding SaveButtonText}"
+                    Command="{Binding SaveCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    Margin="0,20,0,0" />
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>
