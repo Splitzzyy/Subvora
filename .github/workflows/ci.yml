@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  backend-build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,11 +15,40 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      # SubVora.Mobile targets net10.0-android on Linux (its ios/maccatalyst/windows TFMs are
+      # conditioned out on this OS) - needed for the whole-solution restore/build below.
+      - name: Install MAUI Android workload
+        run: dotnet workload install maui-android --ignore-failed-sources
+
       - name: Restore
         run: dotnet restore SubVora.slnx
 
       - name: Build
         run: dotnet build SubVora.slnx --no-restore -c Release
 
+      - name: Test API project
+        run: dotnet test tests/SubVora.Api.Tests/SubVora.Api.Tests.csproj --no-build -c Release
+
+      - name: Test Application project
+        run: dotnet test tests/SubVora.Application.Tests/SubVora.Application.Tests.csproj --no-build -c Release
+
+      - name: Test Infrastructure project
+        run: dotnet test tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.csproj --no-build -c Release
+
+  mobile-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Install MAUI workload
+        run: dotnet workload install maui --ignore-failed-sources
+
+      - name: Restore
+        run: dotnet restore tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj
+
       - name: Test
-        run: dotnet test SubVora.slnx --no-build -c Release
+        run: dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj --no-restore -c Release

@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Lets non-Windows SDKs (e.g. the Linux CI runner) restore/build this Windows-targeted
+         project against reference assemblies. Actually running the tests still requires
+         Windows - CI runs this project's tests on a windows-latest job instead. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <!-- Referencing the SubVora.Mobile app project (SingleProject MAUI, with its own
          AppIcon/Splash resources) makes the Resizetizer task see those items twice in
          this project's build graph and falsely flag them as duplicates. This project
