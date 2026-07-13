@@ -12,6 +12,7 @@ public partial class SubscriptionListPage : ContentPage
 		_viewModel = viewModel;
 		BindingContext = _viewModel;
 		_viewModel.AddRequested += OnAddRequested;
+		_viewModel.SubscriptionSelected += OnSubscriptionSelected;
 	}
 
 	protected override void OnAppearing()
@@ -23,5 +24,10 @@ public partial class SubscriptionListPage : ContentPage
 	private async void OnAddRequested(object? sender, EventArgs e)
 	{
 		await Shell.Current.GoToAsync(nameof(SubscriptionDetailPage));
+	}
+
+	private async void OnSubscriptionSelected(object? sender, Guid id)
+	{
+		await Shell.Current.GoToAsync(nameof(SubscriptionDetailPage), new Dictionary<string, object> { ["id"] = id });
 	}
 }

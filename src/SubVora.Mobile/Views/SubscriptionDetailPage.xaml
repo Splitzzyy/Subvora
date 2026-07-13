@@ -6,7 +6,7 @@
     xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="viewModels:SubscriptionDetailViewModel"
-    Title="Add Subscription">
+    Title="{Binding PageTitle}">
 
     <ContentPage.Resources>
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
@@ -66,7 +66,7 @@
             <Label Text="Payment source" FontAttributes="Bold" />
             <Picker ItemsSource="{Binding PaymentSources}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedPaymentSource}" />
 
-            <Button Text="Save"
+            <Button Text="{Binding SaveButtonText}"
                     Command="{Binding SaveCommand}"
                     IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
                     Margin="0,20,0,0" />

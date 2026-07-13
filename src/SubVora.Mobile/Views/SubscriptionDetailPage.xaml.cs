@@ -12,16 +12,23 @@ public partial class SubscriptionDetailPage : ContentPage
 		_viewModel = viewModel;
 		BindingContext = _viewModel;
 		_viewModel.SaveSucceeded += OnSaveSucceeded;
+		_viewModel.SubscriptionNotFound += OnSubscriptionNotFound;
 	}
 
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();
-		_viewModel.LoadPickersCommand.Execute(null);
+		_viewModel.InitializeCommand.Execute(null);
 	}
 
 	private async void OnSaveSucceeded(object? sender, EventArgs e)
 	{
+		await Shell.Current.GoToAsync("..");
+	}
+
+	private async void OnSubscriptionNotFound(object? sender, EventArgs e)
+	{
+		await Shell.Current.DisplayAlertAsync("Not found", "This subscription no longer exists.", "OK");
 		await Shell.Current.GoToAsync("..");
 	}
 }

@@ -219,4 +219,86 @@ public class SubscriptionDetailViewModelTests
         Assert.Null(viewModel.ErrorMessage);
         Assert.Null(viewModel.SuggestedTier);
     }
+
+    [Fact]
+    public async Task InitializeAsync_WithExistingId_LoadsAndPreFillsFormViaGetById()
+    {
+        var subscriptionId = Guid.NewGuid();
+        var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
+        var paymentSource = new PaymentSourceDto { Id = Guid.NewGuid(), Label = "Visa" };
+        var categoriesApi = new FakeCategoriesApi { GetAllHandler = () => Task.FromResult<IReadOnlyList<CategoryDto>>([category]) };
+        var paymentSourcesApi = new FakePaymentSourcesApi { GetAllHandler = () => Task.FromResult<IReadOnlyList<PaymentSourceDto>>([paymentSource]) };
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            GetByIdHandler = _ => Task.FromResult(new SubscriptionDto
+            {
+                Id = subscriptionId,
+                CustomName = "Netflix",
+                CostAmount = 15.99m,
+                Currency = "USD",
+                CycleCadence = BillingCycleType.Monthly,
+                PurchaseDate = new DateOnly(2026, 1, 1),
+                NextBillingDate = new DateOnly(2026, 8, 1),
+                AlertDaysAdvance = 3,
+                CategoryId = category.Id,
+                PaymentSourceId = paymentSource.Id,
+                IsFreeTrial = false,
+                IsActive = true,
+            }),
+        };
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, categoriesApi: categoriesApi, paymentSourcesApi: paymentSourcesApi);
+        viewModel.SubscriptionId = subscriptionId;
+
+        await viewModel.InitializeCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsEditMode);
+        Assert.Equal("Edit Subscription", viewModel.PageTitle);
+        Assert.Equal("Netflix", viewModel.CustomName);
+        Assert.Equal(15.99m, viewModel.CostAmount);
+        Assert.Equal(category, viewModel.SelectedCategory);
+        Assert.Equal(paymentSource, viewModel.SelectedPaymentSource);
+    }
+
+    [Fact]
+    public async Task SaveAsync_InEditMode_CallsUpdateNotCreateAndRaisesSaveSucceeded()
+    {
+        var subscriptionId = Guid.NewGuid();
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            GetByIdHandler = _ => Task.FromResult(new SubscriptionDto { Id = subscriptionId, CustomName = "Netflix", Currency = "USD" }),
+            UpdateHandler = (_, request) => Task.FromResult(new SubscriptionDto { Id = subscriptionId, CustomName = request.CustomName, Currency = request.Currency }),
+        };
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi);
+        viewModel.SubscriptionId = subscriptionId;
+        await viewModel.InitializeCommand.ExecuteAsync(null);
+        viewModel.CostAmount = 19.99m;
+
+        var raised = false;
+        viewModel.SaveSucceeded += (_, _) => raised = true;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.True(raised);
+        Assert.Empty(subscriptionsApi.CreateCalls);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_On404_RaisesSubscriptionNotFound()
+    {
+        var subscriptionId = Guid.NewGuid();
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            GetByIdHandler = _ => throw TestApiExceptions.Create(System.Net.HttpStatusCode.NotFound),
+        };
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi);
+        viewModel.SubscriptionId = subscriptionId;
+
+        var raised = false;
+        viewModel.SubscriptionNotFound += (_, _) => raised = true;
+
+        await viewModel.InitializeCommand.ExecuteAsync(null);
+
+        Assert.True(raised);
+        Assert.Null(viewModel.ErrorMessage);
+    }
 }

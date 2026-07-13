@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Refit;
@@ -8,7 +9,7 @@ using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
 
-public partial class SubscriptionDetailViewModel : ObservableObject
+public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttributable
 {
     private const int MinResolveInputLength = 3;
 
@@ -63,6 +64,18 @@ public partial class SubscriptionDetailViewModel : ObservableObject
     [ObservableProperty]
     public partial string? SuggestedLogoUrl { get; set; }
 
+    [ObservableProperty]
+    public partial Guid? SubscriptionId { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsEditMode { get; set; }
+
+    [ObservableProperty]
+    public partial string PageTitle { get; set; } = "Add Subscription";
+
+    [ObservableProperty]
+    public partial string SaveButtonText { get; set; } = "Save";
+
     public IReadOnlyList<BillingCycleType> BillingCycleTypes { get; } = Enum.GetValues<BillingCycleType>();
 
     public ObservableCollection<CategoryDto> Categories { get; } = [];
@@ -72,12 +85,34 @@ public partial class SubscriptionDetailViewModel : ObservableObject
     /// <summary>Raised after a successful save so the view can navigate back.</summary>
     public event EventHandler? SaveSucceeded;
 
+    /// <summary>Raised when loading an existing subscription 404s (deleted elsewhere) so the view can navigate back to the list.</summary>
+    public event EventHandler? SubscriptionNotFound;
+
     public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer)
     {
         _subscriptionsApi = subscriptionsApi;
         _categoriesApi = categoriesApi;
         _paymentSourcesApi = paymentSourcesApi;
         _debouncer = debouncer;
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (query.TryGetValue("id", out var value) && value is Guid id)
+        {
+            SubscriptionId = id;
+        }
+    }
+
+    partial void OnSubscriptionIdChanged(Guid? value)
+    {
+        IsEditMode = value is not null;
+    }
+
+    partial void OnIsEditModeChanged(bool value)
+    {
+        PageTitle = value ? "Edit Subscription" : "Add Subscription";
+        SaveButtonText = value ? "Save Changes" : "Save";
     }
 
     partial void OnCustomNameChanged(string value)
@@ -158,6 +193,13 @@ public partial class SubscriptionDetailViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task InitializeAsync()
+    {
+        await LoadPickersAsync();
+        await LoadSubscriptionAsync();
+    }
+
+    [RelayCommand]
     private async Task LoadPickersAsync()
     {
         try
@@ -182,6 +224,37 @@ public partial class SubscriptionDetailViewModel : ObservableObject
         }
     }
 
+    private async Task LoadSubscriptionAsync()
+    {
+        if (SubscriptionId is not Guid id)
+        {
+            return;
+        }
+
+        try
+        {
+            var subscription = await _subscriptionsApi.GetByIdAsync(id);
+            CustomName = subscription.CustomName;
+            CostAmount = subscription.CostAmount;
+            Currency = subscription.Currency;
+            CycleCadence = subscription.CycleCadence;
+            PurchaseDate = subscription.PurchaseDate.ToDateTime(TimeOnly.MinValue);
+            NextBillingDate = subscription.NextBillingDate.ToDateTime(TimeOnly.MinValue);
+            AlertDaysAdvance = subscription.AlertDaysAdvance;
+            IsFreeTrial = subscription.IsFreeTrial;
+            SelectedCategory = Categories.FirstOrDefault(c => c.Id == subscription.CategoryId);
+            SelectedPaymentSource = PaymentSources.FirstOrDefault(p => p.Id == subscription.PaymentSourceId);
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            SubscriptionNotFound?.Invoke(this, EventArgs.Empty);
+        }
+        catch (ApiException)
+        {
+            ErrorMessage = "Couldn't load this subscription. Please try again.";
+        }
+    }
+
     [RelayCommand]
     private async Task SaveAsync()
     {
@@ -190,7 +263,15 @@ public partial class SubscriptionDetailViewModel : ObservableObject
         try
         {
             var request = BuildRequest();
-            await _subscriptionsApi.CreateAsync(request);
+            if (IsEditMode && SubscriptionId is Guid id)
+            {
+                await _subscriptionsApi.UpdateAsync(id, request);
+            }
+            else
+            {
+                await _subscriptionsApi.CreateAsync(request);
+            }
+
             SaveSucceeded?.Invoke(this, EventArgs.Empty);
         }
         catch (ApiException ex)
