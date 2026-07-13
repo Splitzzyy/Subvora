@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using Refit;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Services;
+using SubVora.Mobile.ViewModels;
+using SubVora.Mobile.Views;
 
 namespace SubVora.Mobile;
 
@@ -69,6 +71,12 @@ public static class MauiProgram
 		builder.Services.AddRefitClient<IDashboardApi>(refitSettings)
 			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
+
+		builder.Services.AddTransient<AppShell>();
+		builder.Services.AddTransient<LoginViewModel>();
+		builder.Services.AddTransient<LoginPage>();
+		builder.Services.AddTransient<RegisterViewModel>();
+		builder.Services.AddTransient<RegisterPage>();
 
 		return builder.Build();
 	}
