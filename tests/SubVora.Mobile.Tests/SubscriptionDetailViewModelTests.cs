@@ -9,8 +9,13 @@ public class SubscriptionDetailViewModelTests
     private static SubscriptionDetailViewModel CreateViewModel(
         FakeSubscriptionsApi? subscriptionsApi = null,
         FakeCategoriesApi? categoriesApi = null,
-        FakePaymentSourcesApi? paymentSourcesApi = null) =>
-        new(subscriptionsApi ?? new FakeSubscriptionsApi(), categoriesApi ?? new FakeCategoriesApi(), paymentSourcesApi ?? new FakePaymentSourcesApi());
+        FakePaymentSourcesApi? paymentSourcesApi = null,
+        FakeDebouncer? debouncer = null) =>
+        new(
+            subscriptionsApi ?? new FakeSubscriptionsApi(),
+            categoriesApi ?? new FakeCategoriesApi(),
+            paymentSourcesApi ?? new FakePaymentSourcesApi(),
+            debouncer ?? new FakeDebouncer());
 
     [Fact]
     public async Task LoadPickersAsync_PopulatesCategoriesAndPaymentSourcesFromApis()
@@ -83,5 +88,135 @@ public class SubscriptionDetailViewModelTests
         // The user's entered data must not be lost.
         Assert.Equal("Netflix", viewModel.CustomName);
         Assert.Equal(-5, viewModel.CostAmount);
+    }
+
+    [Fact]
+    public void TypingFewerThanThreeCharacters_NeverCallsResolve()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi();
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "Ne";
+        debouncer.Flush();
+
+        Assert.Empty(subscriptionsApi.ResolveCalls);
+        Assert.Equal(0, debouncer.DebounceCallCount);
+    }
+
+    [Fact]
+    public void RapidKeystrokesWithinDebounceWindow_OnlyResolvesOnceAfterThePause()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi();
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        foreach (var partial in new[] { "Net", "Netf", "Netfl", "Netfli", "Netflix" })
+        {
+            viewModel.CustomName = partial;
+        }
+
+        Assert.Empty(subscriptionsApi.ResolveCalls);
+
+        debouncer.Flush();
+
+        var call = Assert.Single(subscriptionsApi.ResolveCalls);
+        Assert.Equal("Netflix", call.Input);
+    }
+
+    [Fact]
+    public void AutoFillResponse_PreFillsNameCategoryAndLogo()
+    {
+        var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.AutoFill,
+                ProviderName = "Netflix",
+                LogoUrl = "https://example.com/netflix.png",
+                CategoryId = category.Id,
+            }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+        viewModel.Categories.Add(category);
+
+        viewModel.CustomName = "Netflix";
+        debouncer.Flush();
+
+        Assert.Equal("Netflix", viewModel.CustomName);
+        Assert.Equal("https://example.com/netflix.png", viewModel.SuggestedLogoUrl);
+        Assert.Equal(category, viewModel.SelectedCategory);
+        Assert.Null(viewModel.SuggestedTier);
+        Assert.Null(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public void SuggestConfirmResponse_ShowsPromptWithoutAutoFillingUntilAccepted()
+    {
+        var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.SuggestConfirm,
+                ProviderName = "Netflix",
+                LogoUrl = "https://example.com/netflix.png",
+                CategoryId = category.Id,
+            }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+        viewModel.Categories.Add(category);
+
+        viewModel.CustomName = "nflx";
+        debouncer.Flush();
+
+        Assert.Equal(MatchConfidenceTier.SuggestConfirm, viewModel.SuggestedTier);
+        Assert.Equal("Netflix", viewModel.SuggestedProviderName);
+        Assert.Equal("nflx", viewModel.CustomName);
+        Assert.Null(viewModel.SelectedCategory);
+
+        viewModel.AcceptSuggestionCommand.Execute(null);
+
+        Assert.Equal("Netflix", viewModel.CustomName);
+        Assert.Equal(category, viewModel.SelectedCategory);
+        Assert.Null(viewModel.SuggestedTier);
+    }
+
+    [Fact]
+    public void ManualResponse_LeavesFormAsFreeEntryWithNoErrorShown()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse { Tier = MatchConfidenceTier.Manual }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "Some Obscure Service";
+        debouncer.Flush();
+
+        Assert.Equal("Some Obscure Service", viewModel.CustomName);
+        Assert.Null(viewModel.SuggestedTier);
+        Assert.Null(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public void RateLimitedResolveResponse_DegradesSilentlyWithoutError()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => throw TestApiExceptions.Create(System.Net.HttpStatusCode.TooManyRequests),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "Netflix";
+        debouncer.Flush();
+
+        Assert.Null(viewModel.ErrorMessage);
+        Assert.Null(viewModel.SuggestedTier);
     }
 }

@@ -86,6 +86,7 @@ public static class MauiProgram
 		builder.Services.AddTransient<SubscriptionListPage>();
 		builder.Services.AddTransient<CategoriesViewModel>();
 		builder.Services.AddTransient<CategoriesPage>();
+		builder.Services.AddTransient<IDebouncer, Debouncer>();
 		builder.Services.AddTransient<SubscriptionDetailViewModel>();
 		builder.Services.AddTransient<SubscriptionDetailPage>();
 

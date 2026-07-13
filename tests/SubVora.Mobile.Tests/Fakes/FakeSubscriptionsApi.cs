@@ -26,9 +26,12 @@ public class FakeSubscriptionsApi : ISubscriptionsApi
         });
     public Func<Guid, CreateSubscriptionRequest, Task<SubscriptionDto>> UpdateHandler = (_, _) => throw new NotImplementedException();
     public Func<Guid, Task> DeleteHandler = _ => Task.CompletedTask;
+    public Func<ResolveSubscriptionRequest, Task<ResolveSubscriptionResponse>> ResolveHandler =
+        _ => Task.FromResult(new ResolveSubscriptionResponse { Tier = MatchConfidenceTier.Manual });
 
     public List<CreateSubscriptionRequest> CreateCalls { get; } = [];
     public List<Guid> DeleteCalls { get; } = [];
+    public List<ResolveSubscriptionRequest> ResolveCalls { get; } = [];
 
     public Task<IReadOnlyList<SubscriptionDto>> GetAllAsync(CancellationToken cancellationToken = default) => GetAllHandler();
 
@@ -48,5 +51,9 @@ public class FakeSubscriptionsApi : ISubscriptionsApi
         return DeleteHandler(id);
     }
 
-    public Task<ResolveSubscriptionResponse> ResolveAsync(ResolveSubscriptionRequest request, CancellationToken cancellationToken = default) => throw new NotImplementedException();
+    public Task<ResolveSubscriptionResponse> ResolveAsync(ResolveSubscriptionRequest request, CancellationToken cancellationToken = default)
+    {
+        ResolveCalls.Add(request);
+        return ResolveHandler(request);
+    }
 }

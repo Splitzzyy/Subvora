@@ -10,9 +10,13 @@ namespace SubVora.Mobile.ViewModels;
 
 public partial class SubscriptionDetailViewModel : ObservableObject
 {
+    private const int MinResolveInputLength = 3;
+
     private readonly ISubscriptionsApi _subscriptionsApi;
     private readonly ICategoriesApi _categoriesApi;
     private readonly IPaymentSourcesApi _paymentSourcesApi;
+    private readonly IDebouncer _debouncer;
+    private ResolveSubscriptionResponse? _pendingSuggestion;
 
     [ObservableProperty]
     public partial string CustomName { get; set; } = string.Empty;
@@ -50,6 +54,15 @@ public partial class SubscriptionDetailViewModel : ObservableObject
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
 
+    [ObservableProperty]
+    public partial MatchConfidenceTier? SuggestedTier { get; set; }
+
+    [ObservableProperty]
+    public partial string? SuggestedProviderName { get; set; }
+
+    [ObservableProperty]
+    public partial string? SuggestedLogoUrl { get; set; }
+
     public IReadOnlyList<BillingCycleType> BillingCycleTypes { get; } = Enum.GetValues<BillingCycleType>();
 
     public ObservableCollection<CategoryDto> Categories { get; } = [];
@@ -59,11 +72,89 @@ public partial class SubscriptionDetailViewModel : ObservableObject
     /// <summary>Raised after a successful save so the view can navigate back.</summary>
     public event EventHandler? SaveSucceeded;
 
-    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi)
+    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer)
     {
         _subscriptionsApi = subscriptionsApi;
         _categoriesApi = categoriesApi;
         _paymentSourcesApi = paymentSourcesApi;
+        _debouncer = debouncer;
+    }
+
+    partial void OnCustomNameChanged(string value)
+    {
+        SuggestedTier = null;
+        _pendingSuggestion = null;
+
+        if (value.Length < MinResolveInputLength)
+        {
+            return;
+        }
+
+        _debouncer.Debounce(() => _ = ResolveNameAsync(value));
+    }
+
+    private async Task ResolveNameAsync(string input)
+    {
+        ResolveSubscriptionResponse result;
+        try
+        {
+            result = await _subscriptionsApi.ResolveAsync(new ResolveSubscriptionRequest { Input = input });
+        }
+        catch (ApiException)
+        {
+            // Includes 429 (client-side debouncing is a courtesy, not a guarantee against the
+            // server's own rate limit) - a resolve failure degrades silently, no error banner.
+            return;
+        }
+
+        switch (result.Tier)
+        {
+            case MatchConfidenceTier.AutoFill:
+                ApplySuggestion(result);
+                break;
+            case MatchConfidenceTier.SuggestConfirm:
+                _pendingSuggestion = result;
+                SuggestedTier = MatchConfidenceTier.SuggestConfirm;
+                SuggestedProviderName = result.ProviderName;
+                SuggestedLogoUrl = result.LogoUrl;
+                break;
+            case MatchConfidenceTier.Manual:
+            default:
+                break;
+        }
+    }
+
+    [RelayCommand]
+    private void AcceptSuggestion()
+    {
+        if (_pendingSuggestion is null)
+        {
+            return;
+        }
+
+        ApplySuggestion(_pendingSuggestion);
+    }
+
+    private void ApplySuggestion(ResolveSubscriptionResponse suggestion)
+    {
+        if (!string.IsNullOrEmpty(suggestion.ProviderName))
+        {
+            CustomName = suggestion.ProviderName;
+        }
+
+        SuggestedLogoUrl = suggestion.LogoUrl;
+
+        if (suggestion.CategoryId is Guid categoryId)
+        {
+            var match = Categories.FirstOrDefault(c => c.Id == categoryId);
+            if (match is not null)
+            {
+                SelectedCategory = match;
+            }
+        }
+
+        SuggestedTier = null;
+        _pendingSuggestion = null;
     }
 
     [RelayCommand]

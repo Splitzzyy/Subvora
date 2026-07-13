@@ -11,6 +11,7 @@
     <ContentPage.Resources>
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
         <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+        <toolkit:IsNotNullConverter x:Key="IsNotNullConverter" />
     </ContentPage.Resources>
 
     <ScrollView>
@@ -22,6 +23,19 @@
 
             <Label Text="Name" FontAttributes="Bold" />
             <Entry Text="{Binding CustomName}" Placeholder="e.g. Netflix" />
+
+            <Border IsVisible="{Binding SuggestedTier, Converter={StaticResource IsNotNullConverter}}"
+                    Padding="10"
+                    BackgroundColor="{StaticResource Primary}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <Image Grid.Column="0" Source="{Binding SuggestedLogoUrl}" WidthRequest="32" HeightRequest="32" />
+                    <Label Grid.Column="1"
+                           Text="{Binding SuggestedProviderName, StringFormat='Looks like {0} — use this?'}"
+                           TextColor="White"
+                           VerticalOptions="Center" />
+                    <Button Grid.Column="2" Text="Use" Command="{Binding AcceptSuggestionCommand}" />
+                </Grid>
+            </Border>
 
             <Label Text="Cost" FontAttributes="Bold" />
             <Entry Text="{Binding CostAmount}" Keyboard="Numeric" Placeholder="0.00" />
