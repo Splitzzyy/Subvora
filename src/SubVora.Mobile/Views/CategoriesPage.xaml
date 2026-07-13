@@ -3,10 +3,46 @@
     x:Class="SubVora.Mobile.Views.CategoriesPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
+    xmlns:dtos="clr-namespace:SubVora.Mobile.Api.Dtos"
+    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    x:DataType="viewModels:CategoriesViewModel"
     Title="Categories">
 
-    <VerticalStackLayout Padding="30" Spacing="10" VerticalOptions="Center" HorizontalOptions="Center">
-        <Label Text="Categories" FontSize="24" HorizontalOptions="Center" />
-    </VerticalStackLayout>
+    <ContentPage.Resources>
+        <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+    </ContentPage.Resources>
+
+    <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
+        <Grid RowDefinitions="Auto,Auto,*" Padding="20">
+
+            <Label Grid.Row="0"
+                   Text="{Binding ErrorMessage}"
+                   TextColor="Red"
+                   IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+            <HorizontalStackLayout Grid.Row="1" Spacing="8" Margin="0,10">
+                <Entry Placeholder="New category" Text="{Binding NewCategoryName}" WidthRequest="220" />
+                <Button Text="Add" Command="{Binding AddCommand}" />
+            </HorizontalStackLayout>
+
+            <CollectionView Grid.Row="2" ItemsSource="{Binding Categories}">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="dtos:CategoryDto">
+                        <Grid Padding="0,8" ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0" Text="{Binding Name}" />
+                            <Label Grid.Column="1"
+                                   Text="System"
+                                   TextColor="White"
+                                   BackgroundColor="{StaticResource Primary}"
+                                   Padding="6,2"
+                                   IsVisible="{Binding IsSystemDefault}" />
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+        </Grid>
+    </RefreshView>
 
 </ContentPage>
