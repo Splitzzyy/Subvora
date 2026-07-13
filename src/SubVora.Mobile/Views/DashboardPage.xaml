@@ -17,6 +17,11 @@
         <ScrollView>
             <VerticalStackLayout Padding="20" Spacing="16">
 
+                <Label Text="Offline — showing last synced data"
+                       TextColor="OrangeRed"
+                       FontAttributes="Italic"
+                       IsVisible="{Binding IsShowingCachedData}" />
+
                 <Label Text="{Binding ErrorMessage}"
                        TextColor="Red"
                        IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
