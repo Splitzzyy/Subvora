@@ -11,7 +11,7 @@ namespace SubVora.Infrastructure.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             // Placeholder system default categories (user_id IS NULL). Content is a
-            // product decision pending sign-off (technical_requirements.md §5) -
+            // product decision pending sign-off -
             // adjustable via a later migration without breaking the schema.
             migrationBuilder.Sql("""
                 INSERT INTO categories (user_id, name) VALUES

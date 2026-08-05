@@ -1,9 +1,11 @@
-using System.IdentityModel.Tokens.Jwt;
+﻿using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using SubVora.Application.Auth;
+
+using SubVora.Infrastructure.Configuration;
 
 namespace SubVora.Infrastructure.Auth;
 
@@ -18,8 +20,7 @@ public class JwtTokenService : IJwtTokenService
 
     public JwtTokenService(IConfiguration configuration)
     {
-        _secret = configuration["Jwt:Secret"]
-            ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
+        _secret = configuration.GetRequired("Jwt:Secret");
         _issuer = configuration["Jwt:Issuer"] ?? "SubVora";
         _audience = configuration["Jwt:Audience"] ?? "SubVora";
     }

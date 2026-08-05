@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using SubVora.Application.Auth;
@@ -45,7 +45,7 @@ public class CategoriesControllerTests : IClassFixture<ApiWebApplicationFactory>
         var categories = await listResponse.Content.ReadFromJsonAsync<List<CategoryDto>>();
 
         Assert.NotNull(categories);
-        // Seeded system defaults from the migration (technical_requirements.md §5 placeholder list).
+        // Seeded system defaults from the 20260711170536_SeedSystemCategories migration.
         Assert.Contains(categories!, c => c.Name == "Entertainment" && c.IsSystemDefault);
         Assert.Contains(categories!, c => c.Name == ownName && !c.IsSystemDefault);
     }

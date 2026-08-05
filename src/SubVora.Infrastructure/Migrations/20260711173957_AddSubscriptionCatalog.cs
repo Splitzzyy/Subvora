@@ -50,7 +50,7 @@ namespace SubVora.Infrastructure.Migrations
                 column: "provider_name",
                 unique: true);
 
-            // EF Core has no native HNSW support - hand-added per technical_requirements.md §2.
+            // EF Core has no native HNSW support - hand-added per docs/Design.md.
             migrationBuilder.Sql(
                 "CREATE INDEX ON subscription_catalog USING hnsw (semantic_embedding vector_cosine_ops);");
         }

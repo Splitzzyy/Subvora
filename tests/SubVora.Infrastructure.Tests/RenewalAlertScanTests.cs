@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -56,7 +57,7 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
         var scopeFactory = _serviceProvider.GetRequiredService<IServiceScopeFactory>();
         var scanner = _serviceProvider.GetRequiredService<IRenewalAlertScanner>();
         var logger = _serviceProvider.GetRequiredService<ILogger<RenewalAlertBackgroundService>>();
-        return new RenewalAlertBackgroundService(scopeFactory, scanner, logger);
+        return new RenewalAlertBackgroundService(scopeFactory, scanner, logger, new ConfigurationBuilder().Build());
     }
 
     private async Task<DeviceToken> CreateDeviceTokenAsync(Guid userId, string? token = null)

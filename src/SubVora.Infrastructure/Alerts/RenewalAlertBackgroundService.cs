@@ -1,4 +1,5 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -12,20 +13,42 @@ namespace SubVora.Infrastructure.Alerts;
 
 public class RenewalAlertBackgroundService : BackgroundService
 {
-    private static readonly TimeSpan ScanInterval = TimeSpan.FromHours(24);
+    /// <summary>Small hours UTC by default: late enough that "renews tomorrow" is still true for most of the world, quiet enough not to compete with daytime traffic.</summary>
+    private const int DefaultScanUtcHour = 2;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IRenewalAlertScanner _scanner;
     private readonly ILogger<RenewalAlertBackgroundService> _logger;
+    private readonly int _scanUtcHour;
 
     public RenewalAlertBackgroundService(
         IServiceScopeFactory scopeFactory,
         IRenewalAlertScanner scanner,
-        ILogger<RenewalAlertBackgroundService> logger)
+        ILogger<RenewalAlertBackgroundService> logger,
+        IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _scanner = scanner;
         _logger = logger;
+        // int.TryParse rather than GetValue<int?>, which lives in a Binder package this project
+        // doesn't reference. An absent or nonsense value falls back rather than failing startup:
+        // a mistyped scan hour should not take the API down.
+        _scanUtcHour = int.TryParse(configuration["RenewalScan:UtcHour"], out var configuredHour) && configuredHour is >= 0 and <= 23
+            ? configuredHour
+            : DefaultScanUtcHour;
+    }
+
+    /// <summary>
+    /// Time from <paramref name="now"/> until the next occurrence of <paramref name="utcHour"/>.
+    /// Pure and public so the schedule can be tested without waiting on real time.
+    /// </summary>
+    public static TimeSpan DelayUntilNextRun(DateTimeOffset now, int utcHour)
+    {
+        var today = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero).AddHours(utcHour);
+
+        // Strictly-later, so a pass that finishes inside its own scheduled hour waits for tomorrow
+        // rather than spinning through the rest of the hour re-scanning.
+        return (today > now ? today : today.AddDays(1)) - now;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -43,7 +66,12 @@ public class RenewalAlertBackgroundService : BackgroundService
 
             try
             {
-                await Task.Delay(ScanInterval, stoppingToken);
+                // Fixed UTC hour rather than "24h after process start": a midday deploy used to move
+                // every user's alerts to midday, and a restart slightly under 24h later could skip a
+                // calendar day outright. The scan on startup below is kept deliberately - it is a
+                // catch-up for exactly that skipped-day case, and it is safe because notifications_log
+                // makes a repeat scan for the same day a no-op.
+                await Task.Delay(DelayUntilNextRun(DateTimeOffset.UtcNow, _scanUtcHour), stoppingToken);
             }
             catch (OperationCanceledException)
             {
@@ -103,7 +131,7 @@ public class RenewalAlertBackgroundService : BackgroundService
         await dbContext.SaveChangesAsync(cancellationToken);
 
         // Resolved lazily (not constructor-injected) and guarded here: if push isn't configured
-        // yet (no Firebase credentials - see technical_requirements.backend-hardening.md [HITL]),
+        // yet (no Firebase credentials - pending [HITL] sign-off),
         // this must degrade to "skip push delivery" rather than crash the whole host at startup,
         // since RenewalAlertBackgroundService is a singleton hosted service.
         IPushNotificationSender pushNotificationSender;
