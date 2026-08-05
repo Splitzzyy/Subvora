@@ -51,6 +51,9 @@ public class SubscriptionCatalogSearchRepository : ISubscriptionCatalogSearchRep
         return item.Id;
     }
 
+    public Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default) =>
+        _dbContext.SubscriptionCatalog.AsNoTracking().AnyAsync(item => item.Id == catalogId, cancellationToken);
+
     private class CatalogMatchRow
     {
         public Guid Id { get; set; }

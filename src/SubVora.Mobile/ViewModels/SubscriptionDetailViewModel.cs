@@ -19,6 +19,11 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     private readonly IDebouncer _debouncer;
     private ResolveSubscriptionResponse? _pendingSuggestion;
 
+    // The catalog row this subscription is linked to, carried from a resolve result (or from the
+    // record being edited) through to the save payload. Not an [ObservableProperty] - nothing in
+    // the UI binds to it.
+    private Guid? _appliedCatalogId;
+
     [ObservableProperty]
     public partial string CustomName { get; set; } = string.Empty;
 
@@ -120,6 +125,11 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         SuggestedTier = null;
         _pendingSuggestion = null;
 
+        // Editing the name away from an applied suggestion invalidates the match - a stale catalog
+        // reference must never be saved. ApplySuggestion re-sets this *after* assigning CustomName,
+        // which re-enters here.
+        _appliedCatalogId = null;
+
         if (value.Length < MinResolveInputLength)
         {
             return;
@@ -184,6 +194,8 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             CustomName = suggestion.ProviderName;
         }
 
+        // After the CustomName assignment above, whose change handler clears this.
+        _appliedCatalogId = suggestion.CatalogId;
         SuggestedLogoUrl = suggestion.LogoUrl;
 
         if (suggestion.CategoryId is Guid categoryId)
@@ -251,6 +263,9 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             IsFreeTrial = subscription.IsFreeTrial;
             SelectedCategory = Categories.FirstOrDefault(c => c.Id == subscription.CategoryId);
             SelectedPaymentSource = PaymentSources.FirstOrDefault(p => p.Id == subscription.PaymentSourceId);
+            // Last, because the CustomName assignment above clears it: saving an untouched edit
+            // must not silently strip the record's existing catalog link.
+            _appliedCatalogId = subscription.CatalogId;
         }
         catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -302,6 +317,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         AlertDaysAdvance = AlertDaysAdvance,
         CategoryId = SelectedCategory?.Id,
         PaymentSourceId = SelectedPaymentSource?.Id,
+        CatalogId = _appliedCatalogId,
         IsFreeTrial = IsFreeTrial,
     };
 }

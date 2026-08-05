@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SubVora.Application.Alerts;
 using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
+using SubVora.Domain.Enums;
 using SubVora.Infrastructure.Data;
 
 namespace SubVora.Infrastructure.Alerts;
@@ -68,6 +69,13 @@ public class RenewalAlertBackgroundService : BackgroundService
             .Where(n => n.SentAt >= dayStartUtc && n.SentAt < dayEndUtc)
             .ToListAsync(cancellationToken);
 
+        // Advancement runs on every pass and *before* the alert scan: a stale date most needs
+        // repairing precisely on a day when nothing is due to alert, and a date repaired into
+        // today's alert window should alert on this same pass rather than being skipped by the
+        // scanner's exact-day predicate. activeSubscriptions is already loaded and tracked here,
+        // so this mutates in place rather than re-querying.
+        await AdvancePassedBillingDatesAsync(dbContext, scanDay, activeSubscriptions, cancellationToken);
+
         var dueSubscriptions = _scanner.Scan(scanDay, activeSubscriptions, existingLogsForToday);
         if (dueSubscriptions.Count == 0)
         {
@@ -105,6 +113,35 @@ public class RenewalAlertBackgroundService : BackgroundService
         {
             await SendPushForSubscriptionAsync(dbContext, pushNotificationSender, subscription, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Rolls every already-passed billing date forward to its next future occurrence, and retires
+    /// OneTime subscriptions instead of advancing them. Idempotent: a second run on the same day
+    /// finds nothing left with a passed date and writes nothing.
+    /// </summary>
+    private async Task AdvancePassedBillingDatesAsync(AppDbContext dbContext, DateOnly scanDay, IReadOnlyList<UserSubscription> activeSubscriptions, CancellationToken cancellationToken)
+    {
+        var dueForAdvance = _scanner.FindDueForAdvance(scanDay, activeSubscriptions);
+        if (dueForAdvance.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var subscription in dueForAdvance)
+        {
+            if (subscription.CycleCadence == BillingCycleType.OneTime)
+            {
+                subscription.IsActive = false;
+            }
+            else
+            {
+                subscription.NextBillingDate = BillingCycleAdvancer.AdvanceTo(subscription.NextBillingDate, subscription.CycleCadence, scanDay);
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Advanced {Count} subscription(s) past their billing date.", dueForAdvance.Count);
     }
 
     private async Task SendPushForSubscriptionAsync(AppDbContext dbContext, IPushNotificationSender pushNotificationSender, UserSubscription subscription, CancellationToken cancellationToken)

@@ -22,6 +22,7 @@ public class SubscriptionDto
     public string? CategoryName { get; set; }
     public Guid? PaymentSourceId { get; set; }
     public string? PaymentSourceLabel { get; set; }
+    public Guid? CatalogId { get; set; }
     public string? CatalogLogoUrl { get; set; }
     public bool IsFreeTrial { get; set; }
     public bool IsActive { get; set; }
@@ -39,6 +40,7 @@ public class CreateSubscriptionRequest
     public int AlertDaysAdvance { get; set; } = 3;
     public Guid? CategoryId { get; set; }
     public Guid? PaymentSourceId { get; set; }
+    public Guid? CatalogId { get; set; }
     public bool IsFreeTrial { get; set; }
 }
 

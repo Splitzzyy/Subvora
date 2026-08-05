@@ -45,6 +45,7 @@ public class SubscriptionRepository : ISubscriptionRepository
         subscription.AlertDaysAdvance = request.AlertDaysAdvance;
         subscription.CategoryId = request.CategoryId;
         subscription.PaymentSourceId = request.PaymentSourceId;
+        subscription.CatalogId = request.CatalogId;
         subscription.IsFreeTrial = request.IsFreeTrial;
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -89,6 +90,7 @@ public class SubscriptionRepository : ISubscriptionRepository
             CategoryName = category != null ? category.Name : null,
             PaymentSourceId = s.PaymentSourceId,
             PaymentSourceLabel = paymentSource != null ? paymentSource.Label : null,
+            CatalogId = s.CatalogId,
             CatalogLogoUrl = catalogItem != null ? catalogItem.LogoUrl : null,
             IsFreeTrial = s.IsFreeTrial,
             IsActive = s.IsActive,
