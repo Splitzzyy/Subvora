@@ -17,7 +17,8 @@ public class FakeSubscriptionsApi : ISubscriptionsApi
             CycleCadence = request.CycleCadence,
             PurchaseDate = request.PurchaseDate,
             NextBillingDate = request.NextBillingDate,
-            AlertDaysAdvance = request.AlertDaysAdvance,
+            // Stands in for the server resolving an omitted lead time from the user's global default.
+            AlertDaysAdvance = request.AlertDaysAdvance ?? 3,
             CategoryId = request.CategoryId,
             PaymentSourceId = request.PaymentSourceId,
             IsFreeTrial = request.IsFreeTrial,

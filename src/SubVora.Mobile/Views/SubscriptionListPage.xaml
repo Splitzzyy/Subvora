@@ -46,17 +46,41 @@
                                 </SwipeItems>
                             </SwipeView.RightItems>
 
-                            <Grid Padding="20,12" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <Grid Padding="20,12" ColumnSpacing="12" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
                                 <Grid.GestureRecognizers>
                                     <TapGestureRecognizer
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=SelectSubscriptionCommand}"
                                         CommandParameter="{Binding Id}" />
                                 </Grid.GestureRecognizers>
 
-                                <Label Grid.Row="0" Grid.Column="0" Text="{Binding CustomName}" FontAttributes="Bold" />
-                                <Label Grid.Row="0" Grid.Column="1" Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
+                                <!-- The placeholder sits underneath and is simply never covered when
+                                     CatalogLogoUrl is null/empty, or when the remote image fails to
+                                     load: MAUI leaves an Image with an unreachable UriImageSource
+                                     blank rather than throwing, so a dead URL or a fully offline
+                                     device degrades to the fallback with no extra handling. -->
+                                <Grid Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
+                                    <Image Source="subscription_placeholder.png" Aspect="AspectFit" />
+                                    <Image Source="{Binding CatalogLogoUrl}"
+                                           Aspect="AspectFit"
+                                           IsVisible="{Binding CatalogLogoUrl, Converter={StaticResource StringToBoolConverter}}" />
+                                </Grid>
 
-                                <Label Grid.Row="1" Grid.Column="0">
+                                <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="8">
+                                    <Label Text="{Binding CustomName}" FontAttributes="Bold" VerticalOptions="Center" />
+                                    <Border IsVisible="{Binding IsFreeTrial}"
+                                            BackgroundColor="{StaticResource Primary}"
+                                            StrokeThickness="0"
+                                            Padding="6,2"
+                                            VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="8" />
+                                        </Border.StrokeShape>
+                                        <Label Text="TRIAL" TextColor="White" FontSize="10" FontAttributes="Bold" />
+                                    </Border>
+                                </HorizontalStackLayout>
+                                <Label Grid.Row="0" Grid.Column="2" Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
+
+                                <Label Grid.Row="1" Grid.Column="1">
                                     <Label.FormattedText>
                                         <FormattedString>
                                             <Span Text="{Binding CategoryName}" />
@@ -65,7 +89,7 @@
                                         </FormattedString>
                                     </Label.FormattedText>
                                 </Label>
-                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding Currency}" />
+                                <Label Grid.Row="1" Grid.Column="2" Text="{Binding Currency}" />
                             </Grid>
                         </SwipeView>
                     </DataTemplate>

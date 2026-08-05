@@ -1,6 +1,7 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using SubVora.Application.Alerts;
 using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
@@ -17,6 +18,7 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
     private static readonly DateOnly Today = DateOnly.FromDateTime(DateTime.UtcNow);
 
     private readonly PostgresContainerFixture _fixture;
+    private readonly List<string> _executedSql = [];
     private AppDbContext _dbContext = null!;
     private ServiceProvider _serviceProvider = null!;
 
@@ -32,7 +34,10 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
         await _dbContext.Database.MigrateAsync();
 
         var services = new ServiceCollection();
-        services.AddScoped(_ => new AppDbContext(AppDbContextOptionsFactory.Build(_fixture.ConnectionString)));
+        services.AddScoped(_ => new AppDbContext(
+            new DbContextOptionsBuilder<AppDbContext>(AppDbContextOptionsFactory.Build(_fixture.ConnectionString))
+                .LogTo(_executedSql.Add, [DbLoggerCategory.Database.Command.Name], LogLevel.Information)
+                .Options));
         services.AddSingleton<IRenewalAlertScanner, RenewalAlertScanner>();
         services.AddSingleton<FakePushNotificationSender>();
         services.AddSingleton<IPushNotificationSender>(sp => sp.GetRequiredService<FakePushNotificationSender>());
@@ -218,6 +223,21 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
         var stored = await _dbContext.UserSubscriptions.AsNoTracking().SingleAsync(s => s.Id == subscription.Id);
         Assert.False(stored.IsActive);
         Assert.Equal(Today.AddDays(-1), stored.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task RenewalScan_DoesNotLoadSubscriptionsThatAreNeitherAlertDueNorAdvanceDue()
+    {
+        // Renews well beyond its alert window: the scan must filter it out in SQL, not read it back
+        // and discard it in memory. Asserting on the emitted SQL is what stops a future refactor
+        // from quietly restoring the full-table read.
+        await CreateSubscriptionAsync(alertDaysAdvance: 3, nextBillingDate: Today.AddDays(200));
+
+        await BuildService().ScanOnceAsync(Today);
+
+        var subscriptionQueries = _executedSql.Where(sql => sql.Contains("FROM user_subscriptions")).ToList();
+        Assert.NotEmpty(subscriptionQueries);
+        Assert.All(subscriptionQueries, sql => Assert.Contains("next_billing_date", sql));
     }
 
     [Fact]

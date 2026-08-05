@@ -115,6 +115,9 @@ CREATE TABLE user_subscriptions (
 -- 6. Optimize Search with high-performance indices
 CREATE INDEX IF NOT EXISTS idx_subs_user_id ON user_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_subs_next_billing ON user_subscriptions(next_billing_date) WHERE is_active = TRUE;
+-- Serves the renewal scan's alert-due half. Its two predicates are OR'd, and Postgres falls back to
+-- a sequential scan unless both sides are indexable.
+CREATE INDEX IF NOT EXISTS idx_subs_alert_due ON user_subscriptions((next_billing_date - alert_days_advance)) WHERE is_active = TRUE;
 
 -- Create an HNSW vector index for extremely fast AI semantic similarity lookups
 CREATE INDEX ON subscription_catalog 

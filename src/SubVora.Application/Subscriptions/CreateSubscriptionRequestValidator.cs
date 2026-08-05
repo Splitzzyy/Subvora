@@ -14,7 +14,7 @@ public class CreateSubscriptionRequestValidator : AbstractValidator<CreateSubscr
             .Must(CurrencyCodes.IsValid)
             .WithMessage("'{PropertyName}' must be a valid ISO-4217 currency code.");
         RuleFor(r => r.CycleCadence).IsInEnum();
-        RuleFor(r => r.AlertDaysAdvance).GreaterThan(0);
+        RuleFor(r => r.AlertDaysAdvance).GreaterThan(0).When(r => r.AlertDaysAdvance.HasValue);
         RuleFor(r => r.NextBillingDate)
             .GreaterThanOrEqualTo(r => r.PurchaseDate)
             .WithMessage("'{PropertyName}' must be on or after PurchaseDate.");

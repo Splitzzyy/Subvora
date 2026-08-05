@@ -1,10 +1,11 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using SubVora.Application.Matching;
 using SubVora.Application.Subscriptions;
+using SubVora.Application.Users;
 using SubVora.Domain.Entities;
 
 namespace SubVora.Api.Controllers;
@@ -16,24 +17,29 @@ namespace SubVora.Api.Controllers;
 [Produces("application/json")]
 public class SubscriptionsController : ControllerBase
 {
+    private const int DefaultAlertDaysAdvance = 3;
+
     private readonly ISubscriptionRepository _subscriptionRepository;
     private readonly IValidator<CreateSubscriptionRequest> _createValidator;
     private readonly ISubscriptionMatchService _subscriptionMatchService;
     private readonly IValidator<ResolveSubscriptionRequest> _resolveValidator;
     private readonly ISubscriptionCatalogSearchRepository _catalogSearchRepository;
+    private readonly IUserRepository _userRepository;
 
     public SubscriptionsController(
         ISubscriptionRepository subscriptionRepository,
         IValidator<CreateSubscriptionRequest> createValidator,
         ISubscriptionMatchService subscriptionMatchService,
         IValidator<ResolveSubscriptionRequest> resolveValidator,
-        ISubscriptionCatalogSearchRepository catalogSearchRepository)
+        ISubscriptionCatalogSearchRepository catalogSearchRepository,
+        IUserRepository userRepository)
     {
         _subscriptionRepository = subscriptionRepository;
         _createValidator = createValidator;
         _subscriptionMatchService = subscriptionMatchService;
         _resolveValidator = resolveValidator;
         _catalogSearchRepository = catalogSearchRepository;
+        _userRepository = userRepository;
     }
 
     /// <summary>Lists the authenticated user's subscriptions.</summary>
@@ -95,7 +101,11 @@ public class SubscriptionsController : ControllerBase
             CycleCadence = request.CycleCadence,
             PurchaseDate = request.PurchaseDate,
             NextBillingDate = request.NextBillingDate,
-            AlertDaysAdvance = request.AlertDaysAdvance,
+            // Request value, then the user's global default, then the floor - same shape as
+            // DashboardController resolving GetPreferredCurrencyAsync(...) ?? "USD".
+            AlertDaysAdvance = request.AlertDaysAdvance
+                ?? await _userRepository.GetDefaultAlertDaysAdvanceAsync(userId, cancellationToken)
+                ?? DefaultAlertDaysAdvance,
             CategoryId = request.CategoryId,
             PaymentSourceId = request.PaymentSourceId,
             CatalogId = request.CatalogId,

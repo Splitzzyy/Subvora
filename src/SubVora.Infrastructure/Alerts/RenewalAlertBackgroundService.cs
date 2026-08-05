@@ -62,11 +62,19 @@ public class RenewalAlertBackgroundService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        // Only two kinds of row matter to a scan: those already past their billing date (advance)
+        // and those renewing exactly alert_days_advance from today (alert). Everything else is a
+        // future date the job would load and immediately discard.
         var activeSubscriptions = await dbContext.UserSubscriptions
             .Where(s => s.IsActive)
+            .Where(s => s.NextBillingDate < scanDay || s.NextBillingDate.AddDays(-s.AlertDaysAdvance) == scanDay)
             .ToListAsync(cancellationToken);
+
+        // Only the (subscription, lead time) pair drives the idempotency guard, so project rather
+        // than materializing whole NotificationLog entities.
         var existingLogsForToday = await dbContext.NotificationsLog
             .Where(n => n.SentAt >= dayStartUtc && n.SentAt < dayEndUtc)
+            .Select(n => new NotificationLog { UserSubscriptionId = n.UserSubscriptionId, AlertDaysAdvance = n.AlertDaysAdvance })
             .ToListAsync(cancellationToken);
 
         // Advancement runs on every pass and *before* the alert scan: a stale date most needs

@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -6,6 +6,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SubVora.Application.Auth;
+using SubVora.Application.Dashboard;
 using SubVora.Application.Matching;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
@@ -483,6 +484,122 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
         var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+    }
+
+    private async Task SetDefaultAlertDaysAdvanceAsync(string email, int? defaultAlertDaysAdvance)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await dbContext.Users.SingleAsync(u => u.Email == email);
+        user.DefaultAlertDaysAdvance = defaultAlertDaysAdvance;
+        await dbContext.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithoutAlertDays_InheritsTheUsersGlobalDefault()
+    {
+        var email = $"alertdays-global-{Guid.NewGuid()}@example.com";
+        var client = await CreateAuthenticatedClientAsync(email);
+        await SetDefaultAlertDaysAdvanceAsync(email, 7);
+
+        var request = ValidRequest();
+        request.AlertDaysAdvance = null;
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(7, created!.AlertDaysAdvance);
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithExplicitAlertDays_OverridesTheGlobalDefault()
+    {
+        var email = $"alertdays-explicit-{Guid.NewGuid()}@example.com";
+        var client = await CreateAuthenticatedClientAsync(email);
+        await SetDefaultAlertDaysAdvanceAsync(email, 7);
+
+        var request = ValidRequest();
+        request.AlertDaysAdvance = 1;
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(1, created!.AlertDaysAdvance);
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithNoStoredPreferenceAndNoAlertDays_FallsBackToThree()
+    {
+        var client = await CreateAuthenticatedClientAsync($"alertdays-fallback-{Guid.NewGuid()}@example.com");
+
+        var request = ValidRequest();
+        request.AlertDaysAdvance = null;
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(3, created!.AlertDaysAdvance);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_WithoutAlertDays_LeavesTheStoredLeadTimeUnchanged()
+    {
+        var email = $"alertdays-update-{Guid.NewGuid()}@example.com";
+        var client = await CreateAuthenticatedClientAsync(email);
+        var createRequest = ValidRequest();
+        createRequest.AlertDaysAdvance = 10;
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", createRequest, JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        // The user's global default must not leak into an edit that never mentioned lead time.
+        await SetDefaultAlertDaysAdvanceAsync(email, 7);
+        var updateRequest = ValidRequest();
+        updateRequest.AlertDaysAdvance = null;
+        var updateResponse = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", updateRequest, JsonOptions);
+        var updated = await updateResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(10, updated!.AlertDaysAdvance);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_CanDeactivateAndReactivateWithoutLosingTheRecord()
+    {
+        var client = await CreateAuthenticatedClientAsync($"deactivate-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var deactivate = ValidRequest();
+        deactivate.IsActive = false;
+        var deactivated = await (await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", deactivate, JsonOptions))
+            .Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.False(deactivated!.IsActive);
+
+        // Omitting the field must preserve the deactivated state, not silently reactivate.
+        var untouched = await (await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", ValidRequest(), JsonOptions))
+            .Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.False(untouched!.IsActive);
+
+        var reactivate = ValidRequest();
+        reactivate.IsActive = true;
+        var reactivated = await (await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", reactivate, JsonOptions))
+            .Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.True(reactivated!.IsActive);
+    }
+
+    [Fact]
+    public async Task DeactivatedSubscription_IsExcludedFromBurnRateTotals()
+    {
+        var client = await CreateAuthenticatedClientAsync($"deactivate-burnrate-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var activeTotal = await client.GetFromJsonAsync<BurnRateResult>("/api/v1/dashboard/burn-rate", JsonOptions);
+        Assert.True(activeTotal!.Monthly > 0);
+
+        var deactivate = ValidRequest();
+        deactivate.IsActive = false;
+        await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", deactivate, JsonOptions);
+
+        var afterTotal = await client.GetFromJsonAsync<BurnRateResult>("/api/v1/dashboard/burn-rate", JsonOptions);
+        Assert.Equal(0m, afterTotal!.Monthly);
     }
 
     private async Task<Guid> CreateCatalogItemAsync(string logoUrl)

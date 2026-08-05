@@ -19,6 +19,12 @@ public class UserRepository : IUserRepository
             .Select(u => u.PreferredCurrency)
             .SingleOrDefaultAsync(cancellationToken);
 
+    public async Task<int?> GetDefaultAlertDaysAdvanceAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        await _dbContext.Users.AsNoTracking()
+            .Where(u => u.Id == userId)
+            .Select(u => u.DefaultAlertDaysAdvance)
+            .SingleOrDefaultAsync(cancellationToken);
+
     public async Task<UserProfileDto?> GetProfileAsync(Guid userId, CancellationToken cancellationToken = default) =>
         await _dbContext.Users.AsNoTracking()
             .Where(u => u.Id == userId)
