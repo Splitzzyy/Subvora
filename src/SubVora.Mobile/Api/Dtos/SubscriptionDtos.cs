@@ -1,4 +1,4 @@
-namespace SubVora.Mobile.Api.Dtos;
+﻿namespace SubVora.Mobile.Api.Dtos;
 
 public enum BillingCycleType
 {
@@ -37,11 +37,15 @@ public class CreateSubscriptionRequest
     public BillingCycleType CycleCadence { get; set; } = BillingCycleType.Monthly;
     public DateOnly PurchaseDate { get; set; }
     public DateOnly NextBillingDate { get; set; }
-    public int AlertDaysAdvance { get; set; } = 3;
+    /// <summary>Null means "use my global default" on create, and "leave it alone" on update.</summary>
+    public int? AlertDaysAdvance { get; set; }
     public Guid? CategoryId { get; set; }
     public Guid? PaymentSourceId { get; set; }
     public Guid? CatalogId { get; set; }
     public bool IsFreeTrial { get; set; }
+
+    /// <summary>Null preserves the stored state; false deactivates a cancelled subscription without deleting its history.</summary>
+    public bool? IsActive { get; set; }
 }
 
 public enum MatchConfidenceTier

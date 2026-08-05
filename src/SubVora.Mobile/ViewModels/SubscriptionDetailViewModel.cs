@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -43,7 +43,9 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     public partial DateTime NextBillingDate { get; set; } = DateTime.Today;
 
     [ObservableProperty]
-    public partial int AlertDaysAdvance { get; set; } = 3;
+    // Nullable and unset by default: leaving the field blank on the add screen sends no value,
+    // which is what lets the server apply the user's global default from Settings.
+    public partial int? AlertDaysAdvance { get; set; }
 
     [ObservableProperty]
     public partial bool IsFreeTrial { get; set; }

@@ -1,4 +1,4 @@
-using SubVora.Mobile.Api.Dtos;
+﻿using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -27,6 +27,48 @@ public class SubscriptionListViewModelTests
         FakeLocalCacheService? cache = null,
         FakeUserPrompt? userPrompt = null) =>
         new(api ?? new FakeSubscriptionsApi(), cache ?? new FakeLocalCacheService(), userPrompt ?? new FakeUserPrompt());
+
+    [Fact]
+    public async Task LoadAsync_PreservesLogoUrlAndFreeTrialFlagForTheItemTemplate()
+    {
+        // The list template binds CatalogLogoUrl (logo, with the placeholder showing through when
+        // it is null/empty) and IsFreeTrial (badge) directly, so both must survive load untouched -
+        // in particular a null logo must stay null rather than being coerced to "".
+        var withLogo = SampleSubscription("Netflix");
+        withLogo.CatalogLogoUrl = "https://cdn.example.com/netflix.svg";
+        withLogo.IsFreeTrial = true;
+        var withoutLogo = SampleSubscription("Local Gym");
+
+        var api = new FakeSubscriptionsApi { GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>([withLogo, withoutLogo]) };
+        var viewModel = CreateViewModel(api);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.Equal("https://cdn.example.com/netflix.svg", viewModel.Subscriptions[0].CatalogLogoUrl);
+        Assert.True(viewModel.Subscriptions[0].IsFreeTrial);
+        Assert.Null(viewModel.Subscriptions[1].CatalogLogoUrl);
+        Assert.False(viewModel.Subscriptions[1].IsFreeTrial);
+    }
+
+    [Fact]
+    public async Task CachedList_RoundTripsLogoUrlAndFreeTrialFlag()
+    {
+        // Offline the list is served from the SQLite mirror, and must render identically.
+        var subscription = SampleSubscription("Spotify");
+        subscription.CatalogLogoUrl = "https://cdn.example.com/spotify.svg";
+        subscription.IsFreeTrial = true;
+        var cache = new FakeLocalCacheService();
+        await cache.UpsertAsync(CachedSubscription.FromDto(subscription));
+
+        var api = new FakeSubscriptionsApi { GetAllHandler = () => throw new HttpRequestException("network down") };
+        var viewModel = CreateViewModel(api, cache);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsShowingCachedData);
+        Assert.Equal("https://cdn.example.com/spotify.svg", viewModel.Subscriptions[0].CatalogLogoUrl);
+        Assert.True(viewModel.Subscriptions[0].IsFreeTrial);
+    }
 
     [Fact]
     public async Task LoadAsync_OnSuccess_PopulatesListAndUpsertsCache()

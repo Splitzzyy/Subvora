@@ -42,7 +42,19 @@ public class SubscriptionRepository : ISubscriptionRepository
         subscription.CycleCadence = request.CycleCadence;
         subscription.PurchaseDate = request.PurchaseDate;
         subscription.NextBillingDate = request.NextBillingDate;
-        subscription.AlertDaysAdvance = request.AlertDaysAdvance;
+        // Both fields are nullable on the shared create/update request precisely so that omitting
+        // them on update preserves what's stored: the global alert-days default applies at create
+        // time only, and a partial update must not silently deactivate a live subscription.
+        if (request.AlertDaysAdvance is int alertDaysAdvance)
+        {
+            subscription.AlertDaysAdvance = alertDaysAdvance;
+        }
+
+        if (request.IsActive is bool isActive)
+        {
+            subscription.IsActive = isActive;
+        }
+
         subscription.CategoryId = request.CategoryId;
         subscription.PaymentSourceId = request.PaymentSourceId;
         subscription.CatalogId = request.CatalogId;
