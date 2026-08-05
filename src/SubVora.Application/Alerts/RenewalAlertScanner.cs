@@ -22,4 +22,10 @@ public class RenewalAlertScanner : IRenewalAlertScanner
             .Where(s => !alreadyNotified.Contains((s.Id, s.AlertDaysAdvance)))
             .ToList();
     }
+
+    public IReadOnlyList<UserSubscription> FindDueForAdvance(DateOnly today, IEnumerable<UserSubscription> activeSubscriptions) =>
+        activeSubscriptions
+            .Where(s => s.IsActive)
+            .Where(s => s.NextBillingDate < today)
+            .ToList();
 }

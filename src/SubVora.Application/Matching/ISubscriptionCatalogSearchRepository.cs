@@ -7,4 +7,7 @@ public interface ISubscriptionCatalogSearchRepository
 
     /// <summary>Creates a new subscription_catalog row for a provider name with no confident existing match, so future lookups can find it.</summary>
     Task<Guid> AddAsync(string providerName, float[] embedding, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether a catalog row exists, so a client-supplied reference can be rejected with a 400 rather than a foreign-key 500.</summary>
+    Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default);
 }

@@ -283,6 +283,137 @@ public class SubscriptionDetailViewModelTests
     }
 
     [Fact]
+    public async Task SaveAsync_AfterAutoFill_SendsTheResolvedCatalogId()
+    {
+        var catalogId = Guid.NewGuid();
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.AutoFill,
+                CatalogId = catalogId,
+                ProviderName = "Netflix",
+                LogoUrl = "https://example.com/netflix.svg",
+            }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "nflx";
+        debouncer.Flush();
+        viewModel.CostAmount = 15.99m;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(subscriptionsApi.CreateCalls);
+        Assert.Equal(catalogId, request.CatalogId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_AfterAcceptingASuggestion_SendsTheResolvedCatalogId()
+    {
+        var catalogId = Guid.NewGuid();
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.SuggestConfirm,
+                CatalogId = catalogId,
+                ProviderName = "Netflix",
+            }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "nflx";
+        debouncer.Flush();
+        viewModel.AcceptSuggestionCommand.Execute(null);
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(subscriptionsApi.CreateCalls);
+        Assert.Equal(catalogId, request.CatalogId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_AfterAManualTierResult_SendsNoCatalogId()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse { Tier = MatchConfidenceTier.Manual }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "Some Obscure Service";
+        debouncer.Flush();
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(subscriptionsApi.CreateCalls);
+        Assert.Null(request.CatalogId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_AfterEditingTheNameAwayFromASuggestion_ClearsTheCatalogId()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.AutoFill,
+                CatalogId = Guid.NewGuid(),
+                ProviderName = "Netflix",
+            }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "nflx";
+        debouncer.Flush();
+
+        // The match no longer holds - saving the stale reference would link this to the wrong row.
+        viewModel.CustomName = "My Local Gym Membership";
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        var request = Assert.Single(subscriptionsApi.CreateCalls);
+        Assert.Null(request.CatalogId);
+    }
+
+    [Fact]
+    public async Task SaveAsync_InEditModeWithoutTouchingTheName_KeepsTheExistingCatalogId()
+    {
+        var catalogId = Guid.NewGuid();
+        var subscriptionId = Guid.NewGuid();
+        CreateSubscriptionRequest? updateRequest = null;
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            GetByIdHandler = _ => Task.FromResult(new SubscriptionDto
+            {
+                Id = subscriptionId,
+                CustomName = "Netflix",
+                Currency = "USD",
+                CatalogId = catalogId,
+            }),
+            UpdateHandler = (_, request) =>
+            {
+                updateRequest = request;
+                return Task.FromResult(new SubscriptionDto { Id = subscriptionId, CustomName = request.CustomName, Currency = request.Currency });
+            },
+        };
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi);
+        viewModel.SubscriptionId = subscriptionId;
+        await viewModel.InitializeCommand.ExecuteAsync(null);
+        viewModel.CostAmount = 19.99m;
+
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.NotNull(updateRequest);
+        Assert.Equal(catalogId, updateRequest!.CatalogId);
+    }
+
+    [Fact]
     public async Task InitializeAsync_On404_RaisesSubscriptionNotFound()
     {
         var subscriptionId = Guid.NewGuid();

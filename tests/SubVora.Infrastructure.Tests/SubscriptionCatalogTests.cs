@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
+using SubVora.Infrastructure.Migrations;
 
 namespace SubVora.Infrastructure.Tests;
 
@@ -85,6 +86,47 @@ public class SubscriptionCatalogTests : IClassFixture<PostgresContainerFixture>,
             .AsNoTracking()
             .SingleAsync(c => c.Id == catalogItem.Id);
         Assert.Null(reloaded.CategoryId);
+    }
+
+    [Fact]
+    public async Task SeedMigration_PopulatesTheCatalogWithLogoAndCategoryForEverySeededProvider()
+    {
+        var seededIds = SeedSubscriptionCatalog.SeededIds;
+        var seeded = await _dbContext.SubscriptionCatalog.AsNoTracking()
+            .Where(item => seededIds.Contains(item.Id))
+            .ToListAsync();
+
+        Assert.Equal(seededIds.Count, seeded.Count);
+        Assert.All(seeded, item => Assert.False(string.IsNullOrWhiteSpace(item.LogoUrl)));
+        Assert.All(seeded, item => Assert.NotNull(item.CategoryId));
+
+        var categoryIds = await _dbContext.Categories.AsNoTracking().Select(category => category.Id).ToListAsync();
+        Assert.All(seeded, item => Assert.Contains(item.CategoryId!.Value, categoryIds));
+    }
+
+    [Fact]
+    public async Task SeedMigration_ProviderNamesAreUnique()
+    {
+        var seededIds = SeedSubscriptionCatalog.SeededIds;
+        var providerNames = await _dbContext.SubscriptionCatalog.AsNoTracking()
+            .Where(item => seededIds.Contains(item.Id))
+            .Select(item => item.ProviderName)
+            .ToListAsync();
+
+        Assert.Equal(providerNames.Count, providerNames.Distinct().Count());
+    }
+
+    [Fact]
+    public async Task SeedMigration_LeavesEverySeededRowWithoutAnEmbedding()
+    {
+        // Deliberate and contained: migrations must not make network calls, so seeded rows are
+        // invisible to FindNearestAsync (which filters out null embeddings) until
+        // CatalogEmbeddingBackfillService has run - see CatalogEmbeddingBackfillTests.
+        var seededIds = SeedSubscriptionCatalog.SeededIds;
+        var withEmbedding = await _dbContext.SubscriptionCatalog.AsNoTracking()
+            .CountAsync(item => seededIds.Contains(item.Id) && item.SemanticEmbedding != null);
+
+        Assert.Equal(0, withEmbedding);
     }
 
     private static Vector BuildVector(params (int index, float value)[] nonZeroEntries)

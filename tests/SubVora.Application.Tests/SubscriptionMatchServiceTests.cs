@@ -86,5 +86,8 @@ public class SubscriptionMatchServiceTests
             AddWasCalled = true;
             return Task.FromResult(Guid.NewGuid());
         }
+
+        public Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(true);
     }
 }

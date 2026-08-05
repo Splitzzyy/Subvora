@@ -69,7 +69,7 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
         return deviceToken;
     }
 
-    private async Task<UserSubscription> CreateSubscriptionAsync(int alertDaysAdvance, bool isActive = true, DateOnly? nextBillingDate = null)
+    private async Task<UserSubscription> CreateSubscriptionAsync(int alertDaysAdvance, bool isActive = true, DateOnly? nextBillingDate = null, BillingCycleType cadence = BillingCycleType.Monthly)
     {
         var user = new User { Email = $"renewal-{Guid.NewGuid()}@example.com", PasswordHash = "not-a-real-hash", PreferredCurrency = "USD", CreatedAt = DateTimeOffset.UtcNow };
         _dbContext.Users.Add(user);
@@ -81,7 +81,7 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
             CustomName = "Netflix",
             CostAmount = 15.49m,
             Currency = "USD",
-            CycleCadence = BillingCycleType.Monthly,
+            CycleCadence = cadence,
             PurchaseDate = new DateOnly(2026, 1, 1),
             // Default: due exactly today given alertDaysAdvance, unless the test overrides it.
             NextBillingDate = nextBillingDate ?? Today.AddDays(alertDaysAdvance),
@@ -173,5 +173,61 @@ public class RenewalAlertScanTests : IClassFixture<PostgresContainerFixture>, IA
 
         var stillExists = await _dbContext.DeviceTokens.AsNoTracking().AnyAsync(d => d.Id == staleDevice.Id);
         Assert.False(stillExists);
+    }
+
+    [Fact]
+    public async Task RenewalScan_SubscriptionPastItsBillingDate_AdvancesToAFutureDate()
+    {
+        // Three monthly cycles stale: advancing a single cycle would still leave it in the past.
+        var subscription = await CreateSubscriptionAsync(alertDaysAdvance: 3, nextBillingDate: Today.AddMonths(-3).AddDays(-2));
+
+        await BuildService().ScanOnceAsync(Today);
+
+        var stored = await _dbContext.UserSubscriptions.AsNoTracking().SingleAsync(s => s.Id == subscription.Id);
+        Assert.True(stored.NextBillingDate > Today, $"Expected a future billing date, got {stored.NextBillingDate}.");
+    }
+
+    [Fact]
+    public async Task RenewalScan_RunTwiceForSameDay_AdvancesTheBillingDateOnlyOnce()
+    {
+        var subscription = await CreateSubscriptionAsync(alertDaysAdvance: 3, nextBillingDate: Today.AddDays(-1));
+
+        await BuildService().ScanOnceAsync(Today);
+        var afterFirstScan = await _dbContext.UserSubscriptions.AsNoTracking().SingleAsync(s => s.Id == subscription.Id);
+
+        await BuildService().ScanOnceAsync(Today);
+        var afterSecondScan = await _dbContext.UserSubscriptions.AsNoTracking().SingleAsync(s => s.Id == subscription.Id);
+
+        Assert.Equal(afterFirstScan.NextBillingDate, afterSecondScan.NextBillingDate);
+        var logs = await _dbContext.NotificationsLog.AsNoTracking()
+            .Where(n => n.UserSubscriptionId == subscription.Id)
+            .ToListAsync();
+        Assert.True(logs.Count <= 1, $"Expected at most one notifications_log row, got {logs.Count}.");
+    }
+
+    [Fact]
+    public async Task RenewalScan_OneTimeSubscriptionPastItsBillingDate_IsRetiredNotAdvanced()
+    {
+        var subscription = await CreateSubscriptionAsync(
+            alertDaysAdvance: 3,
+            nextBillingDate: Today.AddDays(-1),
+            cadence: BillingCycleType.OneTime);
+
+        await BuildService().ScanOnceAsync(Today);
+
+        var stored = await _dbContext.UserSubscriptions.AsNoTracking().SingleAsync(s => s.Id == subscription.Id);
+        Assert.False(stored.IsActive);
+        Assert.Equal(Today.AddDays(-1), stored.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task RenewalScan_SubscriptionWithFutureBillingDate_IsNotAdvanced()
+    {
+        var subscription = await CreateSubscriptionAsync(alertDaysAdvance: 10, nextBillingDate: Today.AddDays(20));
+
+        await BuildService().ScanOnceAsync(Today);
+
+        var stored = await _dbContext.UserSubscriptions.AsNoTracking().SingleAsync(s => s.Id == subscription.Id);
+        Assert.Equal(Today.AddDays(20), stored.NextBillingDate);
     }
 }

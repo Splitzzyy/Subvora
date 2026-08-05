@@ -20,17 +20,20 @@ public class SubscriptionsController : ControllerBase
     private readonly IValidator<CreateSubscriptionRequest> _createValidator;
     private readonly ISubscriptionMatchService _subscriptionMatchService;
     private readonly IValidator<ResolveSubscriptionRequest> _resolveValidator;
+    private readonly ISubscriptionCatalogSearchRepository _catalogSearchRepository;
 
     public SubscriptionsController(
         ISubscriptionRepository subscriptionRepository,
         IValidator<CreateSubscriptionRequest> createValidator,
         ISubscriptionMatchService subscriptionMatchService,
-        IValidator<ResolveSubscriptionRequest> resolveValidator)
+        IValidator<ResolveSubscriptionRequest> resolveValidator,
+        ISubscriptionCatalogSearchRepository catalogSearchRepository)
     {
         _subscriptionRepository = subscriptionRepository;
         _createValidator = createValidator;
         _subscriptionMatchService = subscriptionMatchService;
         _resolveValidator = resolveValidator;
+        _catalogSearchRepository = catalogSearchRepository;
     }
 
     /// <summary>Lists the authenticated user's subscriptions.</summary>
@@ -76,6 +79,11 @@ public class SubscriptionsController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
+        if (await ValidateCatalogReferenceAsync(request, cancellationToken) is { } catalogProblem)
+        {
+            return catalogProblem;
+        }
+
         var userId = GetUserId();
 
         var subscription = new UserSubscription
@@ -90,6 +98,7 @@ public class SubscriptionsController : ControllerBase
             AlertDaysAdvance = request.AlertDaysAdvance,
             CategoryId = request.CategoryId,
             PaymentSourceId = request.PaymentSourceId,
+            CatalogId = request.CatalogId,
             IsFreeTrial = request.IsFreeTrial,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
@@ -121,6 +130,11 @@ public class SubscriptionsController : ControllerBase
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        if (await ValidateCatalogReferenceAsync(request, cancellationToken) is { } catalogProblem)
+        {
+            return catalogProblem;
         }
 
         var updated = await _subscriptionRepository.UpdateAsync(id, GetUserId(), request, cancellationToken);
@@ -167,6 +181,30 @@ public class SubscriptionsController : ControllerBase
 
         var result = await _subscriptionMatchService.ResolveAsync(request.Input, cancellationToken);
         return Ok(result);
+    }
+
+    /// <summary>
+    /// Returns a 400 ValidationProblem when the request names a catalog row that doesn't exist,
+    /// or null when there's nothing to complain about. Lives here rather than in
+    /// CreateSubscriptionRequestValidator because that validator is pure and has no repository
+    /// access - the surrounding controllers already do cross-entity checks this way.
+    /// </summary>
+    private async Task<IActionResult?> ValidateCatalogReferenceAsync(CreateSubscriptionRequest request, CancellationToken cancellationToken)
+    {
+        if (request.CatalogId is not Guid catalogId)
+        {
+            return null;
+        }
+
+        if (await _catalogSearchRepository.ExistsAsync(catalogId, cancellationToken))
+        {
+            return null;
+        }
+
+        return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+        {
+            [nameof(CreateSubscriptionRequest.CatalogId)] = ["No subscription catalog entry exists with that id."],
+        }));
     }
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);

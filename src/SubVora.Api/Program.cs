@@ -104,6 +104,10 @@ builder.Services.AddHttpClient<IPushNotificationSender, FcmPushNotificationSende
 });
 builder.Services.AddHostedService<RenewalAlertBackgroundService>();
 
+// Fills in embeddings for catalog rows a migration seeded without one - see
+// CatalogEmbeddingBackfillService for why it degrades quietly when OpenAI is unconfigured.
+builder.Services.AddHostedService<CatalogEmbeddingBackfillService>();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
 

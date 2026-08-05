@@ -239,21 +239,12 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
             catalogId = catalogItem.Id;
         }
 
-        // catalog_id isn't settable via CreateSubscriptionRequest (AI-resolve territory, later
-        // slice) - set it directly so this test can prove the logo URL join works end to end.
         var request = ValidRequest();
         request.CategoryId = categoryId;
         request.PaymentSourceId = paymentSourceId;
+        request.CatalogId = catalogId;
         var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
         var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var stored = await dbContext.UserSubscriptions.SingleAsync(s => s.Id == created!.Id);
-            stored.CatalogId = catalogId;
-            await dbContext.SaveChangesAsync();
-        }
 
         var getResponse = await client.GetAsync($"/api/v1/subscriptions/{created!.Id}");
         var dto = await getResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
@@ -492,5 +483,101 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
         var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+    }
+
+    private async Task<Guid> CreateCatalogItemAsync(string logoUrl)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var catalogItem = new SubVora.Domain.Entities.SubscriptionCatalogItem
+        {
+            ProviderName = $"Provider-{Guid.NewGuid()}",
+            LogoUrl = logoUrl,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        dbContext.SubscriptionCatalog.Add(catalogItem);
+        await dbContext.SaveChangesAsync();
+        return catalogItem.Id;
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithCatalogId_PersistsItAndReturnsTheCatalogLogoUrl()
+    {
+        var client = await CreateAuthenticatedClientAsync($"create-catalog-{Guid.NewGuid()}@example.com");
+        var catalogId = await CreateCatalogItemAsync("https://example.com/seeded-logo.svg");
+
+        var request = ValidRequest();
+        request.CatalogId = catalogId;
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Equal(catalogId, created!.CatalogId);
+        Assert.Equal("https://example.com/seeded-logo.svg", created.CatalogLogoUrl);
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithoutCatalogId_SucceedsWithNoLogo()
+    {
+        var client = await CreateAuthenticatedClientAsync($"create-nocatalog-{Guid.NewGuid()}@example.com");
+
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await response.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.Null(created!.CatalogId);
+        Assert.Null(created.CatalogLogoUrl);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_CanAttachAndClearTheCatalogReference()
+    {
+        var client = await CreateAuthenticatedClientAsync($"update-catalog-{Guid.NewGuid()}@example.com");
+        var catalogId = await CreateCatalogItemAsync("https://example.com/attached-logo.svg");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var attachRequest = ValidRequest();
+        attachRequest.CatalogId = catalogId;
+        var attachResponse = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", attachRequest, JsonOptions);
+        var attached = await attachResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(HttpStatusCode.OK, attachResponse.StatusCode);
+        Assert.Equal(catalogId, attached!.CatalogId);
+        Assert.Equal("https://example.com/attached-logo.svg", attached.CatalogLogoUrl);
+
+        // Omitting the field on a later edit detaches - the user renamed away from the match.
+        var detachResponse = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", ValidRequest(), JsonOptions);
+        var detached = await detachResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        Assert.Equal(HttpStatusCode.OK, detachResponse.StatusCode);
+        Assert.Null(detached!.CatalogId);
+        Assert.Null(detached.CatalogLogoUrl);
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithUnknownCatalogId_Returns400NotAForeignKey500()
+    {
+        var client = await CreateAuthenticatedClientAsync($"create-badcatalog-{Guid.NewGuid()}@example.com");
+
+        var request = ValidRequest();
+        request.CatalogId = Guid.NewGuid();
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateSubscription_WithUnknownCatalogId_Returns400NotAForeignKey500()
+    {
+        var client = await CreateAuthenticatedClientAsync($"update-badcatalog-{Guid.NewGuid()}@example.com");
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", ValidRequest(), JsonOptions);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+
+        var request = ValidRequest();
+        request.CatalogId = Guid.NewGuid();
+        var response = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created!.Id}", request, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 }

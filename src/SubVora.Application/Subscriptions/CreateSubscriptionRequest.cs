@@ -13,5 +13,8 @@ public class CreateSubscriptionRequest
     public int AlertDaysAdvance { get; set; } = 3;
     public Guid? CategoryId { get; set; }
     public Guid? PaymentSourceId { get; set; }
+
+    /// <summary>Optional subscription_catalog reference, as returned by POST /api/v1/subscriptions/resolve. Null detaches any existing link on update.</summary>
+    public Guid? CatalogId { get; set; }
     public bool IsFreeTrial { get; set; }
 }
