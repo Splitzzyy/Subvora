@@ -1,4 +1,4 @@
-using FluentValidation;
+﻿using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -21,6 +21,7 @@ using SubVora.Application.Users;
 using SubVora.Infrastructure.Ai;
 using SubVora.Infrastructure.Alerts;
 using SubVora.Infrastructure.Auth;
+using SubVora.Infrastructure.Configuration;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Repositories;
@@ -47,8 +48,7 @@ builder.Host.UseSerilog((_, cfg) => cfg
 // once at startup, so WebApplicationFactory-based tests can override it after this file runs.
 builder.Services.AddScoped(sp =>
 {
-    var connectionString = sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")
-        ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
+    var connectionString = sp.GetRequiredService<IConfiguration>().GetRequiredConnectionString("Default");
     return new AppDbContext(AppDbContextOptionsFactory.Build(connectionString));
 });
 
@@ -115,8 +115,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
     .Configure<IConfiguration>((options, configuration) =>
     {
-        var jwtSecret = configuration["Jwt:Secret"]
-            ?? throw new InvalidOperationException("Jwt:Secret is not configured.");
+        var jwtSecret = configuration.GetRequired("Jwt:Secret");
         var jwtIssuer = configuration["Jwt:Issuer"] ?? "SubVora";
         var jwtAudience = configuration["Jwt:Audience"] ?? "SubVora";
 
@@ -187,8 +186,7 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 builder.Services.AddHealthChecks()
-    .AddNpgSql(sp => sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")
-        ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured."));
+    .AddNpgSql(sp => sp.GetRequiredService<IConfiguration>().GetRequiredConnectionString("Default"));
 
 var app = builder.Build();
 

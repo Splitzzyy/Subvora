@@ -12,27 +12,51 @@ SubVora — cross-platform subscription tracker with cancellation reminders, bur
 
 Read the relevant doc before implementing a feature — don't guess at requirements that are already written down.
 
+`technical_requirements.md` at the repo root is a **local, gitignored** working document (alongside `prd.md`/`issues.md`). Several code comments cite it by name; if you don't have a copy, those references are dead ends rather than missing files. Don't commit it without asking — it is ignored deliberately.
+
 ## Current State
 
-Requirements and design are defined. No application code exists yet (no MAUI project, no ASP.NET Core project). When scaffolding begins, expect this layout:
+Backend and mobile client both exist and are under active development. Actual layout:
 
 ```
 /src
-  /SubVora.Mobile      # .NET MAUI app (Android + iOS)
-  /SubVora.Api         # ASP.NET Core Web API
-  /SubVora.Shared      # Shared DTOs/models between client and API (if used)
+  /SubVora.Domain          # Entities + enums, no dependencies
+  /SubVora.Application     # DTOs, validators, interfaces, pure logic — no EF Core
+  /SubVora.Infrastructure  # EF Core, repositories, hosted services, external clients, migrations
+  /SubVora.Api             # ASP.NET Core Web API (controllers, Program.cs)
+  /SubVora.Mobile          # .NET MAUI app (Android + iOS)
 /tests
-  /SubVora.Api.Tests
-  /SubVora.Mobile.Tests
+  /SubVora.Api.Tests            # integration, Testcontainers + WebApplicationFactory
+  /SubVora.Application.Tests    # pure unit, no database
+  /SubVora.Infrastructure.Tests # integration, Testcontainers
+  /SubVora.Mobile.Tests         # view-model unit tests, Windows-only TFM
 /docs
 ```
 
-Update this file once that structure exists for real, including actual build/test/run commands.
+There is deliberately **no `SubVora.Shared`** — mobile DTOs mirror the API's JSON contract by convention, so a contract change means editing both sides.
+
+### Build, test, run
+
+```
+dotnet build src/SubVora.Api/SubVora.Api.csproj -c Release
+dotnet run --project src/SubVora.Api
+
+dotnet test tests/SubVora.Api.Tests/SubVora.Api.Tests.csproj -c Release
+dotnet test tests/SubVora.Application.Tests/SubVora.Application.Tests.csproj -c Release
+dotnet test tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.csproj -c Release
+dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj -c Release   # Windows only
+```
+
+Building `SubVora.slnx` as a whole additionally needs the Android SDK installed (`SubVora.Mobile` targets `net10.0-android`), so build the API project directly unless you are working on mobile. Test each project directly too: on Linux `SubVora.Mobile` only exposes `net10.0-android` (its ios/maccatalyst/windows TFMs are conditioned out), so `SubVora.Mobile.Tests` — which targets `net10.0-windows` unconditionally — can never resolve its `ProjectReference` there. `.github/workflows/ci.yml` splits accordingly: the first three projects on `ubuntu-latest`, the mobile tests on `windows-latest`.
+
+`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` spin up a real `pgvector/pgvector:pg16` container per test class via Testcontainers — Docker must be running. `SubVora.Application.Tests` and `SubVora.Mobile.Tests` need nothing.
+
+Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructure --startup-project src/SubVora.Infrastructure` (the Infrastructure project is its own startup project via `AppDbContextFactory`; `SubVora.Api` does not reference `Microsoft.EntityFrameworkCore.Design`).
 
 ## Stack (see docs/TECHNICAL_REQUIREMENTS.md for full detail)
 
 - **Mobile:** .NET MAUI, single C# codebase for Android + iOS, local SQLite cache for offline support
-- **Backend:** ASP.NET Core Web API (.NET 8 LTS), JWT auth, EF Core + Npgsql
+- **Backend:** ASP.NET Core Web API, JWT auth, EF Core + Npgsql. `docs/TECHNICAL_REQUIREMENTS.md` §3 says ".NET 8 LTS"; every `.csproj` actually targets `net10.0` — follow the code.
 - **Database:** PostgreSQL + `pgvector` — relational subscription data alongside vector embeddings for semantic matching
 - **AI:** OpenAI embeddings/LLM, called **server-side only** — API keys must never ship in the mobile client
 

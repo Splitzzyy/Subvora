@@ -23,6 +23,14 @@ services:
     restart: unless-stopped
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
+      # Matches the throwaway credentials on the db service above; safe to inline for the same
+      # reason those are - this compose file is local development only.
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=subvora_dev;Username=subvora;Password=subvora_dev_password"
+      # Never inlined: a signing secret in a tracked file lets anyone with repo read access mint a
+      # token for any user. Supply it from your shell or an untracked .env; compose fails here if
+      # it is unset, and the API fails at startup if it is blank.
+      Jwt__Secret: "${SUBVORA_JWT_SECRET:?set SUBVORA_JWT_SECRET (e.g. openssl rand -base64 48) before docker compose up}"
+      OpenAI__ApiKey: "${OPENAI_API_KEY:-}"
     ports:
       - "8080:8080"
     depends_on:
