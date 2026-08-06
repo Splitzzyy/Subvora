@@ -39,4 +39,30 @@ public class RequiredConfigurationTests
     {
         Assert.Throws<InvalidOperationException>(() => Build(("ConnectionStrings:Default", "")).GetRequiredConnectionString("Default"));
     }
+
+    [Theory]
+    [InlineData("dev")]
+    [InlineData("0123456789012345678901234567890")] // 31 bytes - one short of HS256's minimum.
+    public void GetRequiredJwtSecret_TooShortToSignWith_ThrowsAtStartupRatherThanOnFirstLogin(string tooShort)
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Build(("Jwt:Secret", tooShort)).GetRequiredJwtSecret());
+
+        Assert.Contains("32 bytes", exception.Message);
+    }
+
+    [Fact]
+    public void GetRequiredJwtSecret_LongEnough_IsReturned()
+    {
+        var secret = new string('k', 32);
+
+        Assert.Equal(secret, Build(("Jwt:Secret", secret)).GetRequiredJwtSecret());
+    }
+
+    [Fact]
+    public void GetRequiredJwtSecret_BlankValue_StillThrowsTheMissingValueMessage()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() => Build(("Jwt:Secret", "")).GetRequiredJwtSecret());
+
+        Assert.Contains("not configured", exception.Message);
+    }
 }

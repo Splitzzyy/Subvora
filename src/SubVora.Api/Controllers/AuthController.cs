@@ -107,10 +107,6 @@ public class AuthController : ControllerBase
         return Ok(result.Tokens);
     }
 
-    /// <summary>Revokes the caller's refresh token, ending that session.</summary>
-    /// <remarks>Requires a valid access token. Always returns 204, even if the presented refresh token is missing, already revoked, or does not belong to the caller - logout never reveals whether a given token exists.</remarks>
-    /// <response code="204">The token was revoked (or the request was otherwise a no-op).</response>
-    /// <response code="401">The caller is not authenticated.</response>
     /// <summary>Requests a password-reset code by email.</summary>
     /// <remarks>Always returns 200, even if no account matches the email - this endpoint never reveals whether a given email is registered.</remarks>
     /// <response code="200">The request was accepted (regardless of whether the email matched an account).</response>
@@ -159,6 +155,10 @@ public class AuthController : ControllerBase
         return Ok();
     }
 
+    /// <summary>Revokes the caller's refresh token, ending that session.</summary>
+    /// <remarks>Requires a valid access token. Always returns 204, even if the presented refresh token is missing, already revoked, or does not belong to the caller - logout never reveals whether a given token exists.</remarks>
+    /// <response code="204">The token was revoked (or the request was otherwise a no-op).</response>
+    /// <response code="401">The caller is not authenticated.</response>
     [Authorize]
     [HttpPost("logout")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

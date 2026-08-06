@@ -47,6 +47,22 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<!--
+		Backend base address, baked in at build time and overridable per environment without
+		touching tracked source:  dotnet build -p:ApiBaseAddress=https://staging.example/
+		Debug default is the Android emulator's loopback-to-host alias; ApiConfig substitutes
+		localhost for the iOS/Windows cases where 10.0.2.2 means nothing.
+		[HITL] Set the Release default once a deployment target is chosen (see #103).
+	-->
+	<PropertyGroup>
+		<ApiBaseAddress Condition="'$(ApiBaseAddress)' == '' and '$(Configuration)' == 'Debug'">https://10.0.2.2:5001/</ApiBaseAddress>
+		<ApiBaseAddress Condition="'$(ApiBaseAddress)' == ''">https://api.subvora.invalid/</ApiBaseAddress>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AssemblyMetadata Include="ApiBaseAddress" Value="$(ApiBaseAddress)" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />

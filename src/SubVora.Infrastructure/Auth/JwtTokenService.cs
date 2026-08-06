@@ -20,7 +20,7 @@ public class JwtTokenService : IJwtTokenService
 
     public JwtTokenService(IConfiguration configuration)
     {
-        _secret = configuration.GetRequired("Jwt:Secret");
+        _secret = configuration.GetRequiredJwtSecret();
         _issuer = configuration["Jwt:Issuer"] ?? "SubVora";
         _audience = configuration["Jwt:Audience"] ?? "SubVora";
     }

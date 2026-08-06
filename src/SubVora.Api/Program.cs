@@ -79,8 +79,10 @@ builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscr
 builder.Services.AddHttpClient<IEmbeddingClient, OpenAiEmbeddingClient>((sp, client) =>
 {
     var configuration = sp.GetRequiredService<IConfiguration>();
-    var apiKey = configuration["OpenAI:ApiKey"]
-        ?? throw new InvalidOperationException("OpenAI:ApiKey is not configured.");
+    // GetRequired, not a null check: a blank key would otherwise build a client that sends
+    // "Authorization: Bearer " and fails at request time, defeating the try/catch around client
+    // resolution that exists so an unconfigured OpenAI degrades to one warning and a skipped feature.
+    var apiKey = configuration.GetRequired("OpenAI:ApiKey");
     client.BaseAddress = new Uri("https://api.openai.com/v1/");
     client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 });
@@ -115,7 +117,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
     .Configure<IConfiguration>((options, configuration) =>
     {
-        var jwtSecret = configuration.GetRequired("Jwt:Secret");
+        var jwtSecret = configuration.GetRequiredJwtSecret();
         var jwtIssuer = configuration["Jwt:Issuer"] ?? "SubVora";
         var jwtAudience = configuration["Jwt:Audience"] ?? "SubVora";
 
@@ -191,8 +193,9 @@ builder.Services.AddHealthChecks()
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-// "Docker" is the compose-local environment (see docker-compose.yml / appsettings.Docker.json) -
-// same dev convenience as Development, just against the containerized db service instead of localhost.
+// "Docker" is the compose-local environment (its configuration comes from docker-compose.yml's
+// environment block) - same dev convenience as Development, just against the containerized db
+// service instead of localhost.
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
 {
     // Dev convenience only - production migrations run as an explicit deploy step

@@ -119,6 +119,78 @@ public class CatalogEmbeddingBackfillTests : IClassFixture<PostgresContainerFixt
     }
 
     [Fact]
+    public async Task BackfillOnce_LeavingRowsUnembedded_ReportsNotDoneSoTheServiceRetries()
+    {
+        var throwingProvider = new ServiceCollection();
+        throwingProvider.AddScoped(_ => new AppDbContext(AppDbContextOptionsFactory.Build(_fixture.ConnectionString)));
+        throwingProvider.AddSingleton<IEmbeddingClient>(new ThrowingEmbeddingClient());
+        throwingProvider.AddLogging();
+        await using var provider = throwingProvider.BuildServiceProvider();
+
+        _dbContext.SubscriptionCatalog.Add(new SubscriptionCatalogItem
+        {
+            ProviderName = $"Unembeddable-{Guid.NewGuid()}",
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await _dbContext.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => BuildService(provider).BackfillOnceAsync());
+
+        // The row survives for the retry rather than being marked done or skipped.
+        Assert.True(await _dbContext.SubscriptionCatalog.AsNoTracking().AnyAsync(item => item.SemanticEmbedding == null));
+
+        // ...and the next pass, with a working client, finishes the job and reports done.
+        Assert.True(await BuildService().BackfillOnceAsync());
+    }
+
+    [Fact]
+    public async Task BackfillOnce_WhileAnotherInstanceHoldsTheLock_DoesNoEmbeddingWorkAndAsksToRetry()
+    {
+        _dbContext.SubscriptionCatalog.Add(new SubscriptionCatalogItem
+        {
+            ProviderName = $"Contended-{Guid.NewGuid()}",
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await _dbContext.SaveChangesAsync();
+
+        // Stand in for a second replica: hold the same advisory lock on a separate connection.
+        await using var holder = new AppDbContext(AppDbContextOptionsFactory.Build(_fixture.ConnectionString));
+        await holder.Database.OpenConnectionAsync();
+        try
+        {
+            await holder.Database.ExecuteSqlRawAsync("SELECT pg_advisory_lock(4713100)");
+
+            var callsBefore = _embeddingClient.CallCount;
+            var done = await BuildService().BackfillOnceAsync();
+
+            Assert.False(done);
+            Assert.Equal(callsBefore, _embeddingClient.CallCount);
+        }
+        finally
+        {
+            await holder.Database.ExecuteSqlRawAsync("SELECT pg_advisory_unlock(4713100)");
+            await holder.Database.CloseConnectionAsync();
+        }
+
+        // Lock released - the work still gets done on a later pass.
+        Assert.True(await BuildService().BackfillOnceAsync());
+    }
+
+    [Fact]
+    public async Task BackfillOnce_WithNothingLeftToEmbed_ReportsDoneSoTheServiceStops()
+    {
+        await BuildService().BackfillOnceAsync();
+
+        Assert.True(await BuildService().BackfillOnceAsync());
+    }
+
+    private sealed class ThrowingEmbeddingClient : IEmbeddingClient
+    {
+        public Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default) =>
+            throw new HttpRequestException("Simulated OpenAI outage.");
+    }
+
+    [Fact]
     public async Task AfterSeedAndBackfill_FindNearestAsync_ResolvesANearMissToTheSeededProvider()
     {
         await BuildService().BackfillOnceAsync();

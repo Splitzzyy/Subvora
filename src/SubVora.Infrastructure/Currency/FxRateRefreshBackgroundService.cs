@@ -1,28 +1,34 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SubVora.Application.Currency;
+using SubVora.Application.Scheduling;
 using SubVora.Infrastructure.Data;
 
 namespace SubVora.Infrastructure.Currency;
 
 public class FxRateRefreshBackgroundService : BackgroundService
 {
-    private static readonly TimeSpan RefreshInterval = TimeSpan.FromHours(24);
+    /// <summary>An hour before the renewal scan, so the day's alerts and totals use rates fetched the same morning.</summary>
+    private const int DefaultRefreshUtcHour = 1;
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IExchangeRateClient _exchangeRateClient;
     private readonly ILogger<FxRateRefreshBackgroundService> _logger;
+    private readonly int _refreshUtcHour;
 
     public FxRateRefreshBackgroundService(
         IServiceScopeFactory scopeFactory,
         IExchangeRateClient exchangeRateClient,
-        ILogger<FxRateRefreshBackgroundService> logger)
+        ILogger<FxRateRefreshBackgroundService> logger,
+        IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
         _exchangeRateClient = exchangeRateClient;
         _logger = logger;
+        _refreshUtcHour = DailyUtcSchedule.ReadUtcHour(configuration["FxRateRefresh:UtcHour"], DefaultRefreshUtcHour);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -42,7 +48,7 @@ public class FxRateRefreshBackgroundService : BackgroundService
 
             try
             {
-                await Task.Delay(RefreshInterval, stoppingToken);
+                await Task.Delay(DailyUtcSchedule.DelayUntilNextRun(DateTimeOffset.UtcNow, _refreshUtcHour), stoppingToken);
             }
             catch (OperationCanceledException)
             {
