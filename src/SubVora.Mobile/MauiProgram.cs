@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Maui;
+using CommunityToolkit.Mvvm.Messaging;
 using Microsoft.Extensions.Logging;
 using Refit;
 using SubVora.Mobile.Api;
@@ -27,6 +28,10 @@ public static class MauiProgram
 #if DEBUG
 		builder.Logging.AddDebug();
 #endif
+
+		// One messenger for the whole app: the burn-rate banner listens for subscription changes
+		// published by the detail, list and settings view models.
+		builder.Services.AddSingleton<IMessenger>(WeakReferenceMessenger.Default);
 
 		builder.Services.AddSingleton<ITokenStore, SecureStorageTokenStore>();
 
@@ -92,7 +97,9 @@ public static class MauiProgram
 		builder.Services.AddTransient<LoginPage>();
 		builder.Services.AddTransient<RegisterViewModel>();
 		builder.Services.AddTransient<RegisterPage>();
-		builder.Services.AddTransient<DashboardViewModel>();
+		// Singleton, unlike every other view model: AppShell's banner and DashboardPage bind to
+		// the same instance, so one fetch feeds both and they cannot drift apart.
+		builder.Services.AddSingleton<DashboardViewModel>();
 		builder.Services.AddTransient<DashboardPage>();
 		builder.Services.AddTransient<SubscriptionListViewModel>();
 		builder.Services.AddTransient<SubscriptionListPage>();

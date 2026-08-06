@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
+using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -13,6 +15,7 @@ public partial class SubscriptionListViewModel : ObservableObject
     private readonly ISubscriptionsApi _subscriptionsApi;
     private readonly ILocalCacheService _localCacheService;
     private readonly IUserPrompt _userPrompt;
+    private readonly IMessenger _messenger;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -31,11 +34,12 @@ public partial class SubscriptionListViewModel : ObservableObject
     /// <summary>Raised by the Add toolbar button, to navigate to the detail screen in add mode.</summary>
     public event EventHandler? AddRequested;
 
-    public SubscriptionListViewModel(ISubscriptionsApi subscriptionsApi, ILocalCacheService localCacheService, IUserPrompt userPrompt)
+    public SubscriptionListViewModel(ISubscriptionsApi subscriptionsApi, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger)
     {
         _subscriptionsApi = subscriptionsApi;
         _localCacheService = localCacheService;
         _userPrompt = userPrompt;
+        _messenger = messenger;
     }
 
     [RelayCommand]
@@ -120,6 +124,8 @@ public partial class SubscriptionListViewModel : ObservableObject
             {
                 await _localCacheService.UpsertAsync(CachedSubscription.FromDto(subscription));
             }
+
+            _messenger.Send(new SubscriptionsChangedMessage());
         }
         catch (Exception ex)
         {

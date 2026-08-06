@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
 using SubVora.Mobile.Tests.Fakes;
@@ -25,7 +26,7 @@ public class DashboardViewModelTests
         };
         var api = new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) };
         var cache = new FakeLocalCacheService();
-        var viewModel = new DashboardViewModel(api, cache);
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -59,7 +60,7 @@ public class DashboardViewModelTests
             ByCategory = [new CategoryBreakdownItem { CategoryName = "Music", MonthlyAmount = 21.5m }],
         });
         var api = new FakeDashboardApi { Handler = () => throw new HttpRequestException("network down") };
-        var viewModel = new DashboardViewModel(api, cache);
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -76,7 +77,7 @@ public class DashboardViewModelTests
     {
         var api = new FakeDashboardApi { Handler = () => throw new HttpRequestException("network down") };
         var cache = new FakeLocalCacheService();
-        var viewModel = new DashboardViewModel(api, cache);
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -95,7 +96,7 @@ public class DashboardViewModelTests
             HomeCurrency = "USD",
             OldestRateFetchedAt = DateTimeOffset.UtcNow.AddHours(-3),
         };
-        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService());
+        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService(), new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -111,7 +112,7 @@ public class DashboardViewModelTests
             HomeCurrency = "USD",
             UnresolvedSubscriptionIds = [Guid.NewGuid(), Guid.NewGuid()],
         };
-        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService());
+        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService(), new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -129,7 +130,7 @@ public class DashboardViewModelTests
             HomeCurrency = "USD",
             OldestRateFetchedAt = DateTimeOffset.UtcNow.AddDays(-3),
         };
-        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService());
+        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService(), new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -148,7 +149,7 @@ public class DashboardViewModelTests
             UnresolvedSubscriptionCount = 1,
         });
         var api = new FakeDashboardApi { Handler = () => throw new HttpRequestException("network down") };
-        var viewModel = new DashboardViewModel(api, cache);
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 

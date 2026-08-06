@@ -3,8 +3,10 @@ using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Refit;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -17,6 +19,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     private readonly ICategoriesApi _categoriesApi;
     private readonly IPaymentSourcesApi _paymentSourcesApi;
     private readonly IDebouncer _debouncer;
+    private readonly IMessenger _messenger;
     private ResolveSubscriptionResponse? _pendingSuggestion;
 
     // The catalog row this subscription is linked to, carried from a resolve result (or from the
@@ -95,12 +98,13 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     /// <summary>Raised when loading an existing subscription 404s (deleted elsewhere) so the view can navigate back to the list.</summary>
     public event EventHandler? SubscriptionNotFound;
 
-    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer)
+    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer, IMessenger messenger)
     {
         _subscriptionsApi = subscriptionsApi;
         _categoriesApi = categoriesApi;
         _paymentSourcesApi = paymentSourcesApi;
         _debouncer = debouncer;
+        _messenger = messenger;
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -296,6 +300,8 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
                 await _subscriptionsApi.CreateAsync(request);
             }
 
+            // Only after the write succeeded - a failed save must not move the headline figure.
+            _messenger.Send(new SubscriptionsChangedMessage());
             SaveSucceeded?.Invoke(this, EventArgs.Empty);
         }
         catch (ApiException ex)
