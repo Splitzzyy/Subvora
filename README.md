@@ -71,6 +71,18 @@ export SUBVORA_JWT_SECRET="$(openssl rand -base64 48)"
 docker compose up
 ```
 
+**Adding a subscription provider**
+
+Append one entry to `src/SubVora.Infrastructure/Catalog/subscription-catalog.json` and restart the API —
+`SubscriptionCatalogSyncService` inserts anything the database is missing, and trigram matching picks it
+up immediately. No migration, no code change.
+
+```json
+{ "providerName": "Disney+", "category": "Entertainment", "iconSlug": "disneyplus" }
+```
+
+`iconSlug` may be `null` when the brand has no [Simple Icons](https://simpleicons.org) entry.
+
 **Tests**
 
 Each project is tested individually rather than via the solution — on Linux `SubVora.Mobile` only

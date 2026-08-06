@@ -51,6 +51,18 @@ Building `SubVora.slnx` as a whole additionally needs the Android SDK installed 
 
 `SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` spin up a real `pgvector/pgvector:pg16` container per test class via Testcontainers (stock Postgres 16 plus an extension the app no longer uses — kept so existing dev volumes keep working) — Docker must be running. `SubVora.Application.Tests` and `SubVora.Mobile.Tests` need nothing.
 
+### Adding a brand to the subscription catalog
+
+Add one entry to `src/SubVora.Infrastructure/Catalog/subscription-catalog.json` — no migration, no code, no id:
+
+```json
+{ "providerName": "Disney+", "category": "Entertainment", "iconSlug": "disneyplus" }
+```
+
+`SubscriptionCatalogSyncService` inserts anything missing on the next start, keyed on the unique `provider_name`. `category` must name a system category (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Other`) — a test fails otherwise. `iconSlug` is a [Simple Icons](https://simpleicons.org) slug or `null`; v13 dropped several brands for trademark reasons, and a null slug just means no logo, which matching does not need. Existing rows are never overwritten.
+
+The `SeedSubscriptionCatalog` migration is frozen history for databases that already ran it — don't add brands there.
+
 Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructure --startup-project src/SubVora.Infrastructure` (the Infrastructure project is its own startup project via `AppDbContextFactory`; `SubVora.Api` does not reference `Microsoft.EntityFrameworkCore.Design`).
 
 ## Stack (see docs/TECHNICAL_REQUIREMENTS.md for full detail)

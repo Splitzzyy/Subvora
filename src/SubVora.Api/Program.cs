@@ -19,6 +19,7 @@ using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
 using SubVora.Infrastructure.Alerts;
+using SubVora.Infrastructure.Catalog;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Configuration;
 using SubVora.Infrastructure.Currency;
@@ -93,6 +94,9 @@ builder.Services.AddHttpClient<IPushNotificationSender, FcmPushNotificationSende
     client.BaseAddress = new Uri("https://fcm.googleapis.com/");
 });
 builder.Services.AddHostedService<RenewalAlertBackgroundService>();
+
+// Adds any provider in subscription-catalog.json that the database does not have yet.
+builder.Services.AddHostedService<SubscriptionCatalogSyncService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();

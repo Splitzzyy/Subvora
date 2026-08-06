@@ -1,0 +1,347 @@
+[
+  {
+    "providerName": "Netflix",
+    "category": "Entertainment",
+    "iconSlug": "netflix"
+  },
+  {
+    "providerName": "Amazon Prime Video",
+    "category": "Entertainment",
+    "iconSlug": "primevideo"
+  },
+  {
+    "providerName": "HBO Max",
+    "category": "Entertainment",
+    "iconSlug": "hbo"
+  },
+  {
+    "providerName": "Apple TV+",
+    "category": "Entertainment",
+    "iconSlug": "appletv"
+  },
+  {
+    "providerName": "Paramount+",
+    "category": "Entertainment",
+    "iconSlug": "paramountplus"
+  },
+  {
+    "providerName": "Crunchyroll",
+    "category": "Entertainment",
+    "iconSlug": "crunchyroll"
+  },
+  {
+    "providerName": "YouTube Premium",
+    "category": "Entertainment",
+    "iconSlug": "youtube"
+  },
+  {
+    "providerName": "Spotify",
+    "category": "Entertainment",
+    "iconSlug": "spotify"
+  },
+  {
+    "providerName": "Apple Music",
+    "category": "Entertainment",
+    "iconSlug": "applemusic"
+  },
+  {
+    "providerName": "YouTube Music",
+    "category": "Entertainment",
+    "iconSlug": "youtubemusic"
+  },
+  {
+    "providerName": "Tidal",
+    "category": "Entertainment",
+    "iconSlug": "tidal"
+  },
+  {
+    "providerName": "Audible",
+    "category": "Entertainment",
+    "iconSlug": "audible"
+  },
+  {
+    "providerName": "PlayStation Plus",
+    "category": "Entertainment",
+    "iconSlug": "playstation"
+  },
+  {
+    "providerName": "Nintendo Switch Online",
+    "category": "Entertainment",
+    "iconSlug": "nintendoswitch"
+  },
+  {
+    "providerName": "Steam",
+    "category": "Entertainment",
+    "iconSlug": "steam"
+  },
+  {
+    "providerName": "Notion",
+    "category": "Productivity",
+    "iconSlug": "notion"
+  },
+  {
+    "providerName": "Slack",
+    "category": "Productivity",
+    "iconSlug": "slack"
+  },
+  {
+    "providerName": "Zoom",
+    "category": "Productivity",
+    "iconSlug": "zoom"
+  },
+  {
+    "providerName": "Trello",
+    "category": "Productivity",
+    "iconSlug": "trello"
+  },
+  {
+    "providerName": "Asana",
+    "category": "Productivity",
+    "iconSlug": "asana"
+  },
+  {
+    "providerName": "Todoist",
+    "category": "Productivity",
+    "iconSlug": "todoist"
+  },
+  {
+    "providerName": "Evernote",
+    "category": "Productivity",
+    "iconSlug": "evernote"
+  },
+  {
+    "providerName": "Grammarly",
+    "category": "Productivity",
+    "iconSlug": "grammarly"
+  },
+  {
+    "providerName": "Canva",
+    "category": "Productivity",
+    "iconSlug": "canva"
+  },
+  {
+    "providerName": "Figma",
+    "category": "Productivity",
+    "iconSlug": "figma"
+  },
+  {
+    "providerName": "Adobe Creative Cloud",
+    "category": "Productivity",
+    "iconSlug": "adobecreativecloud"
+  },
+  {
+    "providerName": "GitHub",
+    "category": "Productivity",
+    "iconSlug": "github"
+  },
+  {
+    "providerName": "JetBrains",
+    "category": "Productivity",
+    "iconSlug": "jetbrains"
+  },
+  {
+    "providerName": "LinkedIn Premium",
+    "category": "Productivity",
+    "iconSlug": "linkedin"
+  },
+  {
+    "providerName": "ChatGPT Plus",
+    "category": "Productivity",
+    "iconSlug": "openai"
+  },
+  {
+    "providerName": "Dropbox",
+    "category": "Utilities",
+    "iconSlug": "dropbox"
+  },
+  {
+    "providerName": "Google One",
+    "category": "Utilities",
+    "iconSlug": "google"
+  },
+  {
+    "providerName": "iCloud+",
+    "category": "Utilities",
+    "iconSlug": "icloud"
+  },
+  {
+    "providerName": "Cloudflare",
+    "category": "Utilities",
+    "iconSlug": "cloudflare"
+  },
+  {
+    "providerName": "NordVPN",
+    "category": "Utilities",
+    "iconSlug": "nordvpn"
+  },
+  {
+    "providerName": "ExpressVPN",
+    "category": "Utilities",
+    "iconSlug": "expressvpn"
+  },
+  {
+    "providerName": "Proton",
+    "category": "Utilities",
+    "iconSlug": "proton"
+  },
+  {
+    "providerName": "1Password",
+    "category": "Utilities",
+    "iconSlug": "1password"
+  },
+  {
+    "providerName": "LastPass",
+    "category": "Utilities",
+    "iconSlug": "lastpass"
+  },
+  {
+    "providerName": "Strava",
+    "category": "Fitness",
+    "iconSlug": "strava"
+  },
+  {
+    "providerName": "Peloton",
+    "category": "Fitness",
+    "iconSlug": "peloton"
+  },
+  {
+    "providerName": "Fitbit Premium",
+    "category": "Fitness",
+    "iconSlug": "fitbit"
+  },
+  {
+    "providerName": "Headspace",
+    "category": "Fitness",
+    "iconSlug": "headspace"
+  },
+  {
+    "providerName": "QuickBooks",
+    "category": "Finance",
+    "iconSlug": "quickbooks"
+  },
+  {
+    "providerName": "Robinhood Gold",
+    "category": "Finance",
+    "iconSlug": "robinhood"
+  },
+  {
+    "providerName": "Coinbase One",
+    "category": "Finance",
+    "iconSlug": "coinbase"
+  },
+  {
+    "providerName": "The New York Times",
+    "category": "Other",
+    "iconSlug": "newyorktimes"
+  },
+  {
+    "providerName": "Medium",
+    "category": "Other",
+    "iconSlug": "medium"
+  },
+  {
+    "providerName": "Substack",
+    "category": "Other",
+    "iconSlug": "substack"
+  },
+  {
+    "providerName": "Duolingo Super",
+    "category": "Other",
+    "iconSlug": "duolingo"
+  },
+  {
+    "providerName": "Coursera Plus",
+    "category": "Other",
+    "iconSlug": "coursera"
+  },
+  {
+    "providerName": "Udemy",
+    "category": "Other",
+    "iconSlug": "udemy"
+  },
+  {
+    "providerName": "Uber One",
+    "category": "Other",
+    "iconSlug": "uber"
+  },
+  {
+    "providerName": "DoorDash DashPass",
+    "category": "Other",
+    "iconSlug": "doordash"
+  },
+  {
+    "providerName": "Disney+",
+    "category": "Entertainment",
+    "iconSlug": null
+  },
+  {
+    "providerName": "Hulu",
+    "category": "Entertainment",
+    "iconSlug": null
+  },
+  {
+    "providerName": "Xbox Game Pass",
+    "category": "Entertainment",
+    "iconSlug": null
+  },
+  {
+    "providerName": "Twitch",
+    "category": "Entertainment",
+    "iconSlug": "twitch"
+  },
+  {
+    "providerName": "Amazon Music",
+    "category": "Entertainment",
+    "iconSlug": "amazonmusic"
+  },
+  {
+    "providerName": "Patreon",
+    "category": "Entertainment",
+    "iconSlug": "patreon"
+  },
+  {
+    "providerName": "Microsoft 365",
+    "category": "Productivity",
+    "iconSlug": null
+  },
+  {
+    "providerName": "Google Workspace",
+    "category": "Productivity",
+    "iconSlug": null
+  },
+  {
+    "providerName": "Skillshare",
+    "category": "Productivity",
+    "iconSlug": "skillshare"
+  },
+  {
+    "providerName": "Pluralsight",
+    "category": "Productivity",
+    "iconSlug": "pluralsight"
+  },
+  {
+    "providerName": "Google Drive",
+    "category": "Utilities",
+    "iconSlug": "googledrive"
+  },
+  {
+    "providerName": "Dashlane",
+    "category": "Utilities",
+    "iconSlug": "dashlane"
+  },
+  {
+    "providerName": "Bitwarden",
+    "category": "Utilities",
+    "iconSlug": "bitwarden"
+  },
+  {
+    "providerName": "Surfshark",
+    "category": "Utilities",
+    "iconSlug": "surfshark"
+  },
+  {
+    "providerName": "Wise",
+    "category": "Finance",
+    "iconSlug": "wise"
+  }
+]

@@ -5,6 +5,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The living provider list. Adding a brand is one entry here - no migration, no code.
+         SubscriptionCatalogSyncService inserts anything missing on start. -->
+    <EmbeddedResource Include="Catalog\subscription-catalog.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
     <PackageReference Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageReference Include="MailKit" Version="4.17.0" />
