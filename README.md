@@ -30,6 +30,7 @@ See [docs/Design.md](./docs/Design.md) for the full architecture and database sc
 | [docs/TECHNICAL_REQUIREMENTS.md](./docs/TECHNICAL_REQUIREMENTS.md) | Engineering/architecture requirements |
 | [docs/NON_TECHNICAL_REQUIREMENTS.md](./docs/NON_TECHNICAL_REQUIREMENTS.md) | Feature/product requirements |
 | [docs/Design.md](./docs/Design.md) | Architecture diagram, DB schema, matching flow |
+| [docs/ADDING_A_PROVIDER.md](./docs/ADDING_A_PROVIDER.md) | How to add, rename, or remove a subscription provider |
 | [CLAUDE.md](./CLAUDE.md) | Guidance for Claude Code working in this repo |
 
 API docs (Swagger UI) are served at `/swagger` when the API runs in the `Development` environment.
@@ -82,6 +83,8 @@ up immediately. No migration, no code change.
 ```
 
 `iconSlug` may be `null` when the brand has no [Simple Icons](https://simpleicons.org) entry.
+Full walkthrough, including how to verify a slug and how to rename or remove a provider:
+[docs/ADDING_A_PROVIDER.md](./docs/ADDING_A_PROVIDER.md).
 
 **Tests**
 

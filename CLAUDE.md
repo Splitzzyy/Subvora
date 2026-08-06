@@ -8,7 +8,8 @@ SubVora — cross-platform subscription tracker with cancellation reminders, bur
 
 - `docs/TECHNICAL_REQUIREMENTS.md` — architecture, stack, API/DB requirements
 - `docs/NON_TECHNICAL_REQUIREMENTS.md` — feature/product requirements
-- `docs/Design.md` — architecture diagram, DB schema (DDL), AI flow, sample code
+- `docs/Design.md` — architecture diagram, DB schema (DDL), matching flow, sample code
+- `docs/ADDING_A_PROVIDER.md` — how to add, rename, or remove a subscription provider
 
 Read the relevant doc before implementing a feature — don't guess at requirements that are already written down.
 
@@ -61,7 +62,7 @@ Add one entry to `src/SubVora.Infrastructure/Catalog/subscription-catalog.json` 
 
 `SubscriptionCatalogSyncService` inserts anything missing on the next start, keyed on the unique `provider_name`. `category` must name a system category (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Other`) — a test fails otherwise. `iconSlug` is a [Simple Icons](https://simpleicons.org) slug or `null`; v13 dropped several brands for trademark reasons, and a null slug just means no logo, which matching does not need. Existing rows are never overwritten.
 
-The `SeedSubscriptionCatalog` migration is frozen history for databases that already ran it — don't add brands there.
+The `SeedSubscriptionCatalog` migration is frozen history for databases that already ran it — don't add brands there. Full walkthrough, plus the rename/remove cases the sync deliberately does not handle: `docs/ADDING_A_PROVIDER.md`.
 
 Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructure --startup-project src/SubVora.Infrastructure` (the Infrastructure project is its own startup project via `AppDbContextFactory`; `SubVora.Api` does not reference `Microsoft.EntityFrameworkCore.Design`).
 
