@@ -34,6 +34,9 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<IConnectivityService, ConnectivityService>();
 
+		// Swap for the Firebase-backed implementation once #86 lands the messaging SDK.
+		builder.Services.AddSingleton<IPushTokenProvider, UnavailablePushTokenProvider>();
+
 		builder.Services.AddSingleton<ILocalCacheService>(_ =>
 			new SqliteLocalCacheService(Path.Combine(FileSystem.AppDataDirectory, "subvora_cache.db3")));
 
@@ -77,6 +80,10 @@ public static class MauiProgram
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddRefitClient<IDashboardApi>(refitSettings)
+			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
+			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
+
+		builder.Services.AddRefitClient<IDevicesApi>(refitSettings)
 			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
