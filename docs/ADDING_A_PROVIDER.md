@@ -54,10 +54,14 @@ Open `src/SubVora.Infrastructure/Catalog/subscription-catalog.json` and append:
 | Field | Rules |
 |---|---|
 | `providerName` | The canonical brand name, as a user would recognise it. Must be unique in the file — a duplicate is silently swallowed by `ON CONFLICT DO NOTHING`, so a test fails on it instead. |
-| `category` | One of exactly: `Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Other`. A test fails on anything else. |
+| `category` | One of exactly: `Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Food`, `Travel`, `Other`. A test fails on anything else. |
 | `iconSlug` | A verified Simple Icons slug, or `null`. |
 
 There is no `id` field. `provider_name` carries a unique index, so it is the key.
+
+**Need a category that doesn't exist?** Add it to the system categories with a migration first —
+`SeedFoodAndTravelCategories` is the pattern. Don't reach for `Other`: the dashboard's per-category
+breakdown is the reason categories exist, and a bucket labelled "Other" tells the user nothing.
 
 **Naming matters more than you'd think.** Trigram matching scores the name against what the user
 types, so use the name people actually say. `HBO Max`, not `Warner Bros. Discovery HBO Max`. If a

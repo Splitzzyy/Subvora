@@ -60,7 +60,7 @@ Add one entry to `src/SubVora.Infrastructure/Catalog/subscription-catalog.json` 
 { "providerName": "Disney+", "category": "Entertainment", "iconSlug": "disneyplus" }
 ```
 
-`SubscriptionCatalogSyncService` inserts anything missing on the next start, keyed on the unique `provider_name`. `category` must name a system category (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Other`) — a test fails otherwise. `iconSlug` is a [Simple Icons](https://simpleicons.org) slug or `null`; v13 dropped several brands for trademark reasons, and a null slug just means no logo, which matching does not need. Existing rows are never overwritten.
+`SubscriptionCatalogSyncService` inserts anything missing on the next start, keyed on the unique `provider_name`. `category` must name a system category (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Food`, `Travel`, `Other`) — a test fails otherwise. `iconSlug` is a [Simple Icons](https://simpleicons.org) slug or `null`; v13 dropped several brands for trademark reasons, and a null slug just means no logo, which matching does not need. Existing rows are never overwritten.
 
 The `SeedSubscriptionCatalog` migration is frozen history for databases that already ran it — don't add brands there. Full walkthrough, plus the rename/remove cases the sync deliberately does not handle: `docs/ADDING_A_PROVIDER.md`.
 

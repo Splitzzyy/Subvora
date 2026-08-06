@@ -66,6 +66,7 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 
 See full DDL in [Design.md](./Design.md#-database-schema-blueprint). Key tables:
 
+- `categories` — system categories seeded with `user_id IS NULL` (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Food`, `Travel`, `Other`), plus per-user ones.
 - `users` — account, `preferred_currency`.
 - `subscription_catalog` — canonical provider list with `logo_url`, `standard_category`. Matched on `provider_name` via `pg_trgm`.
 - `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
