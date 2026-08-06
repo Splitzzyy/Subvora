@@ -2,9 +2,11 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Maui;
 using CommunityToolkit.Mvvm.Messaging;
+using Plugin.LocalNotification;
 using Microsoft.Extensions.Logging;
 using Refit;
 using SubVora.Mobile.Api;
+using SubVora.Mobile.Notifications;
 using SubVora.Mobile.Services;
 using SubVora.Mobile.ViewModels;
 using SubVora.Mobile.Views;
@@ -19,6 +21,7 @@ public static class MauiProgram
 		builder
 			.UseMauiApp<App>()
 			.UseMauiCommunityToolkit()
+			.UseLocalNotification()
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
@@ -39,8 +42,7 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<IConnectivityService, ConnectivityService>();
 
-		// Swap for the Firebase-backed implementation once #86 lands the messaging SDK.
-		builder.Services.AddSingleton<IPushTokenProvider, UnavailablePushTokenProvider>();
+		builder.Services.AddSingleton<IRenewalNotificationScheduler, LocalRenewalNotificationScheduler>();
 
 		builder.Services.AddSingleton<ILocalCacheService>(_ =>
 			new SqliteLocalCacheService(Path.Combine(FileSystem.AppDataDirectory, "subvora_cache.db3")));
@@ -85,10 +87,6 @@ public static class MauiProgram
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddRefitClient<IDashboardApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
-			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
-
-		builder.Services.AddRefitClient<IDevicesApi>(refitSettings)
 			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 

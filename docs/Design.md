@@ -56,7 +56,7 @@ The application automates mundane workflows like logo provisioning, smart catego
 ### 💻 System Engineering Architecture (Technical Requirements)
 1. **Cross-Platform Mobile Component (.NET MAUI):**
    * **Local State Caching:** Embedded `SQLite` context database providing sub-second runtime latency and offline access capabilities.
-   * **Push Notification Framework:** Abstracted handler communicating natively with Apple Push Notification service (APNs) for iOS and Firebase Cloud Messaging (FCM) for Android targets.
+   * **Renewal Reminders:** Local notifications scheduled on-device from the local mirror. The OS delivers them with the app closed, so no push service, vendor project or API key is involved.
 2. **Microservice Backend API (ASP.NET Core):**
    * **Authentication Matrix:** Secure stateless JWT (JSON Web Tokens) handling verification flows via industry-grade encryption frameworks.
    * **Background Orchestration:** An automated `.NET BackgroundService` running asynchronously on a rolling midnight chronometer to compute upcoming expiration matrices and enqueue notifications.
@@ -177,41 +177,9 @@ CREATE TABLE refresh_tokens (
 );
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 
--- 11. Idempotency guard for the renewal-alert background job - one row per (subscription,
--- alert_days_advance, day) prevents duplicate push notifications on a re-run.
-CREATE TABLE notifications_log (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_subscription_id UUID NOT NULL REFERENCES user_subscriptions(id) ON DELETE CASCADE,
-    sent_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    alert_days_advance INT NOT NULL
-);
-CREATE UNIQUE INDEX ix_notifications_log_user_subscription_id_alert_days_advance_s
-    ON notifications_log(user_subscription_id, alert_days_advance, sent_at);
-
--- 12. Password-reset codes - the 6-digit code is never stored in plaintext, only its
--- SHA-256 hash, mirroring refresh_tokens. 15-minute expiry, max 5 verify attempts.
-CREATE TABLE password_reset_codes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    code_hash CHAR(64) NOT NULL,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    attempt_count INT NOT NULL DEFAULT 0,
-    used_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE INDEX ix_password_reset_codes_user_id ON password_reset_codes(user_id);
-
--- 13. Push-notification device tokens - one row per device, supports multiple
--- simultaneous devices per user. Pruned when FCM reports a token as unregistered.
-CREATE TABLE device_tokens (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token TEXT NOT NULL,
-    platform VARCHAR(10) NOT NULL, -- 'Android' | 'iOS'
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE UNIQUE INDEX ix_device_tokens_user_id_token ON device_tokens(user_id, token);
+-- Renewal reminders are scheduled on-device by the mobile client from its local mirror, so there
+-- are no notifications_log or device_tokens tables: nothing server-side decides when to notify,
+-- and there is no push token to store. See DropPushNotificationTables.
 ```
 
 ---

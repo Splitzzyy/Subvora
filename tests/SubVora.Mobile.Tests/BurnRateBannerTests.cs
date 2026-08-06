@@ -166,7 +166,8 @@ public class BurnRateBannerTests
             api,
             new FakeLocalCacheService(),
             new FakeUserPrompt { ConfirmResult = true },
-            messenger);
+            messenger,
+            new FakeRenewalNotificationScheduler());
 
         await viewModel.DeleteSubscriptionCommand.ExecuteAsync(Guid.NewGuid());
 

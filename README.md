@@ -9,7 +9,7 @@ SubVora is a cross-platform mobile app that tracks all your subscriptions, warns
 - 🏷️ Auto-matched brand logos and categories
 - 🔁 Weekly / Monthly / Yearly / One-time billing types
 - 📅 Purchase & next-billing date tracking
-- 🔔 Configurable renewal alerts (1 / 3 / 7 days before)
+- 🔔 Configurable renewal alerts (1 / 3 / 7 days before), delivered as on-device notifications — no push service, no account
 - 💳 Track source of deduction (which card/account is billed)
 - 📊 **Burn Rate dashboard** — see spend per week, month, and year at a glance
 - 🌍 **Multi-currency** — track subscriptions in any currency, view totals in your home currency
@@ -37,7 +37,7 @@ API docs (Swagger UI) are served at `/swagger` when the API runs in the `Develop
 
 ## Status
 
-Backend and mobile client are both implemented and under active development. Backend: full DB schema (users, categories, payment sources, subscription catalog with trigram matching, user subscriptions, FX rates, refresh tokens, notifications log, device tokens), auth (register/login/refresh/logout/password reset with JWT + rotating refresh tokens), subscription CRUD, trigram catalog matching, burn-rate dashboard, and the nightly renewal-scan job. Mobile: .NET MAUI client covering auth, subscription list/detail, dashboard, categories, payment sources, and settings, with an offline SQLite mirror.
+Backend and mobile client are both implemented and under active development. Backend: full DB schema (users, categories, payment sources, subscription catalog with trigram matching, user subscriptions, FX rates, refresh tokens, notifications log, device tokens), auth (register/login/refresh/logout/password reset with JWT + rotating refresh tokens), subscription CRUD, trigram catalog matching, burn-rate dashboard, and the nightly billing-date advance job. Mobile: .NET MAUI client covering auth, subscription list/detail, dashboard, categories, payment sources, and settings, with an offline SQLite mirror and on-device renewal reminders.
 
 ## Getting Started
 

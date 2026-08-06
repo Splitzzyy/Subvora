@@ -6,6 +6,7 @@ using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
 using SubVora.Mobile.Messages;
+using SubVora.Mobile.Notifications;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -16,6 +17,7 @@ public partial class SubscriptionListViewModel : ObservableObject
     private readonly ILocalCacheService _localCacheService;
     private readonly IUserPrompt _userPrompt;
     private readonly IMessenger _messenger;
+    private readonly IRenewalNotificationScheduler _notificationScheduler;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -34,12 +36,18 @@ public partial class SubscriptionListViewModel : ObservableObject
     /// <summary>Raised by the Add toolbar button, to navigate to the detail screen in add mode.</summary>
     public event EventHandler? AddRequested;
 
-    public SubscriptionListViewModel(ISubscriptionsApi subscriptionsApi, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger)
+    public SubscriptionListViewModel(
+        ISubscriptionsApi subscriptionsApi,
+        ILocalCacheService localCacheService,
+        IUserPrompt userPrompt,
+        IMessenger messenger,
+        IRenewalNotificationScheduler notificationScheduler)
     {
         _subscriptionsApi = subscriptionsApi;
         _localCacheService = localCacheService;
         _userPrompt = userPrompt;
         _messenger = messenger;
+        _notificationScheduler = notificationScheduler;
     }
 
     [RelayCommand]
@@ -88,6 +96,14 @@ public partial class SubscriptionListViewModel : ObservableObject
         {
             IsLoading = false;
         }
+
+        // Reschedule from whichever list won above - live or cached. This is the only place that
+        // holds the authoritative set, and it runs on every appearance of the list, so an add or
+        // edit is picked up when navigation returns here.
+        // ponytail: scheduling refreshes only when this screen loads. If reminders need to follow
+        // an edit made without visiting the list, move this behind a SubscriptionsChangedMessage
+        // subscriber that reads the local cache.
+        await _notificationScheduler.SyncAsync(Subscriptions);
     }
 
     [RelayCommand]
@@ -126,6 +142,7 @@ public partial class SubscriptionListViewModel : ObservableObject
             }
 
             _messenger.Send(new SubscriptionsChangedMessage());
+            await _notificationScheduler.SyncAsync(Subscriptions);
         }
         catch (Exception ex)
         {

@@ -1,6 +1,6 @@
 using SubVora.Domain.Enums;
 
-namespace SubVora.Application.Alerts;
+namespace SubVora.Application.Billing;
 
 /// <summary>
 /// Pure date arithmetic for rolling a passed <c>next_billing_date</c> forward - same "no EF in

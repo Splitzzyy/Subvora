@@ -6,8 +6,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 using SubVora.Api;
-using SubVora.Application.Alerts;
-using SubVora.Application.Devices;
+using SubVora.Application.Billing;
 using SubVora.Application.Notifications;
 using SubVora.Infrastructure.Notifications;
 using SubVora.Application.Auth;
@@ -18,7 +17,7 @@ using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
-using SubVora.Infrastructure.Alerts;
+using SubVora.Infrastructure.Billing;
 using SubVora.Infrastructure.Catalog;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Configuration;
@@ -69,9 +68,6 @@ builder.Services.AddScoped<IValidator<CreateCategoryRequest>, CreateCategoryRequ
 builder.Services.AddScoped<IPaymentSourceRepository, PaymentSourceRepository>();
 builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePaymentSourceRequestValidator>();
 
-builder.Services.AddScoped<IDeviceTokenRepository, DeviceTokenRepository>();
-builder.Services.AddScoped<IValidator<RegisterDeviceTokenRequest>, RegisterDeviceTokenRequestValidator>();
-
 builder.Services.AddScoped<ISubscriptionCatalogSearchRepository, SubscriptionCatalogSearchRepository>();
 builder.Services.AddScoped<ISubscriptionMatchService, SubscriptionMatchService>();
 builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscriptionRequestValidator>();
@@ -88,12 +84,10 @@ builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(clie
 });
 builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 
-builder.Services.AddSingleton<IRenewalAlertScanner, RenewalAlertScanner>();
-builder.Services.AddHttpClient<IPushNotificationSender, FcmPushNotificationSender>(client =>
-{
-    client.BaseAddress = new Uri("https://fcm.googleapis.com/");
-});
-builder.Services.AddHostedService<RenewalAlertBackgroundService>();
+// Renewal reminders are scheduled on-device by the mobile client; this only keeps
+// next_billing_date honest, which nothing on the client can do.
+builder.Services.AddSingleton<IBillingDateScanner, BillingDateScanner>();
+builder.Services.AddHostedService<BillingDateAdvanceBackgroundService>();
 
 // Adds any provider in subscription-catalog.json that the database does not have yet.
 builder.Services.AddHostedService<SubscriptionCatalogSyncService>();

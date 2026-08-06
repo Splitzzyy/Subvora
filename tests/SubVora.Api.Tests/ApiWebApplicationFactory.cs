@@ -53,12 +53,6 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<FakeEmailSender>();
             services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<FakeEmailSender>());
-
-            // RenewalAlertBackgroundService is a hosted service that resolves IPushNotificationSender
-            // eagerly at host startup - FcmPushNotificationSender would throw immediately (no real
-            // Firebase config in tests) without this swap.
-            services.RemoveAll<IPushNotificationSender>();
-            services.AddSingleton<IPushNotificationSender, FakePushNotificationSender>();
         });
     }
 
