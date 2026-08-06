@@ -180,6 +180,37 @@ public class BurnRateCalculatorTests
     }
 
     [Fact]
+    public async Task ReportsTheOldestRateItUsed_SoAStalledRefreshJobIsVisible()
+    {
+        var fresh = DateTimeOffset.UtcNow.AddHours(-2);
+        var stale = DateTimeOffset.UtcNow.AddDays(-31);
+        _fxRateService.SetRate("EUR", "USD", 1.1m, fresh);
+        _fxRateService.SetRate("GBP", "USD", 1.3m, stale);
+
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly, currency: "EUR"),
+            RecurringSubscription(30m, BillingCycleType.Monthly, currency: "GBP"),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        // A month-old rate still converts - the age is reported, not enforced.
+        Assert.Empty(result.UnresolvedSubscriptionIds);
+        Assert.Equal(stale, result.OldestRateFetchedAt);
+    }
+
+    [Fact]
+    public async Task NoConversionNeeded_LeavesTheRateAgeUnset()
+    {
+        var subscriptions = new[] { RecurringSubscription(30m, BillingCycleType.Monthly, currency: "USD") };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Null(result.OldestRateFetchedAt);
+    }
+
+    [Fact]
     public async Task GroupsMonthlySpendByCategory_ExcludingOneTimeAndTrials()
     {
         var streamingCategoryId = Guid.NewGuid();
@@ -224,15 +255,15 @@ public class BurnRateCalculatorTests
 
     private sealed class FakeFxRateService : IFxRateService
     {
-        private readonly Dictionary<(string BaseCurrency, string TargetCurrency), decimal> _rates = new();
+        private readonly Dictionary<(string BaseCurrency, string TargetCurrency), CachedFxRate> _rates = new();
 
-        public void SetRate(string baseCurrency, string targetCurrency, decimal rate) =>
-            _rates[(baseCurrency, targetCurrency)] = rate;
+        public void SetRate(string baseCurrency, string targetCurrency, decimal rate, DateTimeOffset? fetchedAt = null) =>
+            _rates[(baseCurrency, targetCurrency)] = new CachedFxRate(rate, fetchedAt ?? DateTimeOffset.UtcNow);
 
         public Task UpsertRatesAsync(IReadOnlyCollection<ExchangeRate> rates, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task<decimal?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default) =>
-            Task.FromResult(_rates.TryGetValue((baseCurrency, targetCurrency), out var rate) ? rate : (decimal?)null);
+        public Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_rates.GetValueOrDefault((baseCurrency, targetCurrency)));
     }
 }

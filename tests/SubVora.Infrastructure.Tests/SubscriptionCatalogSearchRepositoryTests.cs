@@ -64,18 +64,6 @@ public class SubscriptionCatalogSearchRepositoryTests : IClassFixture<PostgresCo
         Assert.Null(result);
     }
 
-    [Fact]
-    public async Task AddAsync_PersistsNewCatalogRowWithEmbedding()
-    {
-        var providerName = $"NewProvider-{Guid.NewGuid()}";
-
-        var id = await _repository.AddAsync(providerName, BuildVector((2, 1f)));
-
-        var reloaded = await _dbContext.SubscriptionCatalog.AsNoTracking().SingleAsync(c => c.Id == id);
-        Assert.Equal(providerName, reloaded.ProviderName);
-        Assert.NotNull(reloaded.SemanticEmbedding);
-    }
-
     private static float[] BuildVector(params (int index, float value)[] nonZeroEntries)
     {
         var values = new float[1536];

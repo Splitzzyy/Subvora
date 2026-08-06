@@ -22,6 +22,11 @@
                        FontAttributes="Italic"
                        IsVisible="{Binding IsShowingCachedData}" />
 
+                <Label Text="{Binding WarningMessage}"
+                       TextColor="OrangeRed"
+                       LineBreakMode="WordWrap"
+                       IsVisible="{Binding WarningMessage, Converter={StaticResource StringToBoolConverter}}" />
+
                 <Label Text="{Binding ErrorMessage}"
                        TextColor="Red"
                        IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />

@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Pgvector;
 using SubVora.Application.Matching;
-using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
 
 namespace SubVora.Infrastructure.Repositories;
@@ -36,19 +35,6 @@ public class SubscriptionCatalogSearchRepository : ISubscriptionCatalogSearchRep
 
         var row = rows.SingleOrDefault();
         return row is null ? null : new CatalogMatchCandidate(row.Id, row.ProviderName, row.CategoryId, row.LogoUrl, row.Distance);
-    }
-
-    public async Task<Guid> AddAsync(string providerName, float[] embedding, CancellationToken cancellationToken = default)
-    {
-        var item = new SubscriptionCatalogItem
-        {
-            ProviderName = providerName,
-            SemanticEmbedding = new Vector(embedding),
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        _dbContext.SubscriptionCatalog.Add(item);
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return item.Id;
     }
 
     public Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default) =>

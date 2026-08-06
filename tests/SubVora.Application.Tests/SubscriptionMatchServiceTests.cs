@@ -28,7 +28,6 @@ public class SubscriptionMatchServiceTests
         Assert.Equal("Netflix", result.ProviderName);
         Assert.Equal("netflix.png", result.LogoUrl);
         Assert.Equal(categoryId, result.CategoryId);
-        Assert.False(_catalogSearchRepository.AddWasCalled);
     }
 
     [Fact]
@@ -40,11 +39,10 @@ public class SubscriptionMatchServiceTests
         var result = await _service.ResolveAsync("nflx mobile plan");
 
         Assert.Equal(MatchConfidenceTier.SuggestConfirm, result.Tier);
-        Assert.False(_catalogSearchRepository.AddWasCalled);
     }
 
     [Fact]
-    public async Task SimilarityBelow070_ReturnsManual_AndCreatesNewCatalogEntry()
+    public async Task SimilarityBelow070_ReturnsManual_WithNoCatalogLink()
     {
         // distance 0.50 -> similarity 0.50, below the 0.70 floor.
         _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(Guid.NewGuid(), "SomethingElse", null, null, Distance: 0.50);
@@ -53,18 +51,33 @@ public class SubscriptionMatchServiceTests
 
         Assert.Equal(MatchConfidenceTier.Manual, result.Tier);
         Assert.Null(result.ProviderName);
-        Assert.True(_catalogSearchRepository.AddWasCalled);
+        // subscription_catalog is global and unowned - nothing the user typed may land in it.
+        Assert.Null(result.CatalogId);
     }
 
     [Fact]
-    public async Task EmptyCatalog_ReturnsManual_AndCreatesNewCatalogEntry()
+    public async Task EmptyCatalog_ReturnsManual_WithNoCatalogLink()
     {
         _catalogSearchRepository.NextCandidate = null;
 
         var result = await _service.ResolveAsync("brand new service");
 
         Assert.Equal(MatchConfidenceTier.Manual, result.Tier);
-        Assert.True(_catalogSearchRepository.AddWasCalled);
+        Assert.Null(result.CatalogId);
+    }
+
+    [Fact]
+    public async Task RepeatedUnmatchedInput_ResolvesEveryTimeWithoutColliding()
+    {
+        // The old behaviour inserted the raw input against a unique provider_name index, so the
+        // same text twice (two users, or one debounced keystroke stream) surfaced as a 500.
+        _catalogSearchRepository.NextCandidate = null;
+
+        var first = await _service.ResolveAsync("dr okonkwo therapy monthly");
+        var second = await _service.ResolveAsync("dr okonkwo therapy monthly");
+
+        Assert.Equal(MatchConfidenceTier.Manual, first.Tier);
+        Assert.Equal(MatchConfidenceTier.Manual, second.Tier);
     }
 
     private sealed class FakeEmbeddingClient : IEmbeddingClient
@@ -76,16 +89,9 @@ public class SubscriptionMatchServiceTests
     private sealed class FakeCatalogSearchRepository : ISubscriptionCatalogSearchRepository
     {
         public CatalogMatchCandidate? NextCandidate { get; set; }
-        public bool AddWasCalled { get; private set; }
 
         public Task<CatalogMatchCandidate?> FindNearestAsync(float[] embedding, CancellationToken cancellationToken = default) =>
             Task.FromResult(NextCandidate);
-
-        public Task<Guid> AddAsync(string providerName, float[] embedding, CancellationToken cancellationToken = default)
-        {
-            AddWasCalled = true;
-            return Task.FromResult(Guid.NewGuid());
-        }
 
         public Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);

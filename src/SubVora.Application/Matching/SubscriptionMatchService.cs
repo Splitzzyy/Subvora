@@ -41,10 +41,11 @@ public class SubscriptionMatchService : ISubscriptionMatchService
             }
         }
 
-        // No confident match - record this free-text input as a new catalog entry so future
-        // lookups (including retries of this same text) can match against it.
-        var newCatalogId = await _catalogSearchRepository.AddAsync(freeTextInput.Trim(), embedding, cancellationToken);
-        return new ResolveSubscriptionResponse { Tier = MatchConfidenceTier.Manual, CatalogId = newCatalogId };
+        // No confident match. subscription_catalog is global and unowned, so writing the raw input
+        // here would publish one user's typing ("alimony - Sarah") to every other user's fuzzy
+        // match. Manual means "no catalog link" - user_subscriptions.catalog_id is nullable and the
+        // client already saves the free-text name on its own.
+        return new ResolveSubscriptionResponse { Tier = MatchConfidenceTier.Manual };
     }
 
     private static ResolveSubscriptionResponse ToResponse(MatchConfidenceTier tier, CatalogMatchCandidate candidate) => new()

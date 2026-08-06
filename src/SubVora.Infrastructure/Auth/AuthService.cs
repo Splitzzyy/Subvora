@@ -177,7 +177,12 @@ public class AuthService : IAuthService
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
         resetCode.UsedAt = DateTimeOffset.UtcNow;
-        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // A reset is what someone does when they believe the account is compromised, so it has to
+        // evict whoever is already in - refresh tokens live 30 days and would otherwise keep
+        // minting access tokens off the old password. Saves the password change in the same call.
+        // Any future change-password endpoint owes the user the same revocation.
+        await RevokeAllActiveTokensForUserAsync(user.Id, cancellationToken);
 
         return ResetPasswordResult.Success();
     }
