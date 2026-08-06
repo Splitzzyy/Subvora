@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -10,12 +11,14 @@ public class SubscriptionDetailViewModelTests
         FakeSubscriptionsApi? subscriptionsApi = null,
         FakeCategoriesApi? categoriesApi = null,
         FakePaymentSourcesApi? paymentSourcesApi = null,
-        FakeDebouncer? debouncer = null) =>
+        FakeDebouncer? debouncer = null,
+        IMessenger? messenger = null) =>
         new(
             subscriptionsApi ?? new FakeSubscriptionsApi(),
             categoriesApi ?? new FakeCategoriesApi(),
             paymentSourcesApi ?? new FakePaymentSourcesApi(),
-            debouncer ?? new FakeDebouncer());
+            debouncer ?? new FakeDebouncer(),
+            messenger ?? new WeakReferenceMessenger());
 
     [Fact]
     public async Task LoadPickersAsync_PopulatesCategoriesAndPaymentSourcesFromApis()

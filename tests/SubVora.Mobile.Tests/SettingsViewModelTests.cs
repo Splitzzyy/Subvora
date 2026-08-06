@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Messaging;
 using System.Net;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
@@ -13,13 +14,15 @@ public class SettingsViewModelTests
         FakeAuthApi? authApi = null,
         FakeTokenStore? tokenStore = null,
         FakeLocalCacheService? cache = null,
-        FakeUserPrompt? userPrompt = null) =>
+        FakeUserPrompt? userPrompt = null,
+        IMessenger? messenger = null) =>
         new(
             usersApi ?? new FakeUsersApi(),
             authApi ?? new FakeAuthApi(),
             tokenStore ?? new FakeTokenStore(),
             cache ?? new FakeLocalCacheService(),
-            userPrompt ?? new FakeUserPrompt());
+            userPrompt ?? new FakeUserPrompt(),
+            messenger ?? new WeakReferenceMessenger());
 
     [Fact]
     public async Task LoadAsync_PopulatesPreferredCurrencyAndDefaultAlertDaysAdvance()

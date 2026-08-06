@@ -1,7 +1,9 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
+using SubVora.Mobile.Messages;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
 using SubVora.Mobile.Services;
@@ -16,19 +18,33 @@ public partial class DashboardViewModel : ObservableObject
     private readonly ILocalCacheService _localCacheService;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Summary))]
     public partial decimal Weekly { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Summary))]
     public partial decimal Monthly { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Summary))]
     public partial decimal Yearly { get; set; }
 
     [ObservableProperty]
     public partial decimal OneTimeThisYear { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Summary))]
     public partial string HomeCurrency { get; set; } = string.Empty;
+
+    /// <summary>
+    /// One-line form of the same figures for the app-wide banner, e.g.
+    /// "USD 3.73/wk | 15.99/mo | 194.54/yr". Empty until a load succeeds, which is also what hides
+    /// the banner: there is no separate visibility flag to keep in sync, and a signed-out user has
+    /// nothing to show.
+    /// </summary>
+    public string Summary => string.IsNullOrEmpty(HomeCurrency)
+        ? string.Empty
+        : $"{HomeCurrency} {Weekly:N2}/wk | {Monthly:N2}/mo | {Yearly:N2}/yr";
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -48,10 +64,32 @@ public partial class DashboardViewModel : ObservableObject
 
     public ObservableCollection<CategoryBreakdownItem> ByCategory { get; } = [];
 
-    public DashboardViewModel(IDashboardApi dashboardApi, ILocalCacheService localCacheService)
+    public DashboardViewModel(IDashboardApi dashboardApi, ILocalCacheService localCacheService, IMessenger messenger)
     {
         _dashboardApi = dashboardApi;
         _localCacheService = localCacheService;
+
+        // Registered for the lifetime of this view model. It is a singleton (see MauiProgram) so
+        // the banner and the dashboard page always read the same numbers from one fetch.
+        messenger.Register<SubscriptionsChangedMessage>(this, (_, _) => LoadCommand.Execute(null));
+        messenger.Register<SessionEndedMessage>(this, (_, _) => Clear());
+    }
+
+    /// <summary>
+    /// Drops the figures so the banner cannot outlive the session that produced them - a signed-out
+    /// or expired user must not still see their spend on the login screen.
+    /// </summary>
+    public void Clear()
+    {
+        Weekly = 0;
+        Monthly = 0;
+        Yearly = 0;
+        OneTimeThisYear = 0;
+        HomeCurrency = string.Empty;
+        WarningMessage = null;
+        ErrorMessage = null;
+        IsShowingCachedData = false;
+        ByCategory.Clear();
     }
 
     [RelayCommand]

@@ -1,8 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Refit;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -14,6 +16,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ITokenStore _tokenStore;
     private readonly ILocalCacheService _localCacheService;
     private readonly IUserPrompt _userPrompt;
+    private readonly IMessenger _messenger;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -33,13 +36,14 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised after sign-out completes so the view can navigate back to Login.</summary>
     public event EventHandler? SignedOut;
 
-    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt)
+    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger)
     {
         _usersApi = usersApi;
         _authApi = authApi;
         _tokenStore = tokenStore;
         _localCacheService = localCacheService;
         _userPrompt = userPrompt;
+        _messenger = messenger;
     }
 
     [RelayCommand]
@@ -77,6 +81,10 @@ public partial class SettingsViewModel : ObservableObject
             });
             PreferredCurrency = profile.PreferredCurrency;
             DefaultAlertDaysAdvance = profile.DefaultAlertDaysAdvance;
+
+            // The home currency is what every burn-rate figure is converted into, so changing it
+            // moves the headline numbers without a single subscription being touched.
+            _messenger.Send(new SubscriptionsChangedMessage());
         }
         catch (ApiException ex)
         {
@@ -113,6 +121,7 @@ public partial class SettingsViewModel : ObservableObject
         await _tokenStore.ClearAsync();
         await _localCacheService.ClearAllAsync();
 
+        _messenger.Send(new SessionEndedMessage());
         SignedOut?.Invoke(this, EventArgs.Empty);
     }
 }

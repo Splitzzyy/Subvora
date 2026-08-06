@@ -1,4 +1,5 @@
 ﻿using SubVora.Mobile.Api.Dtos;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Models;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -25,8 +26,13 @@ public class SubscriptionListViewModelTests
     private static SubscriptionListViewModel CreateViewModel(
         FakeSubscriptionsApi? api = null,
         FakeLocalCacheService? cache = null,
-        FakeUserPrompt? userPrompt = null) =>
-        new(api ?? new FakeSubscriptionsApi(), cache ?? new FakeLocalCacheService(), userPrompt ?? new FakeUserPrompt());
+        FakeUserPrompt? userPrompt = null,
+        IMessenger? messenger = null) =>
+        new(
+            api ?? new FakeSubscriptionsApi(),
+            cache ?? new FakeLocalCacheService(),
+            userPrompt ?? new FakeUserPrompt(),
+            messenger ?? new WeakReferenceMessenger());
 
     [Fact]
     public async Task LoadAsync_PreservesLogoUrlAndFreeTrialFlagForTheItemTemplate()
