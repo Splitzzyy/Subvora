@@ -6,8 +6,9 @@ namespace SubVora.Application.Dashboard;
 
 /// <summary>
 /// In-memory aggregation over already-fetched subscriptions, converting each one's native-currency
-/// cost to the caller's home currency via cached <see cref="IFxRateService"/> rates before summing -
-/// never a live API call, and never a mutation of the subscription's stored currency/amount.
+/// cost to the caller's home currency via <see cref="IFxRateService"/> before summing - reads cached
+/// rates, and never a mutation of the subscription's stored currency/amount. (A pair with no cached
+/// rate is fetched once behind the interface; see IFxRateService.GetRateAsync.)
 /// </summary>
 public class BurnRateCalculator : IBurnRateCalculator
 {

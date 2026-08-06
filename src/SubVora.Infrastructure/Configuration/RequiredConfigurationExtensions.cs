@@ -20,4 +20,23 @@ public static class RequiredConfigurationExtensions
     /// <summary>Connection-string flavour of <see cref="GetRequired"/>, since GetConnectionString reads from the ConnectionStrings section.</summary>
     public static string GetRequiredConnectionString(this IConfiguration configuration, string name) =>
         configuration.GetRequired($"ConnectionStrings:{name}");
+
+    /// <summary>HMAC-SHA256 needs a key of at least 256 bits.</summary>
+    private const int MinimumJwtSecretBytes = 32;
+
+    /// <summary>
+    /// <see cref="GetRequired"/> plus a length check. A secret too short to sign with - "dev", or a
+    /// truncated copy-paste - otherwise starts the API cleanly and throws IDX10653 on the first
+    /// login. A key too weak to use should stop the process, alongside a missing one.
+    /// </summary>
+    public static string GetRequiredJwtSecret(this IConfiguration configuration)
+    {
+        var secret = configuration.GetRequired("Jwt:Secret");
+
+        return System.Text.Encoding.UTF8.GetByteCount(secret) >= MinimumJwtSecretBytes
+            ? secret
+            : throw new InvalidOperationException(
+                $"Jwt:Secret is too short to sign with: HMAC-SHA256 requires at least {MinimumJwtSecretBytes} bytes. " +
+                "Generate one with: openssl rand -base64 48");
+    }
 }

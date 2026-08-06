@@ -5,6 +5,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SubVora.Application.Alerts;
 using SubVora.Application.Notifications;
+using SubVora.Application.Scheduling;
 using SubVora.Domain.Entities;
 using SubVora.Domain.Enums;
 using SubVora.Infrastructure.Data;
@@ -30,25 +31,7 @@ public class RenewalAlertBackgroundService : BackgroundService
         _scopeFactory = scopeFactory;
         _scanner = scanner;
         _logger = logger;
-        // int.TryParse rather than GetValue<int?>, which lives in a Binder package this project
-        // doesn't reference. An absent or nonsense value falls back rather than failing startup:
-        // a mistyped scan hour should not take the API down.
-        _scanUtcHour = int.TryParse(configuration["RenewalScan:UtcHour"], out var configuredHour) && configuredHour is >= 0 and <= 23
-            ? configuredHour
-            : DefaultScanUtcHour;
-    }
-
-    /// <summary>
-    /// Time from <paramref name="now"/> until the next occurrence of <paramref name="utcHour"/>.
-    /// Pure and public so the schedule can be tested without waiting on real time.
-    /// </summary>
-    public static TimeSpan DelayUntilNextRun(DateTimeOffset now, int utcHour)
-    {
-        var today = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero).AddHours(utcHour);
-
-        // Strictly-later, so a pass that finishes inside its own scheduled hour waits for tomorrow
-        // rather than spinning through the rest of the hour re-scanning.
-        return (today > now ? today : today.AddDays(1)) - now;
+        _scanUtcHour = DailyUtcSchedule.ReadUtcHour(configuration["RenewalScan:UtcHour"], DefaultScanUtcHour);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -66,12 +49,10 @@ public class RenewalAlertBackgroundService : BackgroundService
 
             try
             {
-                // Fixed UTC hour rather than "24h after process start": a midday deploy used to move
-                // every user's alerts to midday, and a restart slightly under 24h later could skip a
-                // calendar day outright. The scan on startup below is kept deliberately - it is a
-                // catch-up for exactly that skipped-day case, and it is safe because notifications_log
-                // makes a repeat scan for the same day a no-op.
-                await Task.Delay(DelayUntilNextRun(DateTimeOffset.UtcNow, _scanUtcHour), stoppingToken);
+                // The scan on startup above is kept deliberately - it is a catch-up for the
+                // skipped-day case a drifting schedule used to cause, and it is safe because
+                // notifications_log makes a repeat scan for the same day a no-op.
+                await Task.Delay(DailyUtcSchedule.DelayUntilNextRun(DateTimeOffset.UtcNow, _scanUtcHour), stoppingToken);
             }
             catch (OperationCanceledException)
             {
