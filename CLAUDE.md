@@ -78,7 +78,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 - **Currency conversion is a read-time projection, not a write-time mutation.** Store each subscription's original `currency` + `cost_amount` unchanged; convert to the user's home currency only when computing dashboard/burn-rate totals. Never overwrite stored amounts with converted values.
 - **Burn-rate math is server-side.** Normalize every active subscription to a daily rate (`cost / cycle_days`), sum, then project to weekly/monthly/yearly. Keep this logic in the API, not duplicated in the mobile client.
 - **Provider matching is one SQL query, not a service call.** Scoring is `greatest(word_similarity(input, name), word_similarity(name, input))` — both directions are load-bearing. Thresholds are measured, not guessed; `SubscriptionCatalogTrigramMatchTests` pins them.
-- **Background renewal-scan job must be idempotent.** Guard against duplicate push notifications (track sent alerts, e.g. via a `notifications_log` table) when adding or touching the reminder job.
+- **Renewal reminders are scheduled on-device, not pushed.** `RenewalNotificationPlanner` derives them from the subscription list; the OS delivers them with the app closed. There is no push service, no device-token table and no vendor project. The server's only related job is `BillingDateAdvanceBackgroundService`, which rolls passed `next_billing_date` values forward — it must stay idempotent, and it is, because a second pass finds nothing left in the past.
 - **`billing_cycle_type`** is a fixed enum: `Weekly`, `Monthly`, `Yearly`, `OneTime`. Extend deliberately, not ad hoc.
 
 ## Conventions

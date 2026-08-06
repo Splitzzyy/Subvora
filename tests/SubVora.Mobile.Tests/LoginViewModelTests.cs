@@ -11,7 +11,7 @@ public class LoginViewModelTests
     {
         var authApi = new FakeAuthApi();
         var tokenStore = new FakeTokenStore();
-        var viewModel = new LoginViewModel(authApi, tokenStore, new FakeDevicesApi(), new FakePushTokenProvider())
+        var viewModel = new LoginViewModel(authApi, tokenStore, new FakeRenewalNotificationScheduler())
         {
             Email = "user@example.com",
             Password = "correct-horse-battery-staple",
@@ -39,7 +39,7 @@ public class LoginViewModelTests
                 validationErrorJson: """{"errors":{"Email":["'Email' is not a valid email address."]}}""")),
         };
         var tokenStore = new FakeTokenStore();
-        var viewModel = new LoginViewModel(authApi, tokenStore, new FakeDevicesApi(), new FakePushTokenProvider())
+        var viewModel = new LoginViewModel(authApi, tokenStore, new FakeRenewalNotificationScheduler())
         {
             Email = "not-an-email",
             Password = "x",
@@ -63,7 +63,7 @@ public class LoginViewModelTests
             LoginHandler = _ => Task.FromResult(FakeAuthApi.CreateResponse(HttpStatusCode.Unauthorized, content: null)),
         };
         var tokenStore = new FakeTokenStore();
-        var viewModel = new LoginViewModel(authApi, tokenStore, new FakeDevicesApi(), new FakePushTokenProvider())
+        var viewModel = new LoginViewModel(authApi, tokenStore, new FakeRenewalNotificationScheduler())
         {
             Email = "user@example.com",
             Password = "wrong-password",
@@ -82,15 +82,12 @@ public class LoginViewModelTests
     }
 
     [Fact]
-    public async Task LoginAsync_OnSuccess_RegistersThePushTokenWithItsPlatform()
+    public async Task LoginAsync_OnSuccess_AsksForNotificationPermission()
     {
-        var devicesApi = new FakeDevicesApi();
-        var pushTokenProvider = new FakePushTokenProvider
-        {
-            Platform = "iOS",
-            GetTokenHandler = () => Task.FromResult<string?>("apns-backed-fcm-token"),
-        };
-        var viewModel = new LoginViewModel(new FakeAuthApi(), new FakeTokenStore(), devicesApi, pushTokenProvider)
+        // Asked here rather than on cold start: the user has just signed in, so "we can remind you
+        // before a charge lands" is obvious in a way it is not on a launch screen.
+        var scheduler = new FakeRenewalNotificationScheduler();
+        var viewModel = new LoginViewModel(new FakeAuthApi(), new FakeTokenStore(), scheduler)
         {
             Email = "user@example.com",
             Password = "correct-horse-battery-staple",
@@ -98,67 +95,15 @@ public class LoginViewModelTests
 
         await viewModel.LoginCommand.ExecuteAsync(null);
 
-        var call = Assert.Single(devicesApi.RegisterCalls);
-        Assert.Equal("apns-backed-fcm-token", call.Token);
-        Assert.Equal("iOS", call.Platform);
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("   ")]
-    public async Task LoginAsync_WithNoPushToken_RegistersNothingAndStillSucceeds(string? token)
-    {
-        var devicesApi = new FakeDevicesApi();
-        var pushTokenProvider = new FakePushTokenProvider { GetTokenHandler = () => Task.FromResult(token) };
-        var viewModel = new LoginViewModel(new FakeAuthApi(), new FakeTokenStore(), devicesApi, pushTokenProvider)
-        {
-            Email = "user@example.com",
-            Password = "correct-horse-battery-staple",
-        };
-
-        var raised = false;
-        viewModel.LoginSucceeded += (_, _) => raised = true;
-
-        await viewModel.LoginCommand.ExecuteAsync(null);
-
-        Assert.Empty(devicesApi.RegisterCalls);
-        Assert.True(raised);
-        Assert.Null(viewModel.ErrorMessage);
-        Assert.False(viewModel.IsBusy);
+        Assert.Equal(1, scheduler.PermissionRequests);
     }
 
     [Fact]
-    public async Task LoginAsync_WhenPushRegistrationFails_DoesNotFailTheLogin()
+    public async Task LoginAsync_WhenPermissionIsDeclined_StillCompletesTheLogin()
     {
-        var devicesApi = new FakeDevicesApi
-        {
-            RegisterHandler = _ => throw new HttpRequestException("device registration is down"),
-        };
-        var viewModel = new LoginViewModel(new FakeAuthApi(), new FakeTokenStore(), devicesApi, new FakePushTokenProvider())
-        {
-            Email = "user@example.com",
-            Password = "correct-horse-battery-staple",
-        };
-
-        var raised = false;
-        viewModel.LoginSucceeded += (_, _) => raised = true;
-
-        await viewModel.LoginCommand.ExecuteAsync(null);
-
-        Assert.True(raised);
-        Assert.Null(viewModel.ErrorMessage);
-        Assert.False(viewModel.IsBusy);
-    }
-
-    [Fact]
-    public async Task LoginAsync_WhenTheTokenProviderThrows_DoesNotFailTheLogin()
-    {
-        var pushTokenProvider = new FakePushTokenProvider
-        {
-            GetTokenHandler = () => throw new InvalidOperationException("messaging SDK not initialised"),
-        };
-        var viewModel = new LoginViewModel(new FakeAuthApi(), new FakeTokenStore(), new FakeDevicesApi(), pushTokenProvider)
+        // The app is fully usable without reminders, so a refusal must not read as a failed login.
+        var scheduler = new FakeRenewalNotificationScheduler { PermissionGranted = false };
+        var viewModel = new LoginViewModel(new FakeAuthApi(), new FakeTokenStore(), scheduler)
         {
             Email = "user@example.com",
             Password = "correct-horse-battery-staple",

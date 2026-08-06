@@ -1,4 +1,4 @@
-using SubVora.Application.Alerts;
+using SubVora.Application.Billing;
 using SubVora.Domain.Enums;
 
 namespace SubVora.Application.Tests;

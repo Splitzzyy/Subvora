@@ -27,12 +27,14 @@ public class SubscriptionListViewModelTests
         FakeSubscriptionsApi? api = null,
         FakeLocalCacheService? cache = null,
         FakeUserPrompt? userPrompt = null,
-        IMessenger? messenger = null) =>
+        IMessenger? messenger = null,
+        FakeRenewalNotificationScheduler? notificationScheduler = null) =>
         new(
             api ?? new FakeSubscriptionsApi(),
             cache ?? new FakeLocalCacheService(),
             userPrompt ?? new FakeUserPrompt(),
-            messenger ?? new WeakReferenceMessenger());
+            messenger ?? new WeakReferenceMessenger(),
+            notificationScheduler ?? new FakeRenewalNotificationScheduler());
 
     [Fact]
     public async Task LoadAsync_PreservesLogoUrlAndFreeTrialFlagForTheItemTemplate()
@@ -180,5 +182,60 @@ public class SubscriptionListViewModelTests
 
         Assert.Single(viewModel.Subscriptions);
         Assert.NotNull(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ReschedulesRemindersFromTheLoadedList()
+    {
+        var api = new FakeSubscriptionsApi
+        {
+            GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>([SampleSubscription("Netflix")]),
+        };
+        var scheduler = new FakeRenewalNotificationScheduler();
+        var viewModel = CreateViewModel(api, notificationScheduler: scheduler);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        var scheduled = Assert.Single(scheduler.SyncCalls);
+        Assert.Equal("Netflix", Assert.Single(scheduled).CustomName);
+    }
+
+    [Fact]
+    public async Task LoadAsync_FallingBackToCache_StillSchedulesFromTheCachedList()
+    {
+        // Offline is exactly when reminders matter most - the schedule must not go empty because
+        // the network did.
+        var cache = new FakeLocalCacheService();
+        await cache.UpsertAsync(CachedSubscription.FromDto(SampleSubscription("Spotify")));
+        var api = new FakeSubscriptionsApi { GetAllHandler = () => throw new HttpRequestException("offline") };
+        var scheduler = new FakeRenewalNotificationScheduler();
+        var viewModel = CreateViewModel(api, cache, notificationScheduler: scheduler);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsShowingCachedData);
+        var scheduled = Assert.Single(scheduler.SyncCalls);
+        Assert.Equal("Spotify", Assert.Single(scheduled).CustomName);
+    }
+
+    [Fact]
+    public async Task DeleteSubscriptionAsync_ReschedulesWithoutTheDeletedSubscription()
+    {
+        var api = new FakeSubscriptionsApi
+        {
+            GetAllHandler = () => Task.FromResult<IReadOnlyList<SubscriptionDto>>(
+                [SampleSubscription("Netflix"), SampleSubscription("Spotify")]),
+        };
+        var scheduler = new FakeRenewalNotificationScheduler();
+        var viewModel = CreateViewModel(api, userPrompt: new FakeUserPrompt { ConfirmResult = true }, notificationScheduler: scheduler);
+        await viewModel.LoadCommand.ExecuteAsync(null);
+        var doomed = viewModel.Subscriptions.Single(s => s.CustomName == "Netflix").Id;
+
+        await viewModel.DeleteSubscriptionCommand.ExecuteAsync(doomed);
+
+        // A cancelled subscription must stop reminding, which only happens if the delete path
+        // reschedules rather than leaving the previous set pending.
+        Assert.Equal(2, scheduler.SyncCalls.Count);
+        Assert.Equal("Spotify", Assert.Single(scheduler.SyncCalls[^1]).CustomName);
     }
 }

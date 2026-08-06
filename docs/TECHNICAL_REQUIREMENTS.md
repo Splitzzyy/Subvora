@@ -45,7 +45,7 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 | ORM | Entity Framework Core + `Npgsql.EntityFrameworkCore.PostgreSQL` | |
 | Database | PostgreSQL 16+ with `pg_trgm` extension | Relational data + fuzzy provider matching in one store |
 | Provider matching | PostgreSQL `pg_trgm` trigram similarity | No AI provider, no API key, no network hop; see §8 |
-| Push notifications | FCM (Android), APNs (iOS) via a unified `INotificationService` abstraction | Triggered by backend background job |
+| Renewal reminders | Local notifications scheduled on-device by the MAUI client | No push service, no vendor project, no API key; see §6 |
 | Background jobs | `.NET BackgroundService` / Hosted Service (or Hangfire/Quartz.NET if scale requires) | Nightly scan for upcoming renewals |
 | Currency conversion | External FX rate API (e.g. exchangerate.host, Open Exchange Rates) cached in DB | Refresh rates on a schedule, not per-request |
 | Auth | JWT bearer tokens, refresh token rotation | ASP.NET Identity or custom user store |
@@ -71,7 +71,6 @@ See full DDL in [Design.md](./Design.md#-database-schema-blueprint). Key tables:
 - `subscription_catalog` — canonical provider list with `logo_url`, `standard_category`. Matched on `provider_name` via `pg_trgm`.
 - `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
 - `fx_rates` (to be added) — `base_currency`, `target_currency`, `rate`, `fetched_at` — cached exchange rates for burn-rate conversion.
-- `notifications_log` (to be added) — tracks sent alerts to prevent duplicate pushes.
 
 Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigram index — the catalog is ~54 rows, where a sequential scan is microseconds; add a GiST `gist_trgm_ops` index past a few thousand.
 
@@ -81,7 +80,7 @@ Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigra
 2. **Category** — derived from `subscription_catalog.standard_category` when matched; user can override per-subscription.
 3. **Billing type** — `billing_cycle_type` enum (`Weekly`, `Monthly`, `Yearly`, `OneTime`) drives both burn-rate math and next-billing-date calculation.
 4. **Purchase / expiry dates** — `purchase_date` + `cycle_cadence` used to compute `next_billing_date`; recalculated on each renewal via background job.
-5. **Alert preferences** — `alert_days_advance` (int, user-configurable per subscription or global default); background job queries subscriptions where `next_billing_date - alert_days_advance = today` and enqueues push notification.
+5. **Alert preferences** — `alert_days_advance` (int, user-configurable per subscription or global default). The mobile client schedules one local notification per active subscription at `next_billing_date - alert_days_advance`, re-derived whenever the subscription list loads. The OS delivers it with the app closed, so no server-side send path exists. iOS holds at most 64 pending notifications, so the nearest dates win. The server's only job here is rolling passed billing dates forward (`BillingDateAdvanceBackgroundService`), which the client cannot do.
 6. **Deduction source** — free-text field (`deduction_source`) initially; optionally normalized into a `payment_sources` lookup table later.
 7. **Burn Rate Calculator** — server-side aggregation endpoint normalizes every active subscription's cost into a common daily rate `(cost / cycle_days)`, sums, then projects `daily_rate * 7`, `* 30`, `* 365`. All amounts converted to home currency before summing (see §7).
 8. **Multi-Currency Uniformity** — every subscription stores its own `currency`; conversion to `preferred_currency` happens at query/display time using cached FX rates, never mutates stored amounts.

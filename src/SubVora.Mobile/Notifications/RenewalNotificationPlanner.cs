@@ -1,0 +1,63 @@
+using SubVora.Mobile.Api.Dtos;
+
+namespace SubVora.Mobile.Notifications;
+
+/// <summary>
+/// Turns the subscription list into the set of reminders the OS should hold. Pure - no platform, no
+/// clock of its own - so the rules that decide whether a user is reminded are unit-testable, which
+/// the platform scheduling call around it is not.
+/// </summary>
+public static class RenewalNotificationPlanner
+{
+    /// <summary>
+    /// iOS keeps at most 64 pending local notifications per app and silently drops the rest, so the
+    /// cap is enforced here rather than discovered on a device. One reminder per subscription means
+    /// this only bites past 64 tracked subscriptions, and the nearest dates are the ones kept.
+    /// </summary>
+    public const int MaxPendingNotifications = 64;
+
+    /// <summary>Late enough to be awake, early enough to act before a charge lands during the day.</summary>
+    private static readonly TimeOnly NotifyAtTimeOfDay = new(9, 0);
+
+    public static IReadOnlyList<PlannedRenewalNotification> Plan(IEnumerable<SubscriptionDto> subscriptions, DateTime nowLocal)
+    {
+        return subscriptions
+            .Where(subscription => subscription.IsActive)
+            .Select(subscription => new
+            {
+                Subscription = subscription,
+                // alert_days_advance is the user's lead time - the same number the server used to
+                // scan with, applied here instead.
+                NotifyAt = subscription.NextBillingDate
+                    .AddDays(-subscription.AlertDaysAdvance)
+                    .ToDateTime(NotifyAtTimeOfDay),
+            })
+            // A reminder in the past is one the OS would either fire immediately or reject. Both are
+            // wrong: the charge has already happened or is happening today.
+            .Where(item => item.NotifyAt > nowLocal)
+            .OrderBy(item => item.NotifyAt)
+            .ThenBy(item => item.Subscription.CustomName, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxPendingNotifications)
+            .Select((item, index) => new PlannedRenewalNotification(
+                Id: index + 1,
+                Title: "Subscription renewing soon",
+                Body: BuildBody(item.Subscription),
+                NotifyAt: item.NotifyAt))
+            .ToList();
+    }
+
+    private static string BuildBody(SubscriptionDto subscription)
+    {
+        var days = subscription.AlertDaysAdvance;
+        var when = days switch
+        {
+            <= 0 => "renews today",
+            1 => "renews tomorrow",
+            _ => $"renews in {days} days",
+        };
+
+        // The amount is the point of the reminder - "Netflix renews in 3 days" is a fact,
+        // "Netflix renews in 3 days - 15.99 USD" is a decision.
+        return $"{subscription.CustomName} {when} - {subscription.CostAmount:N2} {subscription.Currency}";
+    }
+}

@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Notifications;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -11,8 +12,7 @@ public partial class LoginViewModel : ObservableObject
 {
     private readonly IAuthApi _authApi;
     private readonly ITokenStore _tokenStore;
-    private readonly IDevicesApi _devicesApi;
-    private readonly IPushTokenProvider _pushTokenProvider;
+    private readonly IRenewalNotificationScheduler _notificationScheduler;
 
     [ObservableProperty]
     public partial string Email { get; set; } = string.Empty;
@@ -28,12 +28,11 @@ public partial class LoginViewModel : ObservableObject
 
     public event EventHandler? LoginSucceeded;
 
-    public LoginViewModel(IAuthApi authApi, ITokenStore tokenStore, IDevicesApi devicesApi, IPushTokenProvider pushTokenProvider)
+    public LoginViewModel(IAuthApi authApi, ITokenStore tokenStore, IRenewalNotificationScheduler notificationScheduler)
     {
         _authApi = authApi;
         _tokenStore = tokenStore;
-        _devicesApi = devicesApi;
-        _pushTokenProvider = pushTokenProvider;
+        _notificationScheduler = notificationScheduler;
     }
 
     [RelayCommand]
@@ -50,9 +49,10 @@ public partial class LoginViewModel : ObservableObject
                 await _tokenStore.SaveTokensAsync(response.Content);
                 LoginSucceeded?.Invoke(this, EventArgs.Empty);
 
-                // Deliberately after the navigation event: push registration is best-effort and
-                // must never delay or fail the login.
-                await RegisterPushTokenAsync();
+                // Deliberately after the navigation event, and asked here rather than on cold
+                // start: the user has just signed in, so "we can remind you before a charge
+                // lands" is obvious in a way it is not on a launch screen (user story 4).
+                await _notificationScheduler.RequestPermissionAsync();
                 return;
             }
 
@@ -65,33 +65,6 @@ public partial class LoginViewModel : ObservableObject
         finally
         {
             IsBusy = false;
-        }
-    }
-
-    /// <summary>
-    /// Registers this device's push token against the freshly authenticated user. Every failure
-    /// is swallowed: a user who cannot receive notifications must still be able to use the app,
-    /// and the backend upsert on (user_id, token) makes repeat calls harmless.
-    /// </summary>
-    private async Task RegisterPushTokenAsync()
-    {
-        try
-        {
-            var token = await _pushTokenProvider.GetTokenAsync();
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                return;
-            }
-
-            await _devicesApi.RegisterAsync(new RegisterDeviceTokenRequest
-            {
-                Token = token,
-                Platform = _pushTokenProvider.Platform,
-            });
-        }
-        catch (Exception)
-        {
-            // Intentionally ignored - see the summary above.
         }
     }
 }
