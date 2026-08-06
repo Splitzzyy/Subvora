@@ -18,8 +18,6 @@ public class SubscriptionCatalogItemConfiguration : IEntityTypeConfiguration<Sub
 
         builder.Property(s => s.LogoUrl).HasMaxLength(512);
 
-        builder.Property(s => s.SemanticEmbedding).HasColumnType("vector(1536)");
-
         builder.Property(s => s.CreatedAt).HasDefaultValueSql("now()");
 
         builder.HasOne<Category>()

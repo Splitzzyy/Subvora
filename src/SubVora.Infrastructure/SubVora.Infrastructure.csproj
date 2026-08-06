@@ -14,8 +14,11 @@
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- Compile-time only. Nothing in the running app uses pgvector any more - catalog matching
+         moved to pg_trgm in ReplaceCatalogEmbeddingWithTrigram - but the migrations that created
+         and carried the vector(1536) column still name the Vector type, and rewriting applied
+         migration history to delete a reference is worse than keeping one unused package. -->
     <PackageReference Include="Pgvector" Version="0.3.2" />
-    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
 

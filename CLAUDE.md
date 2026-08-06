@@ -49,7 +49,7 @@ dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj -c Release   
 
 Building `SubVora.slnx` as a whole additionally needs the Android SDK installed (`SubVora.Mobile` targets `net10.0-android`), so build the API project directly unless you are working on mobile. Test each project directly too: on Linux `SubVora.Mobile` only exposes `net10.0-android` (its ios/maccatalyst/windows TFMs are conditioned out), so `SubVora.Mobile.Tests` — which targets `net10.0-windows` unconditionally — can never resolve its `ProjectReference` there. `.github/workflows/ci.yml` splits accordingly: the first three projects on `ubuntu-latest`, the mobile tests on `windows-latest`.
 
-`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` spin up a real `pgvector/pgvector:pg16` container per test class via Testcontainers — Docker must be running. `SubVora.Application.Tests` and `SubVora.Mobile.Tests` need nothing.
+`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` spin up a real `pgvector/pgvector:pg16` container per test class via Testcontainers (stock Postgres 16 plus an extension the app no longer uses — kept so existing dev volumes keep working) — Docker must be running. `SubVora.Application.Tests` and `SubVora.Mobile.Tests` need nothing.
 
 Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructure --startup-project src/SubVora.Infrastructure` (the Infrastructure project is its own startup project via `AppDbContextFactory`; `SubVora.Api` does not reference `Microsoft.EntityFrameworkCore.Design`).
 
@@ -57,14 +57,14 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 - **Mobile:** .NET MAUI, single C# codebase for Android + iOS, local SQLite cache for offline support
 - **Backend:** ASP.NET Core Web API, JWT auth, EF Core + Npgsql. `docs/TECHNICAL_REQUIREMENTS.md` §3 says ".NET 8 LTS"; every `.csproj` actually targets `net10.0` — follow the code.
-- **Database:** PostgreSQL + `pgvector` — relational subscription data alongside vector embeddings for semantic matching
-- **AI:** OpenAI embeddings/LLM, called **server-side only** — API keys must never ship in the mobile client
+- **Database:** PostgreSQL + `pg_trgm` — relational subscription data plus trigram similarity for provider matching
+- **Provider matching:** in-database trigram similarity. There is no AI provider and no API key — see `docs/TECHNICAL_REQUIREMENTS.md` §8 for the scoring and the known gap (rebrands/semantic input fall through to manual entry)
 
 ## Architectural Rules to Preserve
 
 - **Currency conversion is a read-time projection, not a write-time mutation.** Store each subscription's original `currency` + `cost_amount` unchanged; convert to the user's home currency only when computing dashboard/burn-rate totals. Never overwrite stored amounts with converted values.
 - **Burn-rate math is server-side.** Normalize every active subscription to a daily rate (`cost / cycle_days`), sum, then project to weekly/monthly/yearly. Keep this logic in the API, not duplicated in the mobile client.
-- **AI/embedding calls happen only in the backend.** The mobile client never calls OpenAI directly.
+- **Provider matching is one SQL query, not a service call.** Scoring is `greatest(word_similarity(input, name), word_similarity(name, input))` — both directions are load-bearing. Thresholds are measured, not guessed; `SubscriptionCatalogTrigramMatchTests` pins them.
 - **Background renewal-scan job must be idempotent.** Guard against duplicate push notifications (track sent alerts, e.g. via a `notifications_log` table) when adding or touching the reminder job.
 - **`billing_cycle_type`** is a fixed enum: `Weekly`, `Monthly`, `Yearly`, `OneTime`. Extend deliberately, not ad hoc.
 
@@ -79,7 +79,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 1. Check `docs/TECHNICAL_REQUIREMENTS.md` §6 for the specific feature's data model and behavior before writing code.
 2. Match the DDL in `docs/Design.md` unless there's a reason to deviate — if you do deviate, update `docs/Design.md` in the same change.
-3. Keep secrets (OpenAI key, DB connection string, JWT signing key) out of source control — use user-secrets/environment config locally, a managed vault in deployed environments.
+3. Keep secrets (DB connection string, JWT signing key) out of source control — use user-secrets/environment config locally, a managed vault in deployed environments.
 
 ## Secret Scanning (hard stop)
 

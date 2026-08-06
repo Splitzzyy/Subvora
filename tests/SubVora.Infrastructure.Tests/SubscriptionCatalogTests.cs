@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Pgvector;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Migrations;
@@ -24,44 +23,6 @@ public class SubscriptionCatalogTests : IClassFixture<PostgresContainerFixture>,
     }
 
     public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
-
-    [Fact]
-    public async Task SubscriptionCatalog_CosineDistanceQuery_ReturnsClosestVectorFirst()
-    {
-        var queryVector = BuildVector((0, 1f));
-
-        var exactMatch = new SubscriptionCatalogItem
-        {
-            ProviderName = $"ExactMatch-{Guid.NewGuid()}",
-            SemanticEmbedding = BuildVector((0, 1f)),
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        var nearMatch = new SubscriptionCatalogItem
-        {
-            ProviderName = $"NearMatch-{Guid.NewGuid()}",
-            SemanticEmbedding = BuildVector((0, 0.9f), (1, 0.1f)),
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-        var orthogonal = new SubscriptionCatalogItem
-        {
-            ProviderName = $"Orthogonal-{Guid.NewGuid()}",
-            SemanticEmbedding = BuildVector((1, 1f)),
-            CreatedAt = DateTimeOffset.UtcNow,
-        };
-
-        // Insert deliberately out of expected-result order to prove the DB, not insert order, drives ranking.
-        _dbContext.SubscriptionCatalog.AddRange(orthogonal, exactMatch, nearMatch);
-        await _dbContext.SaveChangesAsync();
-
-        var results = await _dbContext.SubscriptionCatalog
-            .FromSqlInterpolated($"SELECT * FROM subscription_catalog ORDER BY semantic_embedding <=> {queryVector} LIMIT 3")
-            .ToListAsync();
-
-        var orderedNames = results.Select(r => r.ProviderName).ToList();
-        Assert.Equal(
-            [exactMatch.ProviderName, nearMatch.ProviderName, orthogonal.ProviderName],
-            orderedNames);
-    }
 
     [Fact]
     public async Task SubscriptionCatalog_CategoryDeleted_SetsCategoryIdNull()
@@ -117,26 +78,22 @@ public class SubscriptionCatalogTests : IClassFixture<PostgresContainerFixture>,
     }
 
     [Fact]
-    public async Task SeedMigration_LeavesEverySeededRowWithoutAnEmbedding()
+    public async Task SeedMigration_LeavesEverySeededRowImmediatelyMatchable()
     {
-        // Deliberate and contained: migrations must not make network calls, so seeded rows are
-        // invisible to FindNearestAsync (which filters out null embeddings) until
-        // CatalogEmbeddingBackfillService has run - see CatalogEmbeddingBackfillTests.
-        var seededIds = SeedSubscriptionCatalog.SeededIds;
-        var withEmbedding = await _dbContext.SubscriptionCatalog.AsNoTracking()
-            .CountAsync(item => seededIds.Contains(item.Id) && item.SemanticEmbedding != null);
+        // The embedding era needed a backfill pass before a seeded row could be found at all.
+        // Trigram matching reads provider_name directly, so seeding is the only step - nothing
+        // asynchronous stands between the migration and a working match.
+        var repository = new SubVora.Infrastructure.Repositories.SubscriptionCatalogSearchRepository(_dbContext);
+        var seededNames = await _dbContext.SubscriptionCatalog.AsNoTracking()
+            .Where(item => SeedSubscriptionCatalog.SeededIds.Contains(item.Id))
+            .Select(item => item.ProviderName)
+            .ToListAsync();
 
-        Assert.Equal(0, withEmbedding);
-    }
-
-    private static Vector BuildVector(params (int index, float value)[] nonZeroEntries)
-    {
-        var values = new float[1536];
-        foreach (var (index, value) in nonZeroEntries)
+        Assert.NotEmpty(seededNames);
+        foreach (var name in seededNames)
         {
-            values[index] = value;
+            var match = await repository.FindNearestAsync(name);
+            Assert.Equal(name, match?.ProviderName);
         }
-
-        return new Vector(values);
     }
 }

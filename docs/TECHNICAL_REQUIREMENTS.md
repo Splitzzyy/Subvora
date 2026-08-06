@@ -29,8 +29,8 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
       ┌───────────────────────────┐         ┌───────────────────────────┐
       │   AI Framework Layer      │         │      Database Layer       │
       │ ┌───────────────────────┐ │         │ ┌───────────────────────┐ │
-      │ │   OpenAI Embeddings   │ │         │ │      PostgreSQL       │ │
-      │ │   / LLM Service       │ │         │ │   (with pgvector)     │ │
+      │ │  (no external AI      │ │         │ │      PostgreSQL       │ │
+      │ │   provider - see §8)  │ │         │ │   (with pg_trgm)      │ │
       │ └───────────────────────┘ │         │ └───────────────────────┘ │
       └───────────────────────────┘         └───────────────────────────┘
 ```
@@ -42,9 +42,9 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 | Mobile client | .NET MAUI (C#) | Single codebase targeting Android + iOS |
 | Local cache | SQLite (via `Microsoft.Data.Sqlite` / EF Core) | Offline-first, synced with backend |
 | Backend API | ASP.NET Core Web API (.NET 8 LTS) | REST, JWT auth |
-| ORM | Entity Framework Core + `Npgsql.EntityFrameworkCore.PostgreSQL` | Includes `Npgsql` pgvector plugin |
-| Database | PostgreSQL 16+ with `pgvector` extension | Relational + vector search in one store |
-| AI / embeddings | OpenAI `text-embedding-3-small` (1536-dim) + LLM for parsing/categorization | Called server-side only, never from client |
+| ORM | Entity Framework Core + `Npgsql.EntityFrameworkCore.PostgreSQL` | |
+| Database | PostgreSQL 16+ with `pg_trgm` extension | Relational data + fuzzy provider matching in one store |
+| Provider matching | PostgreSQL `pg_trgm` trigram similarity | No AI provider, no API key, no network hop; see §8 |
 | Push notifications | FCM (Android), APNs (iOS) via a unified `INotificationService` abstraction | Triggered by backend background job |
 | Background jobs | `.NET BackgroundService` / Hosted Service (or Hangfire/Quartz.NET if scale requires) | Nightly scan for upcoming renewals |
 | Currency conversion | External FX rate API (e.g. exchangerate.host, Open Exchange Rates) cached in DB | Refresh rates on a schedule, not per-request |
@@ -56,23 +56,23 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 - Stateless REST API, versioned (`/api/v1/...`).
 - JWT bearer authentication on all endpoints except `/auth/*`.
 - Standard CRUD endpoints for subscriptions, categories, currencies, alert preferences.
-- `POST /api/v1/subscriptions/resolve` — accepts free-text subscription name, returns matched catalog entry (logo, category) via embedding similarity search.
+- `POST /api/v1/subscriptions/resolve` — accepts free-text subscription name, returns matched catalog entry (logo, category) via trigram similarity search.
 - `GET /api/v1/dashboard/burn-rate` — returns aggregated weekly/monthly/yearly totals in user's home currency.
-- Rate limiting on AI-backed endpoints to control OpenAI API cost.
+- Rate limiting on `/resolve` to bound CPU on an endpoint the client calls on every debounced keystroke pause.
 - Input validation via FluentValidation or DataAnnotations; reject malformed currency codes, negative amounts, invalid dates.
 - Centralized error handling middleware returning consistent problem-details responses.
 
-## 5. Database Schema (PostgreSQL + pgvector)
+## 5. Database Schema (PostgreSQL + pg_trgm)
 
 See full DDL in [Design.md](./Design.md#-database-schema-blueprint). Key tables:
 
 - `users` — account, `preferred_currency`.
-- `subscription_catalog` — canonical provider list with `logo_url`, `standard_category`, `semantic_embedding vector(1536)`, HNSW index for cosine similarity.
+- `subscription_catalog` — canonical provider list with `logo_url`, `standard_category`. Matched on `provider_name` via `pg_trgm`.
 - `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
 - `fx_rates` (to be added) — `base_currency`, `target_currency`, `rate`, `fetched_at` — cached exchange rates for burn-rate conversion.
 - `notifications_log` (to be added) — tracks sent alerts to prevent duplicate pushes.
 
-Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`, HNSW vector index on `semantic_embedding`.
+Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigram index — the catalog is ~54 rows, where a sequential scan is microseconds; add a GiST `gist_trgm_ops` index past a few thousand.
 
 ## 6. Feature-Level Technical Notes
 
@@ -91,20 +91,23 @@ Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`, HNSW vect
 - Burn-rate and dashboard totals always computed server-side in the user's `preferred_currency` to keep client logic thin and consistent across devices.
 - Store original `currency` + `cost_amount` immutably; conversion is a read-time projection, not a write-time mutation — avoids lossy re-conversion and lets rate history stay auditable.
 
-## 8. AI Integration Requirements
+## 8. Provider Matching Requirements
 
-- Embedding generation and LLM calls happen only in the backend (API keys never ship to the mobile client).
-- Semantic match flow: user free-text → OpenAI embedding → `pgvector` cosine similarity (`<=>`) search against `subscription_catalog` → best match returned with confidence score; below-threshold matches fall back to manual entry.
-- Cache/reuse embeddings for previously-seen provider names to minimize OpenAI API calls.
+- Matching runs entirely inside PostgreSQL. There is no AI provider on any request path, no API key to configure, and no per-request third-party cost.
+- Match flow: user free-text → one `pg_trgm` query against `subscription_catalog.provider_name` → best match with a similarity score; below-threshold matches fall back to manual entry.
+- Scoring uses `greatest(word_similarity(input, name), word_similarity(name, input))`. Both directions are needed: the first catches input that is a fragment of the provider name (`adobe` → Adobe Creative Cloud), the second catches input that contains it (`Netflix Premium` → Netflix). Plain `similarity()` scores the former at 0.300, down among the wrong answers.
+- Three-tier confidence, measured against the seeded 54-provider catalog rather than guessed: `AutoFill` ≥ 0.70, `SuggestConfirm` ≥ 0.50, otherwise `Manual`. Correct matches scored 0.545 and up; wrong answers topped out at 0.429. `SubscriptionCatalogTrigramMatchTests` pins both bands so a regression is visible.
+- Nothing the user types is written to `subscription_catalog` — it is global and unowned, so a `Manual` result means no catalog link, not a new row.
+- **Known gap:** trigrams do not resolve rebrands or purely semantic input (`G Suite` → Google Workspace, `MS Office` → Microsoft 365, `the mouse streaming service` → Disney+). These score below the floor and land in `Manual`. Closing that gap needs an LLM fallback on the sub-threshold path; it is deliberately not in this design.
 
 ## 9. Non-Functional Requirements
 
-- **Security:** JWT auth, password hashing (bcrypt/Argon2), HTTPS-only, secrets in a vault/managed config (not source control), OpenAI API key server-side only.
+- **Security:** JWT auth, password hashing (bcrypt/Argon2), HTTPS-only, secrets in a vault/managed config (not source control).
 - **Performance:** Dashboard burn-rate query < 300ms p95 for typical user (<100 subscriptions); mobile UI must remain responsive offline via local SQLite cache.
 - **Offline support:** Mobile app reads/writes to local SQLite when offline; syncs to backend when connectivity resumes.
 - **Reliability:** Background renewal-scan job must be idempotent (safe to re-run without duplicate notifications) — enforced via `notifications_log`.
 - **Scalability:** Stateless API instances behind a load balancer; Postgres connection pooling (Npgsql pooling or PgBouncer) as user base grows.
-- **Observability:** Structured logging (Serilog), health-check endpoint, basic metrics on job success/failure and OpenAI call latency/cost.
+- **Observability:** Structured logging (Serilog), health-check endpoint, basic metrics on job success/failure.
 - **Testability:** Unit tests for burn-rate math and currency conversion; integration tests for auth and CRUD endpoints.
 
 ## 10. Out of Scope (v1)

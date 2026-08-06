@@ -24,7 +24,10 @@ public class AppDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        modelBuilder.HasPostgresExtension("vector");
+        // Trigram similarity backs the free-text catalog match (word_similarity in
+        // SubscriptionCatalogSearchRepository). The former pgvector extension is gone with the
+        // embeddings that used it - see the ReplaceCatalogEmbeddingWithTrigram migration.
+        modelBuilder.HasPostgresExtension("pg_trgm");
 
         // Native enum mapping (payment_source_type) is registered via MapEnum() inside
         // UseNpgsql() in AppDbContextOptionsFactory - not needed here for EF 9+.

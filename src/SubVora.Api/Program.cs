@@ -18,14 +18,12 @@ using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
-using SubVora.Infrastructure.Ai;
 using SubVora.Infrastructure.Alerts;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Configuration;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Repositories;
-using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -76,16 +74,6 @@ builder.Services.AddScoped<IValidator<RegisterDeviceTokenRequest>, RegisterDevic
 builder.Services.AddScoped<ISubscriptionCatalogSearchRepository, SubscriptionCatalogSearchRepository>();
 builder.Services.AddScoped<ISubscriptionMatchService, SubscriptionMatchService>();
 builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscriptionRequestValidator>();
-builder.Services.AddHttpClient<IEmbeddingClient, OpenAiEmbeddingClient>((sp, client) =>
-{
-    var configuration = sp.GetRequiredService<IConfiguration>();
-    // GetRequired, not a null check: a blank key would otherwise build a client that sends
-    // "Authorization: Bearer " and fails at request time, defeating the try/catch around client
-    // resolution that exists so an unconfigured OpenAI degrades to one warning and a skipped feature.
-    var apiKey = configuration.GetRequired("OpenAI:ApiKey");
-    client.BaseAddress = new Uri("https://api.openai.com/v1/");
-    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-});
 
 // Scoped, not singleton - depends on IFxRateService, which holds a scoped DbContext.
 builder.Services.AddScoped<IBurnRateCalculator, BurnRateCalculator>();
@@ -105,10 +93,6 @@ builder.Services.AddHttpClient<IPushNotificationSender, FcmPushNotificationSende
     client.BaseAddress = new Uri("https://fcm.googleapis.com/");
 });
 builder.Services.AddHostedService<RenewalAlertBackgroundService>();
-
-// Fills in embeddings for catalog rows a migration seeded without one - see
-// CatalogEmbeddingBackfillService for why it degrades quietly when OpenAI is unconfigured.
-builder.Services.AddHostedService<CatalogEmbeddingBackfillService>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
@@ -135,7 +119,8 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
-// Bounds OpenAI cost exposure on the AI-backed resolve endpoint only - not applied globally.
+// Bounds the catalog-match endpoint only - not applied globally. Matching is a local pg_trgm
+// scan now, so this caps CPU on a debounced-typing endpoint rather than a third-party bill.
 // Limit/window are configurable so tests can use a small window instead of waiting on the
 // real one; defaults to 30 requests/minute per authenticated user in the absence of config.
 builder.Services.AddRateLimiter(options =>
