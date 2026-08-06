@@ -18,8 +18,8 @@ SubVora is a cross-platform mobile app that tracks all your subscriptions, warns
 
 - **Mobile:** .NET MAUI (single C# codebase, Android + iOS)
 - **Backend:** ASP.NET Core Web API
-- **Database:** PostgreSQL + `pgvector`
-- **AI:** OpenAI embeddings/LLM for smart subscription matching and categorization
+- **Database:** PostgreSQL + `pg_trgm`
+- **Provider matching:** trigram similarity in the database — no AI provider, no API key
 
 See [docs/Design.md](./docs/Design.md) for the full architecture and database schema.
 
@@ -29,14 +29,14 @@ See [docs/Design.md](./docs/Design.md) for the full architecture and database sc
 |---|---|
 | [docs/TECHNICAL_REQUIREMENTS.md](./docs/TECHNICAL_REQUIREMENTS.md) | Engineering/architecture requirements |
 | [docs/NON_TECHNICAL_REQUIREMENTS.md](./docs/NON_TECHNICAL_REQUIREMENTS.md) | Feature/product requirements |
-| [docs/Design.md](./docs/Design.md) | Architecture diagram, DB schema, AI flow |
+| [docs/Design.md](./docs/Design.md) | Architecture diagram, DB schema, matching flow |
 | [CLAUDE.md](./CLAUDE.md) | Guidance for Claude Code working in this repo |
 
 API docs (Swagger UI) are served at `/swagger` when the API runs in the `Development` environment.
 
 ## Status
 
-Backend and mobile client are both implemented and under active development. Backend: full DB schema (users, categories, payment sources, subscription catalog with pgvector, user subscriptions, FX rates, refresh tokens, notifications log, device tokens), auth (register/login/refresh/logout/password reset with JWT + rotating refresh tokens), subscription CRUD, AI catalog matching, burn-rate dashboard, and the nightly renewal-scan job. Mobile: .NET MAUI client covering auth, subscription list/detail, dashboard, categories, payment sources, and settings, with an offline SQLite mirror.
+Backend and mobile client are both implemented and under active development. Backend: full DB schema (users, categories, payment sources, subscription catalog with trigram matching, user subscriptions, FX rates, refresh tokens, notifications log, device tokens), auth (register/login/refresh/logout/password reset with JWT + rotating refresh tokens), subscription CRUD, trigram catalog matching, burn-rate dashboard, and the nightly renewal-scan job. Mobile: .NET MAUI client covering auth, subscription list/detail, dashboard, categories, payment sources, and settings, with an offline SQLite mirror.
 
 ## Getting Started
 
@@ -56,7 +56,6 @@ pip install detect-secrets
    cd src/SubVora.Api
    dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5433;Database=subvora_dev;Username=subvora;Password=subvora_dev_password"
    dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 48)"
-   dotnet user-secrets set "OpenAI:ApiKey" "<your key>"   # optional; catalog matching degrades without it
    ```
 3. Apply migrations: `dotnet ef database update --project src/SubVora.Infrastructure --startup-project src/SubVora.Infrastructure`
 4. Run the API: `dotnet run --project src/SubVora.Api`
@@ -69,7 +68,6 @@ environment, not the compose file — compose refuses to start without it:
 
 ```
 export SUBVORA_JWT_SECRET="$(openssl rand -base64 48)"
-export OPENAI_API_KEY="<your key>"   # optional
 docker compose up
 ```
 
@@ -86,5 +84,5 @@ dotnet test tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.cspr
 dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj -c Release   # Windows only
 ```
 
-`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` start a real `pgvector/pgvector:pg16` container
+`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` start a real `pgvector/pgvector:pg16` container (a stock Postgres 16 plus an extension the app no longer uses — kept so existing dev volumes keep working)
 via Testcontainers, so Docker must be running.

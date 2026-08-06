@@ -2,7 +2,6 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
-using Pgvector;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Migrations;
@@ -43,7 +42,6 @@ public class SeedSubscriptionCatalogMigrationTests : IClassFixture<PostgresConta
         var userGenerated = new SubscriptionCatalogItem
         {
             ProviderName = $"UserGenerated-{Guid.NewGuid()}",
-            SemanticEmbedding = new Vector(FakeEmbeddingClient.Embed("user generated")),
             CreatedAt = DateTimeOffset.UtcNow,
         };
         _dbContext.SubscriptionCatalog.Add(userGenerated);
@@ -63,7 +61,6 @@ public class SeedSubscriptionCatalogMigrationTests : IClassFixture<PostgresConta
         var squatter = new SubscriptionCatalogItem
         {
             ProviderName = "Netflix",
-            SemanticEmbedding = new Vector(FakeEmbeddingClient.Embed("netflix typed by a user")),
             CreatedAt = DateTimeOffset.UtcNow,
         };
         _dbContext.SubscriptionCatalog.Add(squatter);

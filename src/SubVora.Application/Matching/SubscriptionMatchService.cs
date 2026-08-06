@@ -1,43 +1,45 @@
 namespace SubVora.Application.Matching;
 
 /// <summary>
-/// In-memory 3-tier confidence decision over an already-fetched nearest catalog candidate - same
+/// In-memory 3-tier confidence decision over an already-fetched best catalog candidate - same
 /// "pure logic over injected data" pattern as <c>BurnRateCalculator</c>. No EF dependency here; the
-/// pgvector cosine-distance query lives behind <see cref="ISubscriptionCatalogSearchRepository"/> in
+/// pg_trgm similarity query lives behind <see cref="ISubscriptionCatalogSearchRepository"/> in
 /// SubVora.Infrastructure.
 /// </summary>
 public class SubscriptionMatchService : ISubscriptionMatchService
 {
-    public const double AutoFillSimilarityThreshold = 0.85;
-    public const double SuggestConfirmSimilarityThreshold = 0.70;
+    /// <remarks>
+    /// Both thresholds were measured against the seeded 54-provider catalog rather than guessed.
+    /// Correct matches scored 0.545 and up ("net flix" 0.545, "netflx" 0.714, "spotifyy" 0.875,
+    /// exact and prefix matches 1.000); wrong matches topped out at 0.429 ("the mouse streaming
+    /// service" -> Strava). The gap between those two bands is where the Manual floor sits.
+    /// SubscriptionCatalogSearchRepositoryTests pins the measurements so a regression is visible.
+    /// </remarks>
+    public const double AutoFillSimilarityThreshold = 0.70;
 
-    private readonly IEmbeddingClient _embeddingClient;
+    public const double SuggestConfirmSimilarityThreshold = 0.50;
+
     private readonly ISubscriptionCatalogSearchRepository _catalogSearchRepository;
 
-    public SubscriptionMatchService(IEmbeddingClient embeddingClient, ISubscriptionCatalogSearchRepository catalogSearchRepository)
+    public SubscriptionMatchService(ISubscriptionCatalogSearchRepository catalogSearchRepository)
     {
-        _embeddingClient = embeddingClient;
         _catalogSearchRepository = catalogSearchRepository;
     }
 
     public async Task<ResolveSubscriptionResponse> ResolveAsync(string freeTextInput, CancellationToken cancellationToken = default)
     {
-        var embedding = await _embeddingClient.GetEmbeddingAsync(freeTextInput, cancellationToken);
-        var nearest = await _catalogSearchRepository.FindNearestAsync(embedding, cancellationToken);
+        var best = await _catalogSearchRepository.FindNearestAsync(freeTextInput, cancellationToken);
 
-        if (nearest is not null)
+        if (best is not null)
         {
-            // pgvector's <=> operator is cosine distance (0 = identical, 2 = opposite); similarity is its complement.
-            var similarity = 1 - nearest.Distance;
-
-            if (similarity >= AutoFillSimilarityThreshold)
+            if (best.Score >= AutoFillSimilarityThreshold)
             {
-                return ToResponse(MatchConfidenceTier.AutoFill, nearest);
+                return ToResponse(MatchConfidenceTier.AutoFill, best);
             }
 
-            if (similarity >= SuggestConfirmSimilarityThreshold)
+            if (best.Score >= SuggestConfirmSimilarityThreshold)
             {
-                return ToResponse(MatchConfidenceTier.SuggestConfirm, nearest);
+                return ToResponse(MatchConfidenceTier.SuggestConfirm, best);
             }
         }
 

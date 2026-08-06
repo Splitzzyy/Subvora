@@ -1,13 +1,13 @@
 # SubVora 🚀
 ### Your Intelligent Cross-Platform Subscription Tracker & Optimizer
-Built using single-codebase **.NET MAUI** (iOS & Android), backed by a high-performance **ASP.NET Core Web API**, and powered by **PostgreSQL + `pgvector`** for semantic AI capabilities.
+Built using single-codebase **.NET MAUI** (iOS & Android), backed by a high-performance **ASP.NET Core Web API**, and powered by **PostgreSQL + `pg_trgm`** for in-database fuzzy provider matching.
 
 ---
 
 ## 🌟 Executive Summary
 **SubWise** is a cross-platform mobile application designed to eliminate the financial leak of forgotten subscriptions and un-cancelled trial periods. By using a unified .NET stack, developers write business logic once in C# to target both iOS and Android natively. 
 
-The application integrates an AI-assisted orchestration engine to automate mundane workflows like logo provisioning, smart categorization, text/receipt parsing, and calculating predictive monthly financial burn rates.
+The application automates mundane workflows like logo provisioning, smart categorization, and calculating predictive monthly financial burn rates.
 
 ---
 
@@ -33,13 +33,16 @@ The application integrates an AI-assisted orchestration engine to automate munda
                                        │
                     ┌──────────────────┴──────────────────┐
                     ▼                                     ▼
-      ┌───────────────────────────┐         ┌───────────────────────────┐
-      │   AI Framework Layer      │         │      Database Layer       │
-      │ ┌───────────────────────┐ │         │ ┌───────────────────────┐ │
-      │ │   OpenAI Embeddings   │ │         │ │      PostgreSQL       │ │
-      │ │   / LLM Service       │ │         │ │   (with pgvector)     │ │
-      │ └───────────────────────┘ │         │ └───────────────────────┘ │
-      └───────────────────────────┘         └───────────────────────────┘
+                            ┌───────────────────────────┐
+                            │      Database Layer       │
+                            │ ┌───────────────────────┐ │
+                            │ │      PostgreSQL       │ │
+                            │ │   (with pg_trgm)      │ │
+                            │ └───────────────────────┘ │
+                            └───────────────────────────┘
+
+      No AI provider sits on any request path. Provider matching resolves inside
+      the same query that reads the catalog - see "Provider Matching Flow" below.
 ```
 
 ### 🧠 Functional Capabilities (Non-Technical Requirements)
@@ -57,19 +60,19 @@ The application integrates an AI-assisted orchestration engine to automate munda
 2. **Microservice Backend API (ASP.NET Core):**
    * **Authentication Matrix:** Secure stateless JWT (JSON Web Tokens) handling verification flows via industry-grade encryption frameworks.
    * **Background Orchestration:** An automated `.NET BackgroundService` running asynchronously on a rolling midnight chronometer to compute upcoming expiration matrices and enqueue notifications.
-3. **Optimized AI Storage Layout (PostgreSQL + `pgvector`):**
-   * **Unified Relational Topology:** Strongly structured indexing layouts combining conventional financial rows alongside high-dimensional floating-point vectors.
-   * **Hybrid Semantic Retrieval Engines:** Utilizing vector similarity measurements (`<=>` cosine distance operator) combined with native keyword relational filters.
+3. **Storage Layout (PostgreSQL + `pg_trgm`):**
+   * **Unified Relational Topology:** One store for financial rows and the provider catalog they link to, with no separate vector or search service to keep in sync.
+   * **Fuzzy Provider Retrieval:** Trigram similarity (`word_similarity`, scored in both directions) tolerates typos and partial names without a network call or an API key.
 
 ---
 
 ## 🗄️ Database Schema Blueprint
 
-Below is the production-ready PostgreSQL layout initialization script showcasing the implementation of the `pgvector` framework for AI similarity capabilities:
+Below is the production-ready PostgreSQL layout initialization script:
 
 ```sql
--- 1. Initialize and enable the pgvector extension
-CREATE EXTENSION IF NOT EXISTS pgvector;
+-- 1. Initialize and enable the trigram extension used by provider matching
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- 2. Define standard lookup Enum constructs for recurring models
 CREATE TYPE billing_cycle_type AS ENUM ('Weekly', 'Monthly', 'Yearly', 'OneTime');
@@ -89,8 +92,8 @@ CREATE TABLE subscription_catalog (
     provider_name VARCHAR(100) UNIQUE NOT NULL,
     standard_category VARCHAR(100) NOT NULL,
     logo_url VARCHAR(512),
-    -- 1536 dimensions matches standard text-embedding-3-small OpenAI vectors
-    semantic_embedding vector(1536), 
+    -- Matching reads provider_name directly via pg_trgm. The former semantic_embedding
+    -- vector(1536) column was dropped in ReplaceCatalogEmbeddingWithTrigram.
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -119,9 +122,10 @@ CREATE INDEX IF NOT EXISTS idx_subs_next_billing ON user_subscriptions(next_bill
 -- a sequential scan unless both sides are indexable.
 CREATE INDEX IF NOT EXISTS idx_subs_alert_due ON user_subscriptions((next_billing_date - alert_days_advance)) WHERE is_active = TRUE;
 
--- Create an HNSW vector index for extremely fast AI semantic similarity lookups
-CREATE INDEX ON subscription_catalog 
-USING hnsw (semantic_embedding vector_cosine_ops);
+-- Trigram similarity backs the free-text provider match.
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- No trigram index: the catalog is ~54 rows, where a sequential scan is microseconds. Add a
+-- GiST gist_trgm_ops index (GIN cannot accelerate an ORDER BY on similarity) past a few thousand.
 ```
 
 ### Additional Tables (added post-v1, kept in sync with `src/SubVora.Infrastructure/Migrations/`)
@@ -212,40 +216,51 @@ CREATE UNIQUE INDEX ix_device_tokens_user_id_token ON device_tokens(user_id, tok
 
 ---
 
-## 🤖 AI Capability Flow
+## 🔎 Provider Matching Flow
 
-The integration of `pgvector` solves the friction point of human entry. When a user creates a record, the backend runs an automated standardization pipeline:
+Free-text entry is standardized in the database, with no external service on the path:
 
 ```
-[User Entry: "nflx mobile plan"] 
+[User Entry: "netflx"]
        │
        ▼
-[.NET Backend API] ───(Sends to OpenAI)───► [Generates 1536-dim Embedding Vector]
-                                                         │
-                                                         ▼
-[PostgreSQL Database] ◄───(Executes Semantic Query)──────┘
+[.NET Backend API] ──(single SQL query, no network hop)──► [PostgreSQL + pg_trgm]
+       │                                                            │
+       ◄────────────(best provider_name + similarity score)─────────┘
+       │
+       ▼
+[3-tier decision: >= 0.70 AutoFill | >= 0.50 SuggestConfirm | else Manual]
 ```
 
-### Core Semantic Search Implementation Example (C# API Code snippet)
+### Core Matching Implementation (C# API code snippet)
 
 ```csharp
-public async Task<SubscriptionCatalogItem> MatchSubscriptionAsync(string userTypedInput, float[] openAiEmbeddingVector)
-{
-    // The pgvector extension enables us to use the '<=>' cosine distance syntax directly via EF Core or Raw SQL
-    using var context = new AppDbContext();
-    
-    var matchedItem = await context.SubscriptionCatalog
-        .FromSqlRaw("SELECT * FROM subscription_catalog ORDER BY semantic_embedding <=> {0}::vector LIMIT 1", openAiEmbeddingVector)
-        .FirstOrDefaultAsync();
-
-    return matchedItem; 
-    // Automatically returns the structured entity containing "Netflix", "Entertainment" category, and the verified Logo URL!
-}
+// word_similarity is directional, so both directions are scored and the better one wins:
+//   "adobe" inside "Adobe Creative Cloud" -> word_similarity(input, name) = 1.0
+//   "Netflix" inside "Netflix Premium"    -> word_similarity(name, input) = 1.0
+var rows = await context.Database.SqlQuery<CatalogMatchRow>($"""
+    SELECT id, provider_name, category_id, logo_url,
+           greatest(word_similarity({input}, provider_name),
+                    word_similarity(provider_name, {input})) AS score
+    FROM subscription_catalog
+    ORDER BY score DESC, provider_name
+    LIMIT 1
+    """).ToListAsync();
 ```
+
+### Thresholds
+
+Measured against the seeded 54-provider catalog rather than guessed. Correct matches scored 0.545
+and up (`net flix` 0.545, `netflx` 0.714, `spotifyy` 0.875, exact and substring matches 1.000);
+wrong answers topped out at 0.429 (`the mouse streaming service` → Strava). `Manual` sits in that
+gap at 0.50, `AutoFill` at 0.70. `SubscriptionCatalogTrigramMatchTests` pins both bands.
+
+What trigrams do not cover is rebrands and pure semantics — `G Suite` → Google Workspace,
+`MS Office` → Microsoft 365. Those score below the floor and fall through to `Manual`.
 
 ---
 
 ## 🚀 Strategic Architecture Advantages
 * **Single Core Repository:** Avoid writing discrete Swift/Kotlin layers. Features, visual design elements, and local configurations are completed entirely in C#.
-* **Frictionless Onboarding via AI:** Manual tracking drops drastically. Receipt context scraping or raw string entries automatically resolve into standard categories.
+* **Frictionless Onboarding:** Manual tracking drops drastically. Raw string entries resolve into standard categories, logos, and a catalog link without leaving the database.
 * **Unified Financial Intelligence:** Database-centric architecture guarantees real-time notification synchronization, data security compliance, and platform independence.

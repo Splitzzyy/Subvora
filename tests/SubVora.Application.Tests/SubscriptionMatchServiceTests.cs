@@ -4,24 +4,23 @@ namespace SubVora.Application.Tests;
 
 public class SubscriptionMatchServiceTests
 {
-    private readonly FakeEmbeddingClient _embeddingClient = new();
     private readonly FakeCatalogSearchRepository _catalogSearchRepository = new();
     private readonly SubscriptionMatchService _service;
 
     public SubscriptionMatchServiceTests()
     {
-        _service = new SubscriptionMatchService(_embeddingClient, _catalogSearchRepository);
+        _service = new SubscriptionMatchService(_catalogSearchRepository);
     }
 
     [Fact]
-    public async Task SimilarityAtOrAbove085_ReturnsAutoFillWithMatchedCatalogFields()
+    public async Task ScoreAtOrAbove070_ReturnsAutoFillWithMatchedCatalogFields()
     {
         var categoryId = Guid.NewGuid();
         var catalogId = Guid.NewGuid();
-        // distance 0.10 -> similarity 0.90, above the 0.85 auto-fill threshold.
-        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(catalogId, "Netflix", categoryId, "netflix.png", Distance: 0.10);
+        // 0.714 is the measured score for "netflx" against the seeded Netflix row.
+        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(catalogId, "Netflix", categoryId, "netflix.png", Score: 0.714);
 
-        var result = await _service.ResolveAsync("nflx");
+        var result = await _service.ResolveAsync("netflx");
 
         Assert.Equal(MatchConfidenceTier.AutoFill, result.Tier);
         Assert.Equal(catalogId, result.CatalogId);
@@ -31,28 +30,42 @@ public class SubscriptionMatchServiceTests
     }
 
     [Fact]
-    public async Task SimilarityBetween070And085_ReturnsSuggestConfirm()
+    public async Task ScoreBetween050And070_ReturnsSuggestConfirm()
     {
-        // distance 0.22 -> similarity 0.78, inside the 0.70-0.85 band.
-        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(Guid.NewGuid(), "Netflix", null, null, Distance: 0.22);
+        // 0.545 is the measured score for "net flix" - a correct match, but close enough to the
+        // wrong-answer band (which topped out at 0.429) that it deserves a confirmation tap.
+        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(Guid.NewGuid(), "Netflix", null, null, Score: 0.545);
 
-        var result = await _service.ResolveAsync("nflx mobile plan");
+        var result = await _service.ResolveAsync("net flix");
 
         Assert.Equal(MatchConfidenceTier.SuggestConfirm, result.Tier);
     }
 
     [Fact]
-    public async Task SimilarityBelow070_ReturnsManual_WithNoCatalogLink()
+    public async Task ScoreBelow050_ReturnsManual_WithNoCatalogLink()
     {
-        // distance 0.50 -> similarity 0.50, below the 0.70 floor.
-        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(Guid.NewGuid(), "SomethingElse", null, null, Distance: 0.50);
+        // 0.429 is the measured score for "the mouse streaming service" -> Strava: the highest a
+        // wrong answer reached against the seeded catalog.
+        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(Guid.NewGuid(), "Strava", null, null, Score: 0.429);
 
-        var result = await _service.ResolveAsync("obscure service");
+        var result = await _service.ResolveAsync("the mouse streaming service");
 
         Assert.Equal(MatchConfidenceTier.Manual, result.Tier);
         Assert.Null(result.ProviderName);
         // subscription_catalog is global and unowned - nothing the user typed may land in it.
         Assert.Null(result.CatalogId);
+    }
+
+    [Theory]
+    [InlineData(SubscriptionMatchService.AutoFillSimilarityThreshold, MatchConfidenceTier.AutoFill)]
+    [InlineData(SubscriptionMatchService.SuggestConfirmSimilarityThreshold, MatchConfidenceTier.SuggestConfirm)]
+    public async Task ScoreExactlyOnAThreshold_TakesTheHigherTier(double score, MatchConfidenceTier expected)
+    {
+        _catalogSearchRepository.NextCandidate = new CatalogMatchCandidate(Guid.NewGuid(), "Netflix", null, null, score);
+
+        var result = await _service.ResolveAsync("netflix");
+
+        Assert.Equal(expected, result.Tier);
     }
 
     [Fact]
@@ -80,17 +93,11 @@ public class SubscriptionMatchServiceTests
         Assert.Equal(MatchConfidenceTier.Manual, second.Tier);
     }
 
-    private sealed class FakeEmbeddingClient : IEmbeddingClient
-    {
-        public Task<float[]> GetEmbeddingAsync(string text, CancellationToken cancellationToken = default) =>
-            Task.FromResult(new float[] { 1f });
-    }
-
     private sealed class FakeCatalogSearchRepository : ISubscriptionCatalogSearchRepository
     {
         public CatalogMatchCandidate? NextCandidate { get; set; }
 
-        public Task<CatalogMatchCandidate?> FindNearestAsync(float[] embedding, CancellationToken cancellationToken = default) =>
+        public Task<CatalogMatchCandidate?> FindNearestAsync(string input, CancellationToken cancellationToken = default) =>
             Task.FromResult(NextCandidate);
 
         public Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default) =>
