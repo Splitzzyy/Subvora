@@ -248,6 +248,16 @@ var rows = await context.Database.SqlQuery<CatalogMatchRow>($"""
     """).ToListAsync();
 ```
 
+### Keeping the catalog current
+
+`subscription-catalog.json` (embedded in `SubVora.Infrastructure`) is the living provider list;
+`SubscriptionCatalogSyncService` inserts anything the table lacks on start, keyed on the unique
+`provider_name`. Adding a brand is one JSON entry — no migration, no id to assign — and it is
+matchable the moment it lands, because with trigram scoring the row *is* the index.
+
+The `SeedSubscriptionCatalog` migration remains for databases that already applied it. The two
+overlap without conflicting: every name it inserted is already present, so the sync skips it.
+
 ### Thresholds
 
 Measured against the seeded 54-provider catalog rather than guessed. Correct matches scored 0.545

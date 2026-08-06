@@ -26,7 +26,7 @@ public class SchemaMigrationTests : IClassFixture<PostgresContainerFixture>, IAs
 {
     private static readonly string[] SeededSystemCategoryNames =
     [
-        "Entertainment", "Productivity", "Fitness", "Utilities", "Finance", "Other"
+        "Entertainment", "Productivity", "Fitness", "Utilities", "Finance", "Other", "Food", "Travel"
     ];
 
     private readonly PostgresContainerFixture _fixture;
