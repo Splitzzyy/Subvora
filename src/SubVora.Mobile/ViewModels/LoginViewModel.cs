@@ -11,6 +11,8 @@ public partial class LoginViewModel : ObservableObject
 {
     private readonly IAuthApi _authApi;
     private readonly ITokenStore _tokenStore;
+    private readonly IDevicesApi _devicesApi;
+    private readonly IPushTokenProvider _pushTokenProvider;
 
     [ObservableProperty]
     public partial string Email { get; set; } = string.Empty;
@@ -26,10 +28,12 @@ public partial class LoginViewModel : ObservableObject
 
     public event EventHandler? LoginSucceeded;
 
-    public LoginViewModel(IAuthApi authApi, ITokenStore tokenStore)
+    public LoginViewModel(IAuthApi authApi, ITokenStore tokenStore, IDevicesApi devicesApi, IPushTokenProvider pushTokenProvider)
     {
         _authApi = authApi;
         _tokenStore = tokenStore;
+        _devicesApi = devicesApi;
+        _pushTokenProvider = pushTokenProvider;
     }
 
     [RelayCommand]
@@ -45,6 +49,10 @@ public partial class LoginViewModel : ObservableObject
             {
                 await _tokenStore.SaveTokensAsync(response.Content);
                 LoginSucceeded?.Invoke(this, EventArgs.Empty);
+
+                // Deliberately after the navigation event: push registration is best-effort and
+                // must never delay or fail the login.
+                await RegisterPushTokenAsync();
                 return;
             }
 
@@ -57,6 +65,33 @@ public partial class LoginViewModel : ObservableObject
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Registers this device's push token against the freshly authenticated user. Every failure
+    /// is swallowed: a user who cannot receive notifications must still be able to use the app,
+    /// and the backend upsert on (user_id, token) makes repeat calls harmless.
+    /// </summary>
+    private async Task RegisterPushTokenAsync()
+    {
+        try
+        {
+            var token = await _pushTokenProvider.GetTokenAsync();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return;
+            }
+
+            await _devicesApi.RegisterAsync(new RegisterDeviceTokenRequest
+            {
+                Token = token,
+                Platform = _pushTokenProvider.Platform,
+            });
+        }
+        catch (Exception)
+        {
+            // Intentionally ignored - see the summary above.
         }
     }
 }
