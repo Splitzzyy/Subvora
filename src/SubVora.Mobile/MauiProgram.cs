@@ -52,7 +52,8 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton(sp => new AuthDelegatingHandler(
 			sp.GetRequiredService<ITokenStore>(),
-			sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh")));
+			sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh"),
+			sp.GetRequiredService<ILocalCacheService>()));
 
 		// IAuthApi must not chain AuthDelegatingHandler - login/register/refresh calls
 		// themselves would otherwise loop back through the 401-refresh logic.

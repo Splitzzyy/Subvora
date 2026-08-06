@@ -85,4 +85,75 @@ public class DashboardViewModelTests
         Assert.False(viewModel.IsShowingCachedData);
         Assert.Empty(viewModel.ByCategory);
     }
+
+    [Fact]
+    public async Task LoadAsync_WhenNothingIsExcludedAndRatesAreFresh_ShowsNoWarning()
+    {
+        var burnRate = new BurnRateResult
+        {
+            Monthly = 30m,
+            HomeCurrency = "USD",
+            OldestRateFetchedAt = DateTimeOffset.UtcNow.AddHours(-3),
+        };
+        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.WarningMessage);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WhenSubscriptionsAreExcluded_SaysHowManyAndWhy()
+    {
+        var burnRate = new BurnRateResult
+        {
+            Monthly = 30m,
+            HomeCurrency = "USD",
+            UnresolvedSubscriptionIds = [Guid.NewGuid(), Guid.NewGuid()],
+        };
+        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.NotNull(viewModel.WarningMessage);
+        Assert.Contains("2 subscriptions", viewModel.WarningMessage);
+        Assert.Contains("no exchange rate available yet", viewModel.WarningMessage);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithRatesOlderThanTheRefreshInterval_ReportsTheirAge()
+    {
+        var burnRate = new BurnRateResult
+        {
+            Monthly = 30m,
+            HomeCurrency = "USD",
+            OldestRateFetchedAt = DateTimeOffset.UtcNow.AddDays(-3),
+        };
+        var viewModel = new DashboardViewModel(new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) }, new FakeLocalCacheService());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.NotNull(viewModel.WarningMessage);
+        Assert.Contains("3 days ago", viewModel.WarningMessage);
+    }
+
+    [Fact]
+    public async Task LoadAsync_FallingBackToCache_KeepsTheExclusionWarningFromTheLastSync()
+    {
+        var cache = new FakeLocalCacheService();
+        await cache.UpsertAsync(new CachedBurnRate
+        {
+            Monthly = 21.5m,
+            HomeCurrency = "EUR",
+            UnresolvedSubscriptionCount = 1,
+        });
+        var api = new FakeDashboardApi { Handler = () => throw new HttpRequestException("network down") };
+        var viewModel = new DashboardViewModel(api, cache);
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsShowingCachedData);
+        Assert.NotNull(viewModel.WarningMessage);
+        Assert.Contains("1 subscription is", viewModel.WarningMessage);
+    }
 }

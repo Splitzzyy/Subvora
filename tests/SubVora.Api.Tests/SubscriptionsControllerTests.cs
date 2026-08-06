@@ -401,25 +401,43 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
-    public async Task Resolve_RepeatedCall_EventuallyAutoFillsFromTheEntryTheFirstCallCreated()
+    public async Task Resolve_NeverWritesTheUsersOwnTextIntoTheSharedCatalog()
     {
-        // FakeEmbeddingClient returns the same vector for every input, so once any resolve call
-        // (in this test or an earlier one sharing the same test database) has created a catalog
-        // row, every subsequent call is an exact (distance 0) match against it.
-        var client = await CreateAuthenticatedClientAsync($"resolve-repeat-{Guid.NewGuid()}@example.com");
+        // subscription_catalog has no owner column and is what every user's fuzzy match searches,
+        // so free text typed into the name field must not end up as a row in it. Repeating the
+        // same input also used to collide on ix_subscription_catalog_provider_name and 500.
+        var client = await CreateAuthenticatedClientAsync($"resolve-noleak-{Guid.NewGuid()}@example.com");
+        var privateInput = $"dr okonkwo therapy {Guid.NewGuid()}";
 
-        var firstResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "nflx mobile plan" }, JsonOptions);
+        var firstResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = privateInput }, JsonOptions);
         Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
-        var first = await firstResponse.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
-        Assert.NotNull(first);
-        Assert.True(first!.Tier is MatchConfidenceTier.Manual or MatchConfidenceTier.AutoFill);
 
-        var secondResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "some other free text" }, JsonOptions);
+        var secondResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = privateInput }, JsonOptions);
         Assert.Equal(HttpStatusCode.OK, secondResponse.StatusCode);
-        var second = await secondResponse.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
-        Assert.NotNull(second);
-        Assert.Equal(MatchConfidenceTier.AutoFill, second!.Tier);
-        Assert.NotNull(second.CatalogId);
+
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.False(await dbContext.SubscriptionCatalog.AnyAsync(item => item.ProviderName == privateInput));
+    }
+
+    [Fact]
+    public async Task Resolve_WithNoConfidentMatch_ReturnsManualAndTheSubscriptionStillSaves()
+    {
+        var client = await CreateAuthenticatedClientAsync($"resolve-manual-{Guid.NewGuid()}@example.com");
+        var freeText = $"neighbourhood pottery class {Guid.NewGuid()}";
+
+        var resolveResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = freeText }, JsonOptions);
+        Assert.Equal(HttpStatusCode.OK, resolveResponse.StatusCode);
+        var resolved = await resolveResponse.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
+        Assert.NotNull(resolved);
+
+        // Whatever tier the seeded catalog produces, an unlinked save is always available.
+        var request = ValidRequest();
+        request.CustomName = freeText;
+        request.CatalogId = null;
+
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
     }
 
     [Fact]

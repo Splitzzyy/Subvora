@@ -31,6 +31,7 @@ public class BurnRateCalculator : IBurnRateCalculator
         var oneTimeThisYear = 0m;
         var unresolvedSubscriptionIds = new List<Guid>();
         var categoryDailyRates = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
+        DateTimeOffset? oldestRateFetchedAt = null;
 
         foreach (var subscription in subscriptions)
         {
@@ -39,14 +40,32 @@ public class BurnRateCalculator : IBurnRateCalculator
                 continue;
             }
 
-            var rate = await ResolveRateAsync(subscription.Currency, homeCurrency, cancellationToken);
-            if (rate is null)
+            decimal rate;
+            if (string.Equals(subscription.Currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
             {
-                unresolvedSubscriptionIds.Add(subscription.Id);
-                continue;
+                // Not a fetched rate, so it never ages the result reported below.
+                rate = 1m;
+            }
+            else
+            {
+                var cachedRate = await _fxRateService.GetRateAsync(subscription.Currency, homeCurrency, cancellationToken);
+                if (cachedRate is null)
+                {
+                    unresolvedSubscriptionIds.Add(subscription.Id);
+                    continue;
+                }
+
+                rate = cachedRate.Rate;
+
+                // A stale rate still converts - a slightly old total beats an unexplained hole in
+                // it - but the oldest fetched_at rides along so the client can say how old.
+                if (oldestRateFetchedAt is null || cachedRate.FetchedAt < oldestRateFetchedAt)
+                {
+                    oldestRateFetchedAt = cachedRate.FetchedAt;
+                }
             }
 
-            var convertedCost = subscription.CostAmount * rate.Value;
+            var convertedCost = subscription.CostAmount * rate;
 
             if (subscription.CycleCadence == BillingCycleType.OneTime)
             {
@@ -98,17 +117,8 @@ public class BurnRateCalculator : IBurnRateCalculator
             OneTimeThisYear = Math.Round(oneTimeThisYear, 2),
             HomeCurrency = homeCurrency,
             UnresolvedSubscriptionIds = unresolvedSubscriptionIds,
+            OldestRateFetchedAt = oldestRateFetchedAt,
             ByCategory = byCategory,
         };
-    }
-
-    private async Task<decimal?> ResolveRateAsync(string subscriptionCurrency, string homeCurrency, CancellationToken cancellationToken)
-    {
-        if (string.Equals(subscriptionCurrency, homeCurrency, StringComparison.OrdinalIgnoreCase))
-        {
-            return 1m;
-        }
-
-        return await _fxRateService.GetRateAsync(subscriptionCurrency, homeCurrency, cancellationToken);
     }
 }

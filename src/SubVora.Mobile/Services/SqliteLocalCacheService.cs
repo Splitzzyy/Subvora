@@ -1,4 +1,5 @@
 using SQLite;
+using SubVora.Mobile.Models;
 
 namespace SubVora.Mobile.Services;
 
@@ -31,5 +32,13 @@ public class SqliteLocalCacheService : ILocalCacheService
     {
         await _connection.CreateTableAsync<T>();
         await _connection.DeleteAllAsync<T>();
+    }
+
+    public async Task ClearAllAsync()
+    {
+        // The one list of cached types. Add a new cache model here and every session-teardown
+        // path picks it up - see ILocalCacheService.ClearAllAsync.
+        await ClearAsync<CachedBurnRate>();
+        await ClearAsync<CachedSubscription>();
     }
 }

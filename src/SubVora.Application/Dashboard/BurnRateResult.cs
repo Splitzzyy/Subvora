@@ -11,6 +11,13 @@ public class BurnRateResult
     /// <summary>Subscriptions excluded from the totals above because no cached fx_rates pair covers their currency.</summary>
     public IReadOnlyList<Guid> UnresolvedSubscriptionIds { get; set; } = [];
 
+    /// <summary>
+    /// When the oldest fx_rates row these totals lean on was fetched, or null when nothing needed
+    /// converting. Lets a client distinguish "converted with fresh rates" from "converted with
+    /// rates from N days ago" - and makes a stalled refresh job visible instead of silent.
+    /// </summary>
+    public DateTimeOffset? OldestRateFetchedAt { get; set; }
+
     /// <summary>Monthly recurring spend grouped by category, in home currency. Excludes one-time purchases and active trials.</summary>
     public IReadOnlyList<CategoryBreakdownItem> ByCategory { get; set; } = [];
 }

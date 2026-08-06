@@ -1,4 +1,5 @@
 using SQLite;
+using SubVora.Mobile.Models;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.Tests;
@@ -72,5 +73,17 @@ public class SqliteLocalCacheServiceTests : IDisposable
 
         var items = await _cacheService.GetAllAsync<TestCacheItem>();
         Assert.Empty(items);
+    }
+
+    [Fact]
+    public async Task ClearAllAsync_EmptiesEveryCachedType()
+    {
+        await _cacheService.UpsertAsync(new CachedBurnRate { Monthly = 42m, HomeCurrency = "USD" });
+        await _cacheService.UpsertAsync(new CachedSubscription { Id = Guid.NewGuid(), CustomName = "Netflix" });
+
+        await _cacheService.ClearAllAsync();
+
+        Assert.Empty(await _cacheService.GetAllAsync<CachedBurnRate>());
+        Assert.Empty(await _cacheService.GetAllAsync<CachedSubscription>());
     }
 }

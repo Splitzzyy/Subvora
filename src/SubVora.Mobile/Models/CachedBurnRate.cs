@@ -19,6 +19,12 @@ public class CachedBurnRate
     public decimal OneTimeThisYear { get; set; }
     public string HomeCurrency { get; set; } = string.Empty;
 
+    /// <summary>How many subscriptions the server left out of the totals for want of an FX rate.</summary>
+    public int UnresolvedSubscriptionCount { get; set; }
+
+    /// <summary>Fetch time of the oldest FX rate behind these totals; null when nothing was converted.</summary>
+    public DateTimeOffset? OldestRateFetchedAt { get; set; }
+
     // sqlite-net-pcl doesn't map nested collections natively - store as a JSON column.
     public string ByCategoryJson { get; set; } = "[]";
 

@@ -25,4 +25,10 @@ public class FakeLocalCacheService : ILocalCacheService
         _store.Remove(typeof(T));
         return Task.CompletedTask;
     }
+
+    public Task ClearAllAsync()
+    {
+        _store.Clear();
+        return Task.CompletedTask;
+    }
 }

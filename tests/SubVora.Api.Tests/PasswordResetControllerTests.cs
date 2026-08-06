@@ -76,6 +76,55 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
+    public async Task ResetPassword_ValidCode_RevokesEverySessionOpenBeforeTheReset()
+    {
+        var client = _factory.CreateClient();
+        var email = $"reset-revokes-{Guid.NewGuid()}@example.com";
+        const string oldPassword = "correct-horse-battery-staple";
+        const string newPassword = "new-correct-horse-battery-staple";
+
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = oldPassword });
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = oldPassword });
+        var priorSession = await loginResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
+        Assert.NotNull(priorSession);
+
+        var code = await RequestResetCodeAsync(client, email);
+        var resetResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = newPassword });
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+
+        // The refresh token that session still holds must be dead - otherwise a reset only blocks
+        // the old password while whoever holds the token keeps minting access tokens for 30 days.
+        var refreshResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = priorSession!.RefreshToken });
+        Assert.Equal(HttpStatusCode.Unauthorized, refreshResponse.StatusCode);
+
+        // ...and the account is still usable with the new password.
+        var newLoginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = newPassword });
+        Assert.Equal(HttpStatusCode.OK, newLoginResponse.StatusCode);
+        var newSession = await newLoginResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
+        var newRefreshResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = newSession!.RefreshToken });
+        Assert.Equal(HttpStatusCode.OK, newRefreshResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_FailedAttempt_LeavesExistingSessionsIntact()
+    {
+        var client = _factory.CreateClient();
+        var email = $"reset-failed-keeps-session-{Guid.NewGuid()}@example.com";
+        const string password = "correct-horse-battery-staple";
+
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
+        var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password });
+        var session = await loginResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
+        await RequestResetCodeAsync(client, email);
+
+        var wrongCodeResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "new-password-123" });
+        Assert.Equal(HttpStatusCode.BadRequest, wrongCodeResponse.StatusCode);
+
+        var refreshResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = session!.RefreshToken });
+        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task ResetPassword_ExpiredCode_Returns400()
     {
         var client = _factory.CreateClient();

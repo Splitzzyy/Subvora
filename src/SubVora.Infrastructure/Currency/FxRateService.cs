@@ -30,9 +30,9 @@ public class FxRateService : IFxRateService
         }
     }
 
-    public async Task<decimal?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default) =>
+    public async Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default) =>
         await _dbContext.FxRates.AsNoTracking()
             .Where(r => r.BaseCurrency == baseCurrency && r.TargetCurrency == targetCurrency)
-            .Select(r => (decimal?)r.Rate)
+            .Select(r => new CachedFxRate(r.Rate, r.FetchedAt))
             .SingleOrDefaultAsync(cancellationToken);
 }

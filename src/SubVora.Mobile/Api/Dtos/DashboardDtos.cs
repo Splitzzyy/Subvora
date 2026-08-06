@@ -8,6 +8,7 @@ public class BurnRateResult
     public decimal OneTimeThisYear { get; set; }
     public string HomeCurrency { get; set; } = string.Empty;
     public IReadOnlyList<Guid> UnresolvedSubscriptionIds { get; set; } = [];
+    public DateTimeOffset? OldestRateFetchedAt { get; set; }
     public IReadOnlyList<CategoryBreakdownItem> ByCategory { get; set; } = [];
 }
 

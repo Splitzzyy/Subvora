@@ -3,7 +3,6 @@ using CommunityToolkit.Mvvm.Input;
 using Refit;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
-using SubVora.Mobile.Models;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -112,8 +111,7 @@ public partial class SettingsViewModel : ObservableObject
         }
 
         await _tokenStore.ClearAsync();
-        await _localCacheService.ClearAsync<CachedBurnRate>();
-        await _localCacheService.ClearAsync<CachedSubscription>();
+        await _localCacheService.ClearAllAsync();
 
         SignedOut?.Invoke(this, EventArgs.Empty);
     }
