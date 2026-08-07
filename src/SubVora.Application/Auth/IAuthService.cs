@@ -2,7 +2,12 @@ namespace SubVora.Application.Auth;
 
 public interface IAuthService
 {
-    Task<RegisterResult> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Creates the account, or - when the address is already registered - emails the existing
+    /// owner and returns as if nothing happened. There is deliberately no result to inspect:
+    /// telling the caller which of those occurred is what makes register an enumeration oracle.
+    /// </summary>
+    Task RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default);
 
     Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
 

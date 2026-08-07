@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
@@ -19,12 +19,21 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
 
     private async Task<string> RequestResetCodeAsync(HttpClient client, string email)
     {
+        var before = ResetCodesSentTo(email);
         await client.PostAsJsonAsync("/api/v1/auth/forgot-password", new ForgotPasswordRequest { Email = email });
 
-        var emailSender = _factory.Services.GetRequiredService<FakeEmailSender>();
-        var sent = emailSender.SentEmails.Last(e => e.ToEmail == email);
-        return Regex.Match(sent.Body, @"\b(\d{6})\b").Groups[1].Value;
+        // FakeEmailSender.SentEmails is a ConcurrentBag, which has no insertion order - Last() here
+        // returned the *oldest* code, so asking twice handed back the same one. The address can now
+        // also receive an already-registered notice, so select the new six-digit code by content.
+        return Assert.Single(ResetCodesSentTo(email).Except(before));
     }
+
+    private IReadOnlyCollection<string> ResetCodesSentTo(string email) =>
+        _factory.Services.GetRequiredService<FakeEmailSender>().SentEmails
+            .Where(e => e.ToEmail == email)
+            .Select(e => Regex.Match(e.Body, @"\b(\d{6})\b").Groups[1].Value)
+            .Where(code => code.Length == 6)
+            .ToList();
 
     [Fact]
     public async Task ForgotPassword_UnknownEmail_StillReturns200()
@@ -187,5 +196,49 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         // Even the correct code is rejected now - the code is locked out after 5 failed attempts.
         var finalAttempt = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "new-password-123" });
         Assert.Equal(HttpStatusCode.BadRequest, finalAttempt.StatusCode);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_RequestedTwice_RetiresTheEarlierCode()
+    {
+        // AttemptCount lives on each code row, so leaving old codes live meant every new request
+        // handed out another five guesses at the same six-digit space - "5 attempts" only ever
+        // bounded one code.
+        var client = _factory.CreateClient();
+        var email = $"reset-supersede-{Guid.NewGuid()}@example.com";
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+
+        var firstCode = await RequestResetCodeAsync(client, email);
+        var secondCode = await RequestResetCodeAsync(client, email);
+        Assert.NotEqual(firstCode, secondCode);
+
+        var withOldCode = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
+            new ResetPasswordRequest { Email = email, Code = firstCode, NewPassword = "old-code-should-not-work" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, withOldCode.StatusCode);
+
+        var withNewCode = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
+            new ResetPasswordRequest { Email = email, Code = secondCode, NewPassword = "new-code-should-work" });
+
+        Assert.Equal(HttpStatusCode.OK, withNewCode.StatusCode);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_RequestedTwice_LeavesOnlyOneLiveCode()
+    {
+        var client = _factory.CreateClient();
+        var email = $"reset-live-count-{Guid.NewGuid()}@example.com";
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+
+        await RequestResetCodeAsync(client, email);
+        await RequestResetCodeAsync(client, email);
+
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var user = await dbContext.Users.AsNoTracking().SingleAsync(u => u.Email == email);
+        var liveCodes = await dbContext.PasswordResetCodes.AsNoTracking()
+            .CountAsync(c => c.UserId == user.Id && c.UsedAt == null);
+
+        Assert.Equal(1, liveCodes);
     }
 }

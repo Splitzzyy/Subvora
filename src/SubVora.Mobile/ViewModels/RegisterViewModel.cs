@@ -1,4 +1,3 @@
-using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SubVora.Mobile.Api;
@@ -52,19 +51,19 @@ public partial class RegisterViewModel : ObservableObject
             var registerResponse = await _authApi.RegisterAsync(new RegisterRequest { Email = Email, Password = Password });
             if (!registerResponse.IsSuccessStatusCode)
             {
-                // 409 (duplicate email) isn't in the mapper's table - keep that specific wording.
-                ErrorMessage = registerResponse.StatusCode == HttpStatusCode.Conflict
-                    ? "An account with this email already exists."
-                    : ApiErrorMapper.ToDisplayMessage(registerResponse);
+                ErrorMessage = ApiErrorMapper.ToDisplayMessage(registerResponse);
                 return;
             }
 
-            // The register endpoint only returns the created user, not tokens - log the
-            // freshly registered account straight in so the caller lands on the Shell.
+            // Register answers 202 whether or not the address was already taken - deliberately, so
+            // it cannot be used to test which emails have accounts. The login below is what tells
+            // the two apart for the person who actually holds the password: right password, they
+            // are signed in either way; wrong one, they are pointed at the login screen where
+            // "forgot password" lives.
             var loginResponse = await _authApi.LoginAsync(new LoginRequest { Email = Email, Password = Password });
             if (!loginResponse.IsSuccessStatusCode || loginResponse.Content is null)
             {
-                ErrorMessage = "Account created - please log in.";
+                ErrorMessage = "Please log in to continue.";
                 return;
             }
 
