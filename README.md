@@ -31,6 +31,8 @@ See [docs/Design.md](./docs/Design.md) for the full architecture and database sc
 | [docs/NON_TECHNICAL_REQUIREMENTS.md](./docs/NON_TECHNICAL_REQUIREMENTS.md) | Feature/product requirements |
 | [docs/Design.md](./docs/Design.md) | Architecture diagram, DB schema, matching flow |
 | [docs/ADDING_A_PROVIDER.md](./docs/ADDING_A_PROVIDER.md) | How to add, rename, or remove a subscription provider |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Hosting the API and shipping the Android APK |
+| [docs/GO_LIVE_CHECKLIST.md](./docs/GO_LIVE_CHECKLIST.md) | Step-by-step checklist for the first deploy |
 | [CLAUDE.md](./CLAUDE.md) | Guidance for Claude Code working in this repo |
 
 API docs (Swagger UI) are served at `/swagger` when the API runs in the `Development` environment.

@@ -42,7 +42,13 @@
 
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">15.0</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
+		<!--
+			26.0 is the notification-channel floor. Plugin.LocalNotification and the POST_NOTIFICATIONS
+			flow in LocalRenewalNotificationScheduler assume channels exist; the template default of
+			21.0 predates them.
+		-->
+		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">26.0</SupportedOSPlatformVersion>
+		<TargetSdkVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">36</TargetSdkVersion>
 		<SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</SupportedOSPlatformVersion>
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
@@ -52,11 +58,12 @@
 		touching tracked source:  dotnet build -p:ApiBaseAddress=https://staging.example/
 		Debug default is the Android emulator's loopback-to-host alias; ApiConfig substitutes
 		localhost for the iOS/Windows cases where 10.0.2.2 means nothing.
-		[HITL] Set the Release default once a deployment target is chosen (see #103).
+		The Release default is the deployed API (docs/DEPLOYMENT.md). It is baked into the APK, so
+		changing hosts - e.g. moving to a custom domain - means cutting a new release.
 	-->
 	<PropertyGroup>
 		<ApiBaseAddress Condition="'$(ApiBaseAddress)' == '' and '$(Configuration)' == 'Debug'">https://10.0.2.2:5001/</ApiBaseAddress>
-		<ApiBaseAddress Condition="'$(ApiBaseAddress)' == ''">https://api.subvora.invalid/</ApiBaseAddress>
+		<ApiBaseAddress Condition="'$(ApiBaseAddress)' == ''">https://subvora-api.onrender.com/</ApiBaseAddress>
 	</PropertyGroup>
 
 	<ItemGroup>

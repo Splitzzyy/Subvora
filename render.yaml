@@ -1,0 +1,41 @@
+# Render blueprint for the SubVora API. See docs/DEPLOYMENT.md for the one-time provisioning
+# steps this file assumes have already happened (database migrated, SMTP sender verified).
+services:
+  - type: web
+    name: subvora-api
+    runtime: docker
+    plan: free
+    region: oregon
+
+    # The Dockerfile does `COPY src/ src/`, so the build context has to be the repo root.
+    dockerfilePath: ./src/SubVora.Api/Dockerfile
+    dockerContext: .
+
+    healthCheckPath: /health
+
+    envVars:
+      # Not "Docker": that environment name makes Program.cs migrate on boot and publish Swagger.
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+
+      # Matches the PORT Render injects, so it never has to guess from EXPOSE.
+      - key: ASPNETCORE_HTTP_PORTS
+        value: "10000"
+
+      # sync: false means "prompt me, store it encrypted, keep it out of this file".
+      - key: ConnectionStrings__Default
+        sync: false
+      # Must be at least 32 UTF-8 bytes or startup throws. `openssl rand -base64 48`.
+      - key: Jwt__Secret
+        sync: false
+
+      - key: Smtp__Host
+        value: smtp-relay.brevo.com
+      - key: Smtp__Port
+        value: "587"
+      - key: Smtp__Username
+        sync: false
+      - key: Smtp__Password
+        sync: false
+      - key: Smtp__FromAddress
+        sync: false
