@@ -67,5 +67,6 @@ technical_requirements.md
 prd.md
 issues.md
 
-# Local Docker config - holds a real signing key, mounted into the container at runtime.
-src/SubVora.Api/appsettings.Docker.json
+# Local dev config - holds a real signing key. Used by `dotnet run` and mounted into the
+# container by docker-compose.yml, so one file serves both.
+src/SubVora.Api/appsettings.Development.json

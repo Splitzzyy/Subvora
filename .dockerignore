@@ -5,8 +5,7 @@
 docs/
 tests/
 
-# Environment-specific config never belongs in an image layer - appsettings.Docker.json holds a
-# real signing key and is mounted at runtime by docker-compose.yml instead. appsettings.json ships
-# its keys blank, so the image itself carries no secret.
-**/appsettings.Docker.json
+# Environment-specific config never belongs in an image layer - appsettings.Development.json holds
+# a real signing key and is mounted at runtime by docker-compose.yml instead. appsettings.json
+# ships its keys blank, so the image itself carries no secret.
 **/appsettings.Development.json

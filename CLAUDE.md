@@ -92,7 +92,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 1. Check `docs/TECHNICAL_REQUIREMENTS.md` §6 for the specific feature's data model and behavior before writing code.
 2. Match the DDL in `docs/Design.md` unless there's a reason to deviate — if you do deviate, update `docs/Design.md` in the same change.
-3. Docker config lives in `src/SubVora.Api/appsettings.Docker.json` — gitignored, dockerignored, and mounted read-only by `docker-compose.yml`. Copy `appsettings.Docker.example.json` to create it. Nothing secret is passed via compose `environment:` or baked into an image layer.
+3. Local config lives in `src/SubVora.Api/appsettings.Development.json` — gitignored, dockerignored, used directly by `dotnet run`, and mounted read-only by `docker-compose.yml` as `appsettings.Docker.json` (the environment stays `Docker` because `Program.cs` skips `UseHttpsRedirection` only for it). Copy `appsettings.Development.example.json` to create it. Compose overrides only the database and SMTP hosts; no secret is passed via `environment:` or baked into an image layer.
 4. Keep secrets (DB connection string, JWT signing key) out of source control — use user-secrets/environment config locally, a managed vault in deployed environments.
 
 ## Secret Scanning (hard stop)
