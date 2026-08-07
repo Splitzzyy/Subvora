@@ -18,7 +18,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.Property(u => u.PasswordHash).HasMaxLength(512).IsRequired();
 
-        builder.Property(u => u.PreferredCurrency).HasMaxLength(3).IsRequired().HasDefaultValue("USD");
+        builder.Property(u => u.PreferredCurrency).HasMaxLength(3).IsRequired().HasDefaultValue("INR");
 
         builder.Property(u => u.CreatedAt).HasDefaultValueSql("now()");
     }

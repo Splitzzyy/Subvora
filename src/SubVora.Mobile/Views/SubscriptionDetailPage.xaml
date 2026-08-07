@@ -41,7 +41,7 @@
             <Entry Text="{Binding CostAmount}" Keyboard="Numeric" Placeholder="0.00" />
 
             <Label Text="Currency" FontAttributes="Bold" />
-            <Entry Text="{Binding Currency}" Placeholder="USD" MaxLength="3" />
+            <Entry Text="{Binding Currency}" Placeholder="INR" MaxLength="3" />
 
             <Label Text="Billing cycle" FontAttributes="Bold" />
             <Picker ItemsSource="{Binding BillingCycleTypes}" SelectedItem="{Binding CycleCadence}" />

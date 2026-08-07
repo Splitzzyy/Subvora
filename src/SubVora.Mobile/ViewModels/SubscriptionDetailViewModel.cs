@@ -34,7 +34,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     public partial decimal CostAmount { get; set; }
 
     [ObservableProperty]
-    public partial string Currency { get; set; } = "USD";
+    public partial string Currency { get; set; } = "INR";
 
     [ObservableProperty]
     public partial BillingCycleType CycleCadence { get; set; } = BillingCycleType.Monthly;

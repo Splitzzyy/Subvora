@@ -82,7 +82,7 @@ CREATE TABLE users (
     user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
     password_hash VARCHAR(512) NOT NULL,
-    preferred_currency VARCHAR(3) DEFAULT 'USD',
+    preferred_currency VARCHAR(3) DEFAULT 'INR',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -104,7 +104,7 @@ CREATE TABLE user_subscriptions (
     catalog_id UUID REFERENCES subscription_catalog(catalog_id) ON DELETE SET NULL,
     custom_name VARCHAR(150) NOT NULL,
     cost_amount NUMERIC(12, 2) NOT NULL,
-    currency VARCHAR(3) DEFAULT 'USD',
+    currency VARCHAR(3) DEFAULT 'INR',
     cycle_cadence billing_cycle_type NOT NULL DEFAULT 'Monthly',
     purchase_date DATE NOT NULL,
     next_billing_date DATE NOT NULL,

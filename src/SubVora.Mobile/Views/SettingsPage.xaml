@@ -21,7 +21,7 @@
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
             <Label Text="Preferred currency" FontAttributes="Bold" />
-            <Entry Text="{Binding PreferredCurrency}" Placeholder="USD" MaxLength="3" />
+            <Entry Text="{Binding PreferredCurrency}" Placeholder="INR" MaxLength="3" />
 
             <Label Text="Default alert lead time (days)" FontAttributes="Bold" />
             <Entry Text="{Binding DefaultAlertDaysAdvance}" Keyboard="Numeric" />

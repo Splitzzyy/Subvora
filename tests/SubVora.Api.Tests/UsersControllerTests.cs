@@ -43,7 +43,7 @@ public class UsersControllerTests : IClassFixture<ApiWebApplicationFactory>
         var profile = await response.Content.ReadFromJsonAsync<UserProfileDto>();
         Assert.NotNull(profile);
         Assert.Equal(email, profile!.Email);
-        Assert.Equal("USD", profile.PreferredCurrency);
+        Assert.Equal("INR", profile.PreferredCurrency);
         Assert.Null(profile.DefaultAlertDaysAdvance);
     }
 
