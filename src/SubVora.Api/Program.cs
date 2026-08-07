@@ -171,7 +171,12 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options =>
+{
+    var securityTransformer = new OpenApiSecurityTransformer();
+    options.AddDocumentTransformer(securityTransformer);
+    options.AddOperationTransformer(securityTransformer);
+});
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
