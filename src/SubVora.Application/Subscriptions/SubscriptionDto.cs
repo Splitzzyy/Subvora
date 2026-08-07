@@ -11,6 +11,14 @@ public class SubscriptionDto
     public BillingCycleType CycleCadence { get; set; }
     public DateOnly PurchaseDate { get; set; }
     public DateOnly NextBillingDate { get; set; }
+
+    /// <summary>
+    /// The billing date the user last marked paid, or null if they never have. Clients decide
+    /// "overdue" by comparing <see cref="NextBillingDate"/> against the device's today rather than
+    /// the server's, so a user in a different timezone is not told a charge is late an hour early.
+    /// </summary>
+    public DateOnly? LastPaidDate { get; set; }
+
     public int AlertDaysAdvance { get; set; }
     public Guid? CategoryId { get; set; }
     public string? CategoryName { get; set; }

@@ -191,7 +191,8 @@ public class BurnRateBannerTests
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
-            messenger)
+            messenger,
+            new FakeThemeService())
         {
             PreferredCurrency = "EUR",
         };
@@ -214,7 +215,8 @@ public class BurnRateBannerTests
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt { ConfirmResult = true },
-            messenger);
+            messenger,
+            new FakeThemeService());
 
         await viewModel.SignOutCommand.ExecuteAsync(null);
 

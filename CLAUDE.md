@@ -8,7 +8,7 @@ SubVora — cross-platform subscription tracker with cancellation reminders, bur
 
 - `docs/TECHNICAL_REQUIREMENTS.md` — architecture, stack, API/DB requirements
 - `docs/NON_TECHNICAL_REQUIREMENTS.md` — feature/product requirements
-- `docs/Design.md` — architecture diagram, DB schema (DDL), matching flow, sample code
+- `docs/Design.md` — architecture diagram, what each table is for, matching flow
 - `docs/ADDING_A_PROVIDER.md` — how to add, rename, or remove a subscription provider
 - `docs/debug/ANDROID_DEVICE.md` — running/debugging the MAUI app on a physical phone against a local API
 
@@ -79,7 +79,8 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 - **Currency conversion is a read-time projection, not a write-time mutation.** Store each subscription's original `currency` + `cost_amount` unchanged; convert to the user's home currency only when computing dashboard/burn-rate totals. Never overwrite stored amounts with converted values.
 - **Burn-rate math is server-side.** Normalize every active subscription to a daily rate (`cost / cycle_days`), sum, then project to weekly/monthly/yearly. Keep this logic in the API, not duplicated in the mobile client.
 - **Provider matching is one SQL query, not a service call.** Scoring is `greatest(word_similarity(input, name), word_similarity(name, input))` — both directions are load-bearing. Thresholds are measured, not guessed; `SubscriptionCatalogTrigramMatchTests` pins them.
-- **Renewal reminders are scheduled on-device, not pushed.** `RenewalNotificationPlanner` derives them from the subscription list; the OS delivers them with the app closed. There is no push service, no device-token table and no vendor project. The server's only related job is `BillingDateAdvanceBackgroundService`, which rolls passed `next_billing_date` values forward — it must stay idempotent, and it is, because a second pass finds nothing left in the past.
+- **Renewal reminders are scheduled on-device, not pushed.** `RenewalNotificationPlanner` derives them from the subscription list; the OS delivers them with the app closed. There is no push service, no device-token table and no vendor project.
+- **Nothing advances `next_billing_date` on a timer.** A date left in the past is how the app says a charge is outstanding, which is what `SubscriptionDto.IsOverdue` reads. It moves only when the user marks the charge paid (`POST /api/v1/subscriptions/{id}/mark-paid`), which records `last_paid_date` and steps on exactly one cycle from the date just settled — not from today, which would silently write off the periods in between. The nightly `BillingDateAdvanceBackgroundService` was removed for this reason: it erased the very signal overdue depends on.
 - **`billing_cycle_type`** is a fixed enum: `Weekly`, `Monthly`, `Yearly`, `OneTime`. Extend deliberately, not ad hoc.
 
 ## Conventions
@@ -92,7 +93,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 ## When Implementing
 
 1. Check `docs/TECHNICAL_REQUIREMENTS.md` §6 for the specific feature's data model and behavior before writing code.
-2. Match the DDL in `docs/Design.md` unless there's a reason to deviate — if you do deviate, update `docs/Design.md` in the same change.
+2. The schema is defined by the EF Core entity configurations in `src/SubVora.Infrastructure/Data/Configurations/` and the migrations beside them — there is no DDL copy to keep in step. `docs/Design.md` describes what each table is *for*; update it when a table's purpose or a design decision changes, not when a column does.
 3. Local config lives in `src/SubVora.Api/appsettings.Development.json` — gitignored, dockerignored, used directly by `dotnet run`, and mounted read-only by `docker-compose.yml` as `appsettings.Docker.json` (the environment stays `Docker` because `Program.cs` skips `UseHttpsRedirection` only for it). Copy `appsettings.Development.example.json` to create it. Compose overrides only the database and SMTP hosts; no secret is passed via `environment:` or baked into an image layer.
 4. Keep secrets (DB connection string, JWT signing key) out of source control — use user-secrets/environment config locally, a managed vault in deployed environments.
 
