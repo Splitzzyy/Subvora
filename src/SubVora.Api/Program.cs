@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
@@ -206,6 +207,22 @@ if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Docker"))
         options.RoutePrefix = "swagger";
     });
 }
+
+// Deployed behind a TLS-terminating proxy (see docs/DEPLOYMENT.md), which forwards plain HTTP.
+// Without this, UseHttpsRedirection below sees scheme "http" and redirects every request straight
+// back to a URL that arrives as "http" again - an infinite loop. It also restores the real client
+// address, which the "auth" rate-limiter partition keys on; otherwise every request appears to come
+// from the proxy and the per-IP login limit collapses into one global limit for all users.
+//
+// The proxy's own address is assigned dynamically and cannot be allow-listed. That is safe here
+// because ForwardLimit defaults to 1: only the rightmost X-Forwarded-For entry is read, and that
+// one is appended by the proxy itself, so a client-supplied value cannot win.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    KnownIPNetworks = { },
+    KnownProxies = { },
+});
 
 app.UseExceptionHandler();
 

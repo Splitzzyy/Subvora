@@ -72,3 +72,9 @@ issues.md
 # Local dev config - holds a real signing key. Used by `dotnet run` and mounted into the
 # container by docker-compose.yml, so one file serves both.
 src/SubVora.Api/appsettings.Development.json
+
+# Android release signing material. Lose it and no upgrade can ever be shipped to an installed
+# app, so keep the only copy in a password manager - never here. detect-secrets does not inspect
+# binaries, so this rule is the only thing standing between a keystore and a public repo.
+*.keystore
+*.jks
