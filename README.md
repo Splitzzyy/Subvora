@@ -50,35 +50,33 @@ pip install detect-secrets
 
 **Local development**
 
-1. Start the local database: `docker compose up -d db`
-2. Provide local secrets. These are never committed — `appsettings.json` ships them blank, and the API
-   fails fast at startup rather than running with an empty signing key:
-   ```
-   cd src/SubVora.Api
-   dotnet user-secrets set "ConnectionStrings:Default" "Host=localhost;Port=5433;Database=subvora_dev;Username=subvora;Password=subvora_dev_password"
-   dotnet user-secrets set "Jwt:Secret" "$(openssl rand -base64 48)"
-   ```
-3. Apply migrations: `dotnet ef database update --project src/SubVora.Infrastructure --startup-project src/SubVora.Infrastructure`
-4. Run the API: `dotnet run --project src/SubVora.Api`
-5. Browse the API docs at `http://localhost:<port>/swagger`
-
-**Running the whole stack in Docker**
-
-No secrets are passed on the command line, stored in `docker-compose.yml`, or baked into the image.
-Everything lives in one gitignored file that is mounted into the container at runtime.
+One gitignored config file serves both `dotnet run` and Docker, so the signing key is defined once
+and a token minted by either is accepted by the other.
 
 ```
-cp src/SubVora.Api/appsettings.Docker.example.json src/SubVora.Api/appsettings.Docker.json
+cp src/SubVora.Api/appsettings.Development.example.json src/SubVora.Api/appsettings.Development.json
 # edit it: set Jwt:Secret to `openssl rand -base64 48`
-docker compose up -d --build
 ```
 
-- API on <http://localhost:8080>, Swagger at `/swagger`, Postgres published on `5433`
-- Mailpit catches password-reset codes and already-registered notices — inbox at <http://localhost:8025>
-- Migrations and the catalog sync run at start; there is no separate step
+Then either:
 
-Create `appsettings.Docker.json` **before** the first `up`. If it is missing, Docker creates a
-directory at that mount path and the API fails on an empty connection string.
+```
+docker compose up -d --build          # whole stack, API on :8080
+```
+
+```
+docker compose up -d db mailpit       # dependencies only
+dotnet run --project src/SubVora.Api  # API on :5271
+```
+
+- Swagger at `/swagger`; Postgres published on `5433`; Mailpit inbox at <http://localhost:8025>
+- Migrations and the catalog sync run at start; there is no separate step
+- Compose overrides exactly two settings, neither secret: the database host (inside a container
+  `localhost` is the container) and the SMTP host. Everything else, including the signing key,
+  comes from the mounted file
+
+Create `appsettings.Development.json` **before** the first `docker compose up`. If it is missing,
+Docker creates a directory at the mount path and the API fails on an empty connection string.
 
 **Tests**
 

@@ -22,7 +22,10 @@ services:
     image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
+      # 8025 is the inbox. 1025 is published too so `dotnet run` on the host can reach SMTP at
+      # localhost:1025 - the same address appsettings.Development.json already uses.
       - "8025:8025"
+      - "1025:1025"
 
   api:
     build:
@@ -30,14 +33,23 @@ services:
       dockerfile: src/SubVora.Api/Dockerfile
     restart: unless-stopped
     environment:
-      # Not a secret - it only selects which appsettings file is layered on top.
+      # Stays Docker, not Development: Program.cs skips UseHttpsRedirection only for this
+      # environment, and the container has no HTTPS port to redirect to.
       ASPNETCORE_ENVIRONMENT: Docker
+      # The only two settings that cannot be shared, and neither is a secret. Inside a container
+      # localhost is the container, so the host-side addresses in the mounted file are wrong here.
+      # The database password is the throwaway one already spelled out on the db service above.
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=subvora_dev;Username=subvora;Password=subvora_dev_password"
+      Smtp__Host: mailpit
     volumes:
-      # Every secret lives in this file, which is gitignored. Mounted rather than baked into the
-      # image so it never lands in a layer, and read-only so the container cannot rewrite it.
-      # Copy appsettings.Docker.example.json to create it - without the file Docker will helpfully
-      # create a *directory* here and the API will fail to start on a missing connection string.
-      - ./src/SubVora.Api/appsettings.Docker.json:/app/appsettings.Docker.json:ro
+      # One config file for both `dotnet run` and Docker, mounted under the name this environment
+      # loads. Sharing it means the signing key is defined once, so a token minted by one is
+      # accepted by the other. Gitignored, and mounted rather than baked in so it never lands in an
+      # image layer; read-only so the container cannot rewrite it.
+      #
+      # Copy appsettings.Development.example.json to create it *before* the first `up` - without
+      # the file Docker will helpfully create a *directory* here and the API will fail to start.
+      - ./src/SubVora.Api/appsettings.Development.json:/app/appsettings.Docker.json:ro
     ports:
       - "8080:8080"
     depends_on:
