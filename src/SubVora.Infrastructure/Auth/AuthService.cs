@@ -56,7 +56,6 @@ public class AuthService : IAuthService
         {
             Email = normalizedEmail,
             PasswordHash = passwordHash,
-            PreferredCurrency = "USD",
             CreatedAt = DateTimeOffset.UtcNow,
         };
 

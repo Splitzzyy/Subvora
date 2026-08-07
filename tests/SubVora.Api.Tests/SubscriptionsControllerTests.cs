@@ -50,7 +50,9 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         CustomName = "Netflix Premium",
         CostAmount = 19.99m,
-        Currency = "USD",
+        // Matches the registration default home currency - the burn-rate assertions below would
+        // otherwise need a live USD->INR rate that the test container has no way to fetch.
+        Currency = "INR",
         CycleCadence = BillingCycleType.Monthly,
         PurchaseDate = new DateOnly(2026, 1, 1),
         NextBillingDate = new DateOnly(2026, 8, 1),

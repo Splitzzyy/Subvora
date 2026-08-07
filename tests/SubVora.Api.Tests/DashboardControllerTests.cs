@@ -48,7 +48,9 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
         {
             CustomName = "Netflix",
             CostAmount = 30m,
-            Currency = "USD",
+            // Matches the registration default home currency, so this asserts burn-rate math
+            // without dragging live FX conversion into it.
+            Currency = "INR",
             CycleCadence = BillingCycleType.Monthly,
             PurchaseDate = new DateOnly(2026, 1, 1),
             NextBillingDate = new DateOnly(2026, 8, 1),
