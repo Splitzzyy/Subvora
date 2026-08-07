@@ -16,15 +16,28 @@ services:
       timeout: 5s
       retries: 10
 
+  # Reads reset codes and already-registered notices that would otherwise go nowhere locally.
+  # Inbox at http://localhost:8025.
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "8025:8025"
+
   api:
     build:
       context: .
       dockerfile: src/SubVora.Api/Dockerfile
     restart: unless-stopped
     environment:
+      # Not a secret - it only selects which appsettings file is layered on top.
       ASPNETCORE_ENVIRONMENT: Docker
-      ConnectionStrings__Default: "Host=db;Port=5432;Database=subvora_dev;Username=subvora;Password=subvora_dev_password"
-      Jwt__Secret: "${SUBVORA_JWT_SECRET:?set SUBVORA_JWT_SECRET (e.g. openssl rand -base64 48) before docker compose up}"
+    volumes:
+      # Every secret lives in this file, which is gitignored. Mounted rather than baked into the
+      # image so it never lands in a layer, and read-only so the container cannot rewrite it.
+      # Copy appsettings.Docker.example.json to create it - without the file Docker will helpfully
+      # create a *directory* here and the API will fail to start on a missing connection string.
+      - ./src/SubVora.Api/appsettings.Docker.json:/app/appsettings.Docker.json:ro
     ports:
       - "8080:8080"
     depends_on:

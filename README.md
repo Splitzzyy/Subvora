@@ -64,27 +64,21 @@ pip install detect-secrets
 
 **Running the whole stack in Docker**
 
-`docker compose up` runs the API alongside the database. The signing secret comes from the
-environment, not the compose file — compose refuses to start without it:
+No secrets are passed on the command line, stored in `docker-compose.yml`, or baked into the image.
+Everything lives in one gitignored file that is mounted into the container at runtime.
 
 ```
-export SUBVORA_JWT_SECRET="$(openssl rand -base64 48)"
-docker compose up
+cp src/SubVora.Api/appsettings.Docker.example.json src/SubVora.Api/appsettings.Docker.json
+# edit it: set Jwt:Secret to `openssl rand -base64 48`
+docker compose up -d --build
 ```
 
-**Adding a subscription provider**
+- API on <http://localhost:8080>, Swagger at `/swagger`, Postgres published on `5433`
+- Mailpit catches password-reset codes and already-registered notices — inbox at <http://localhost:8025>
+- Migrations and the catalog sync run at start; there is no separate step
 
-Append one entry to `src/SubVora.Infrastructure/Catalog/subscription-catalog.json` and restart the API —
-`SubscriptionCatalogSyncService` inserts anything the database is missing, and trigram matching picks it
-up immediately. No migration, no code change.
-
-```json
-{ "providerName": "Disney+", "category": "Entertainment", "iconSlug": "disneyplus" }
-```
-
-`iconSlug` may be `null` when the brand has no [Simple Icons](https://simpleicons.org) entry.
-Full walkthrough, including how to verify a slug and how to rename or remove a provider:
-[docs/ADDING_A_PROVIDER.md](./docs/ADDING_A_PROVIDER.md).
+Create `appsettings.Docker.json` **before** the first `up`. If it is missing, Docker creates a
+directory at that mount path and the API fails on an empty connection string.
 
 **Tests**
 
