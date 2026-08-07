@@ -6,6 +6,7 @@
     xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="viewModels:RegisterViewModel"
+    Shell.NavBarIsVisible="False"
     Title="Register">
 
     <ContentPage.Resources>
@@ -14,21 +15,49 @@
     </ContentPage.Resources>
 
     <ScrollView>
-        <VerticalStackLayout Padding="30" Spacing="16" VerticalOptions="Center">
-            <Label Text="Create your account" FontSize="24" HorizontalOptions="Center" />
+        <Grid Padding="24" RowDefinitions="*,Auto,*">
 
-            <Entry Placeholder="Email" Keyboard="Email" Text="{Binding Email}" />
-            <Entry Placeholder="Password" IsPassword="True" Text="{Binding Password}" />
-            <Entry Placeholder="Confirm password" IsPassword="True" Text="{Binding ConfirmPassword}" />
+            <VerticalStackLayout Grid.Row="1" Spacing="20">
 
-            <Label Text="{Binding ErrorMessage}"
-                   TextColor="Red"
-                   IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+                <VerticalStackLayout Spacing="4" Margin="0,0,0,8">
+                    <Label Style="{StaticResource Display}" Text="Create account" HorizontalTextAlignment="Center" FontSize="28" />
+                    <Label Style="{StaticResource Caption}"
+                           Text="Takes a few seconds. No card needed."
+                           HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
 
-            <Button Text="Register" Command="{Binding RegisterCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="12">
+                        <Border Style="{StaticResource FieldBorder}">
+                            <Entry Placeholder="Email" Keyboard="Email" Text="{Binding Email}" />
+                        </Border>
 
-            <Button Text="Already have an account? Log In" Clicked="OnLoginTapped" BackgroundColor="Transparent" TextColor="{StaticResource Primary}" />
-        </VerticalStackLayout>
+                        <Border Style="{StaticResource FieldBorder}">
+                            <Entry Placeholder="Password" IsPassword="True" Text="{Binding Password}" />
+                        </Border>
+
+                        <Border Style="{StaticResource FieldBorder}">
+                            <Entry Placeholder="Confirm password" IsPassword="True" Text="{Binding ConfirmPassword}" />
+                        </Border>
+
+                        <Label Style="{StaticResource ErrorText}"
+                               Text="{Binding ErrorMessage}"
+                               IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+                        <Button Text="Create account"
+                                Command="{Binding RegisterCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                                Margin="0,4,0,0" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Button Style="{StaticResource LinkButton}"
+                        Text="Already have an account? Log in"
+                        Clicked="OnLoginTapped" />
+
+            </VerticalStackLayout>
+
+        </Grid>
     </ScrollView>
 
 </ContentPage>

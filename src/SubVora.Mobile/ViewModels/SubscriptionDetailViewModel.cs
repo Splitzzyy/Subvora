@@ -6,6 +6,7 @@ using Refit;
 using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Billing;
 using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
@@ -105,6 +106,10 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         _paymentSourcesApi = paymentSourcesApi;
         _debouncer = debouncer;
         _messenger = messenger;
+
+        // PurchaseDate and CycleCadence start at their defaults, so neither change handler has fired
+        // yet and the add form would otherwise open showing today as the next billing date.
+        RecalculateNextBillingDate();
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -125,6 +130,17 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         PageTitle = value ? "Edit Subscription" : "Add Subscription";
         SaveButtonText = value ? "Save Changes" : "Save";
     }
+
+    // Both feed the same derivation, so changing either re-derives the next billing date. A date the
+    // user then picks by hand stands until they touch the purchase date or the cadence again, which
+    // is also why LoadSubscriptionAsync assigns NextBillingDate last: a saved record's own date must
+    // win over anything recomputed while its other fields were being applied.
+    partial void OnPurchaseDateChanged(DateTime value) => RecalculateNextBillingDate();
+
+    partial void OnCycleCadenceChanged(BillingCycleType value) => RecalculateNextBillingDate();
+
+    private void RecalculateNextBillingDate() =>
+        NextBillingDate = BillingCycleAdvancer.NextBillingDate(PurchaseDate, CycleCadence, DateTime.Today);
 
     partial void OnCustomNameChanged(string value)
     {

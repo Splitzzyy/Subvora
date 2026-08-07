@@ -12,64 +12,134 @@
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
         <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
         <toolkit:IsNotNullConverter x:Key="IsNotNullConverter" />
+        <toolkit:IsListNullOrEmptyConverter x:Key="IsListEmptyConverter" />
     </ContentPage.Resources>
 
     <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="12">
+        <VerticalStackLayout Padding="16,16,16,32" Spacing="16">
 
-            <Label Text="{Binding ErrorMessage}"
-                   TextColor="Red"
+            <Label Style="{StaticResource ErrorText}"
+                   Text="{Binding ErrorMessage}"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
-            <Label Text="Name" FontAttributes="Bold" />
-            <Entry Text="{Binding CustomName}" Placeholder="e.g. Netflix" />
+            <!-- ===== What it is ===== -->
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <Label Style="{StaticResource SectionHeading}" Text="Service" />
 
-            <Border IsVisible="{Binding SuggestedTier, Converter={StaticResource IsNotNullConverter}}"
-                    Padding="10"
-                    BackgroundColor="{StaticResource Primary}">
-                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                    <Image Grid.Column="0" Source="{Binding SuggestedLogoUrl}" WidthRequest="32" HeightRequest="32" />
-                    <Label Grid.Column="1"
-                           Text="{Binding SuggestedProviderName, StringFormat='Looks like {0} — use this?'}"
-                           TextColor="White"
-                           VerticalOptions="Center" />
-                    <Button Grid.Column="2" Text="Use" Command="{Binding AcceptSuggestionCommand}" />
-                </Grid>
+                    <Label Style="{StaticResource FieldLabel}" Text="Name" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Text="{Binding CustomName}" Placeholder="e.g. Netflix" />
+                    </Border>
+
+                    <!-- Trigram match against the provider catalog. Shown inline under the name
+                         rather than as a dialog so it never blocks typing. -->
+                    <Border IsVisible="{Binding SuggestedTier, Converter={StaticResource IsNotNullConverter}}"
+                            Style="{StaticResource Chip}"
+                            Padding="12">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                            <Image Grid.Column="0" Source="{Binding SuggestedLogoUrl}" WidthRequest="28" HeightRequest="28" VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Style="{StaticResource BodyText}"
+                                   Text="{Binding SuggestedProviderName, StringFormat='Looks like {0}'}"
+                                   VerticalOptions="Center" />
+                            <Button Grid.Column="2"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Text="Use"
+                                    FontSize="14"
+                                    Padding="14,8"
+                                    MinimumHeightRequest="36"
+                                    Command="{Binding AcceptSuggestionCommand}" />
+                        </Grid>
+                    </Border>
+
+                    <Label Style="{StaticResource FieldLabel}" Text="Category" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Picker Title="Choose a category"
+                                ItemsSource="{Binding Categories}"
+                                ItemDisplayBinding="{Binding Name}"
+                                SelectedItem="{Binding SelectedCategory}" />
+                    </Border>
+                </VerticalStackLayout>
             </Border>
 
-            <Label Text="Cost" FontAttributes="Bold" />
-            <Entry Text="{Binding CostAmount}" Keyboard="Numeric" Placeholder="0.00" />
+            <!-- ===== What it costs ===== -->
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <Label Style="{StaticResource SectionHeading}" Text="Cost" />
 
-            <Label Text="Currency" FontAttributes="Bold" />
-            <Entry Text="{Binding Currency}" Placeholder="INR" MaxLength="3" />
+                    <Grid ColumnDefinitions="2*,*" ColumnSpacing="10">
+                        <VerticalStackLayout Grid.Column="0" Spacing="12">
+                            <Label Style="{StaticResource FieldLabel}" Text="Amount" />
+                            <Border Style="{StaticResource FieldBorder}">
+                                <Entry Text="{Binding CostAmount}" Keyboard="Numeric" Placeholder="0.00" />
+                            </Border>
+                        </VerticalStackLayout>
 
-            <Label Text="Billing cycle" FontAttributes="Bold" />
-            <Picker ItemsSource="{Binding BillingCycleTypes}" SelectedItem="{Binding CycleCadence}" />
+                        <VerticalStackLayout Grid.Column="1" Spacing="12">
+                            <Label Style="{StaticResource FieldLabel}" Text="Currency" />
+                            <Border Style="{StaticResource FieldBorder}">
+                                <Entry Text="{Binding Currency}" Placeholder="INR" MaxLength="3" />
+                            </Border>
+                        </VerticalStackLayout>
+                    </Grid>
 
-            <Label Text="Purchase date" FontAttributes="Bold" />
-            <DatePicker Date="{Binding PurchaseDate}" />
+                    <Label Style="{StaticResource FieldLabel}" Text="Billing cycle" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Picker Title="How often it bills"
+                                ItemsSource="{Binding BillingCycleTypes}"
+                                SelectedItem="{Binding CycleCadence}" />
+                    </Border>
 
-            <Label Text="Next billing date" FontAttributes="Bold" />
-            <DatePicker Date="{Binding NextBillingDate}" />
+                    <Label Style="{StaticResource FieldLabel}" Text="Payment source" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Picker Title="Choose a payment source"
+                                ItemsSource="{Binding PaymentSources}"
+                                ItemDisplayBinding="{Binding Label}"
+                                SelectedItem="{Binding SelectedPaymentSource}" />
+                    </Border>
+                    <!-- An empty Picker opens an empty dialog and looks broken. Say why it is empty
+                         and where to fix it, rather than leaving the user tapping a dead control. -->
+                    <Label Style="{StaticResource Caption}"
+                           Text="No payment sources yet — add one on the Payment tab, then come back. Optional either way."
+                           Margin="4,0,0,0"
+                           IsVisible="{Binding PaymentSources, Converter={StaticResource IsListEmptyConverter}}" />
 
-            <Label Text="Alert days in advance" FontAttributes="Bold" />
-            <Entry Text="{Binding AlertDaysAdvance}" Keyboard="Numeric" />
+                    <Grid ColumnDefinitions="*,Auto" Margin="4,4,0,0">
+                        <Label Grid.Column="0" Style="{StaticResource BodyText}" Text="Free trial" VerticalOptions="Center" />
+                        <Switch Grid.Column="1" IsToggled="{Binding IsFreeTrial}" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
 
-            <HorizontalStackLayout Spacing="10">
-                <Label Text="Free trial" VerticalOptions="Center" />
-                <Switch IsToggled="{Binding IsFreeTrial}" />
-            </HorizontalStackLayout>
+            <!-- ===== When it bills ===== -->
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <Label Style="{StaticResource SectionHeading}" Text="Dates &amp; reminders" />
 
-            <Label Text="Category" FontAttributes="Bold" />
-            <Picker ItemsSource="{Binding Categories}" ItemDisplayBinding="{Binding Name}" SelectedItem="{Binding SelectedCategory}" />
+                    <Label Style="{StaticResource FieldLabel}" Text="Purchase date" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <DatePicker Date="{Binding PurchaseDate}" />
+                    </Border>
 
-            <Label Text="Payment source" FontAttributes="Bold" />
-            <Picker ItemsSource="{Binding PaymentSources}" ItemDisplayBinding="{Binding Label}" SelectedItem="{Binding SelectedPaymentSource}" />
+                    <Label Style="{StaticResource FieldLabel}" Text="Next billing date" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <DatePicker Date="{Binding NextBillingDate}" />
+                    </Border>
+                    <Label Style="{StaticResource Caption}"
+                           Text="Worked out from the purchase date and billing cycle. Change it if your provider bills on a different day."
+                           Margin="4,0,0,0" />
+
+                    <Label Style="{StaticResource FieldLabel}" Text="Remind me this many days ahead" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Text="{Binding AlertDaysAdvance}" Keyboard="Numeric" Placeholder="3" />
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
 
             <Button Text="{Binding SaveButtonText}"
                     Command="{Binding SaveCommand}"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
-                    Margin="0,20,0,0" />
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
 
         </VerticalStackLayout>
     </ScrollView>

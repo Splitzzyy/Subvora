@@ -14,27 +14,41 @@
     </ContentPage.Resources>
 
     <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="12">
+        <VerticalStackLayout Padding="16,16,16,32" Spacing="16">
 
-            <Label Text="{Binding ErrorMessage}"
-                   TextColor="Red"
+            <Label Style="{StaticResource ErrorText}"
+                   Text="{Binding ErrorMessage}"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
-            <Label Text="Preferred currency" FontAttributes="Bold" />
-            <Entry Text="{Binding PreferredCurrency}" Placeholder="INR" MaxLength="3" />
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <Label Style="{StaticResource SectionHeading}" Text="Preferences" />
 
-            <Label Text="Default alert lead time (days)" FontAttributes="Bold" />
-            <Entry Text="{Binding DefaultAlertDaysAdvance}" Keyboard="Numeric" />
+                    <Label Style="{StaticResource FieldLabel}" Text="Home currency" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Text="{Binding PreferredCurrency}" Placeholder="INR" MaxLength="3" />
+                    </Border>
+                    <Label Style="{StaticResource Caption}"
+                           Text="Everything on the dashboard is converted into this currency. Your subscriptions keep the currency they are billed in."
+                           Margin="4,0,0,0" />
 
-            <Button Text="Save"
-                    Command="{Binding SaveCommand}"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
-                    Margin="0,20,0,0" />
+                    <Label Style="{StaticResource FieldLabel}" Text="Default reminder lead time (days)" Margin="4,8,0,-4" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Text="{Binding DefaultAlertDaysAdvance}" Keyboard="Numeric" Placeholder="3" />
+                    </Border>
 
-            <Button Text="Sign Out"
-                    Command="{Binding SignOutCommand}"
-                    BackgroundColor="Red"
-                    Margin="0,30,0,0" />
+                    <Button Text="Save"
+                            Command="{Binding SaveCommand}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                            Margin="0,8,0,0" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource Card}" Padding="8">
+                <Button Style="{StaticResource DangerButton}"
+                        Text="Sign out"
+                        Command="{Binding SignOutCommand}" />
+            </Border>
 
         </VerticalStackLayout>
     </ScrollView>

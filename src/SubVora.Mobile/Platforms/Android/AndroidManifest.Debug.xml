@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only overlay. Android 9+ refuses cleartext HTTP by default, which blocks every call to a
+  locally-run API (http://localhost:8080 over `adb reverse`, or a http://192.168.x.x LAN address)
+  because a dev HTTPS certificate is self-signed and a phone will not trust it either.
+
+  Merged only when Configuration=Debug - see the AndroidManifestOverlay item in SubVora.Mobile.csproj.
+  Release builds keep the platform default and still refuse cleartext.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<application android:usesCleartextTraffic="true" />
+</manifest>

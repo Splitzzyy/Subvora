@@ -14,40 +14,65 @@
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
-        <Grid RowDefinitions="Auto,Auto,*" Padding="20">
+        <Grid RowDefinitions="Auto,Auto,*" Padding="16,16,16,0" RowSpacing="12">
 
             <Label Grid.Row="0"
+                   Style="{StaticResource ErrorText}"
                    Text="{Binding ErrorMessage}"
-                   TextColor="Red"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
-            <VerticalStackLayout Grid.Row="1" Spacing="8" Margin="0,10">
-                <Entry Placeholder="Label" Text="{Binding NewLabel}" />
-                <Picker ItemsSource="{Binding SourceTypes}" SelectedItem="{Binding NewSourceType}" />
-                <Button Text="Add" Command="{Binding AddCommand}" />
-            </VerticalStackLayout>
+            <Border Grid.Row="1" Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <Label Style="{StaticResource SectionHeading}" Text="Add a source" />
 
-            <CollectionView Grid.Row="2" ItemsSource="{Binding PaymentSources}">
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="dtos:PaymentSourceDto">
-                        <SwipeView>
-                            <SwipeView.RightItems>
-                                <SwipeItems>
-                                    <SwipeItem Text="Delete"
-                                               BackgroundColor="Red"
-                                               Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=DeleteCommand}"
-                                               CommandParameter="{Binding Id}" />
-                                </SwipeItems>
-                            </SwipeView.RightItems>
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Placeholder="Label — e.g. HDFC Credit ••4021" Text="{Binding NewLabel}" />
+                    </Border>
 
-                            <Grid Padding="0,8" ColumnDefinitions="*,Auto">
-                                <Label Grid.Column="0" Text="{Binding Label}" />
-                                <Label Grid.Column="1" Text="{Binding SourceType}" />
-                            </Grid>
-                        </SwipeView>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Picker ItemsSource="{Binding SourceTypes}" SelectedItem="{Binding NewSourceType}" />
+                    </Border>
+
+                    <Button Text="Add" Command="{Binding AddCommand}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18,4" Margin="0,0,0,16">
+                <CollectionView ItemsSource="{Binding PaymentSources}">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="dtos:PaymentSourceDto">
+                            <SwipeView>
+                                <SwipeView.RightItems>
+                                    <SwipeItems>
+                                        <SwipeItem Text="Delete"
+                                                   BackgroundColor="#C62828"
+                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=DeleteCommand}"
+                                                   CommandParameter="{Binding Id}" />
+                                    </SwipeItems>
+                                </SwipeView.RightItems>
+
+                                <Grid Style="{StaticResource CardRow}" ColumnDefinitions="*,Auto">
+                                    <Label Grid.Column="0"
+                                           Style="{StaticResource BodyText}"
+                                           Text="{Binding Label}"
+                                           VerticalOptions="Center" />
+                                    <Border Grid.Column="1" Style="{StaticResource Chip}">
+                                        <Label Style="{StaticResource ChipText}" Text="{Binding SourceType}" />
+                                    </Border>
+                                </Grid>
+                            </SwipeView>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+
+                    <CollectionView.EmptyView>
+                        <VerticalStackLayout Padding="0,40" Spacing="6">
+                            <Label Style="{StaticResource EmptyTitle}" Text="No payment sources" />
+                            <Label Style="{StaticResource EmptyBody}"
+                                   Text="Add the cards and accounts your subscriptions bill to. Swipe a row left to delete it." />
+                        </VerticalStackLayout>
+                    </CollectionView.EmptyView>
+                </CollectionView>
+            </Border>
 
         </Grid>
     </RefreshView>

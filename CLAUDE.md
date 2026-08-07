@@ -10,6 +10,7 @@ SubVora — cross-platform subscription tracker with cancellation reminders, bur
 - `docs/NON_TECHNICAL_REQUIREMENTS.md` — feature/product requirements
 - `docs/Design.md` — architecture diagram, DB schema (DDL), matching flow, sample code
 - `docs/ADDING_A_PROVIDER.md` — how to add, rename, or remove a subscription provider
+- `docs/debug/ANDROID_DEVICE.md` — running/debugging the MAUI app on a physical phone against a local API
 
 Read the relevant doc before implementing a feature — don't guess at requirements that are already written down.
 

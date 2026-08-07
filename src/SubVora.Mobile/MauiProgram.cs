@@ -60,10 +60,17 @@ public static class MauiProgram
 		// refresh endpoint so a 401 during refresh can never recurse back into the handler.
 		builder.Services.AddHttpClient("AuthRefresh", client => client.BaseAddress = new Uri(ApiConfig.BaseAddress));
 
-		builder.Services.AddSingleton(sp => new AuthDelegatingHandler(
+		// Singleton: one refresh lock and one SessionExpired event for the whole app.
+		builder.Services.AddSingleton(sp => new SessionRefresher(
 			sp.GetRequiredService<ITokenStore>(),
 			sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh"),
 			sp.GetRequiredService<ILocalCacheService>()));
+
+		// Transient: HttpClientFactory sets InnerHandler on each instance it is given, so sharing
+		// one across the Refit clients below throws as soon as the second client is built.
+		builder.Services.AddTransient(sp => new AuthDelegatingHandler(
+			sp.GetRequiredService<ITokenStore>(),
+			sp.GetRequiredService<SessionRefresher>()));
 
 		// IAuthApi must not chain AuthDelegatingHandler - login/register/refresh calls
 		// themselves would otherwise loop back through the 401-refresh logic.

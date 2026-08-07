@@ -150,8 +150,14 @@ public partial class DashboardViewModel : ObservableObject
         WarningMessage = BuildWarningMessage(snapshot.UnresolvedSubscriptionCount, snapshot.OldestRateFetchedAt);
 
         ByCategory.Clear();
+
+        // Bars are normalised against the largest category, not the total: split across eight
+        // categories a share-of-total bar is a stub for everything below the leader, and the
+        // comparison the list exists to support stops being readable.
+        var largest = snapshot.ByCategory.Count == 0 ? 0m : snapshot.ByCategory.Max(i => i.MonthlyAmount);
         foreach (var item in snapshot.ByCategory)
         {
+            item.Share = largest > 0 ? (double)(item.MonthlyAmount / largest) : 0;
             ByCategory.Add(item);
         }
     }
