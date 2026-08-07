@@ -66,3 +66,6 @@ nunit-*.xml
 technical_requirements.md
 prd.md
 issues.md
+
+# Local Docker config - holds a real signing key, mounted into the container at runtime.
+src/SubVora.Api/appsettings.Docker.json

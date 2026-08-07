@@ -29,6 +29,12 @@ public class SmtpEmailSender : IEmailSender
         var fromAddress = _configuration["Smtp:FromAddress"]
             ?? throw new InvalidOperationException("Smtp:FromAddress is not configured.");
 
+        // Required by default: a real mail server carries reset codes, and StartTlsWhenAvailable
+        // would let anyone able to strip the server's STARTTLS advertisement read them in transit.
+        // Local mail catchers (Mailpit, MailHog) offer no TLS at all, which is why every local send
+        // failed with "The SMTP server does not support the STARTTLS extension" - opt out there.
+        var useStartTls = !bool.TryParse(_configuration["Smtp:UseStartTls"], out var parsed) || parsed;
+
         var message = new MimeMessage();
         message.From.Add(MailboxAddress.Parse(fromAddress));
         message.To.Add(MailboxAddress.Parse(toEmail));
@@ -36,7 +42,7 @@ public class SmtpEmailSender : IEmailSender
         message.Body = new TextPart("plain") { Text = body };
 
         using var client = new SmtpClient();
-        await client.ConnectAsync(host, port, SecureSocketOptions.StartTls, cancellationToken);
+        await client.ConnectAsync(host, port, useStartTls ? SecureSocketOptions.StartTls : SecureSocketOptions.None, cancellationToken);
 
         if (!string.IsNullOrEmpty(username))
         {
