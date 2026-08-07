@@ -21,6 +21,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     private readonly IPaymentSourcesApi _paymentSourcesApi;
     private readonly IDebouncer _debouncer;
     private readonly IMessenger _messenger;
+    private readonly IUserPrompt _userPrompt;
     private ResolveSubscriptionResponse? _pendingSuggestion;
 
     // The catalog row this subscription is linked to, carried from a resolve result (or from the
@@ -99,13 +100,17 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     /// <summary>Raised when loading an existing subscription 404s (deleted elsewhere) so the view can navigate back to the list.</summary>
     public event EventHandler? SubscriptionNotFound;
 
-    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer, IMessenger messenger)
+    /// <summary>Raised after a successful delete so the view can navigate back.</summary>
+    public event EventHandler? Deleted;
+
+    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer, IMessenger messenger, IUserPrompt userPrompt)
     {
         _subscriptionsApi = subscriptionsApi;
         _categoriesApi = categoriesApi;
         _paymentSourcesApi = paymentSourcesApi;
         _debouncer = debouncer;
         _messenger = messenger;
+        _userPrompt = userPrompt;
 
         // PurchaseDate and CycleCadence start at their defaults, so neither change handler has fired
         // yet and the add form would otherwise open showing today as the next billing date.
@@ -319,6 +324,57 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             // Only after the write succeeded - a failed save must not move the headline figure.
             _messenger.Send(new SubscriptionsChangedMessage());
             SaveSucceeded?.Invoke(this, EventArgs.Empty);
+        }
+        catch (ApiException ex)
+        {
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Deleting from the record you are already looking at. The list has swipe-to-delete, but a
+    /// swipe advertises itself to nobody, so this is the discoverable path. Add mode has nothing to
+    /// delete, hence the guard rather than only hiding the button.
+    /// </summary>
+    [RelayCommand]
+    private async Task DeleteAsync()
+    {
+        if (SubscriptionId is not Guid id)
+        {
+            return;
+        }
+
+        var confirmed = await _userPrompt.ConfirmAsync(
+            "Delete subscription",
+            $"Delete {(string.IsNullOrWhiteSpace(CustomName) ? "this subscription" : CustomName)}? This cannot be undone.",
+            "Delete",
+            "Cancel");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        IsBusy = true;
+        try
+        {
+            await _subscriptionsApi.DeleteAsync(id);
+
+            // Only after the server accepted it - a failed delete must not move the headline figure
+            // or bounce the user off a record that still exists.
+            _messenger.Send(new SubscriptionsChangedMessage());
+            Deleted?.Invoke(this, EventArgs.Empty);
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            // Already gone - the outcome the user asked for, so treat it as success rather than
+            // stranding them on a record that no longer exists.
+            _messenger.Send(new SubscriptionsChangedMessage());
+            Deleted?.Invoke(this, EventArgs.Empty);
         }
         catch (ApiException ex)
         {

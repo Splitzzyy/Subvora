@@ -12,13 +12,15 @@ public class SubscriptionDetailViewModelTests
         FakeCategoriesApi? categoriesApi = null,
         FakePaymentSourcesApi? paymentSourcesApi = null,
         FakeDebouncer? debouncer = null,
-        IMessenger? messenger = null) =>
+        IMessenger? messenger = null,
+        FakeUserPrompt? userPrompt = null) =>
         new(
             subscriptionsApi ?? new FakeSubscriptionsApi(),
             categoriesApi ?? new FakeCategoriesApi(),
             paymentSourcesApi ?? new FakePaymentSourcesApi(),
             debouncer ?? new FakeDebouncer(),
-            messenger ?? new WeakReferenceMessenger());
+            messenger ?? new WeakReferenceMessenger(),
+            userPrompt ?? new FakeUserPrompt());
 
     [Fact]
     public async Task LoadPickersAsync_PopulatesCategoriesAndPaymentSourcesFromApis()

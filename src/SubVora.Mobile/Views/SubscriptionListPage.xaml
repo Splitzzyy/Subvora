@@ -13,6 +13,8 @@
     <ContentPage.Resources>
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
         <converters:CategoryColorConverter x:Key="CategoryColorConverter" />
+        <converters:RelativeDateConverter x:Key="RelativeDateConverter" />
+        <converters:InitialConverter x:Key="InitialConverter" />
     </ContentPage.Resources>
 
     <ContentPage.ToolbarItems>
@@ -35,10 +37,34 @@
                    Margin="20,12,20,0"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
-            <CollectionView Grid.Row="2" ItemsSource="{Binding Subscriptions}" Margin="0,12,0,0">
+            <!--
+                Grouped by category, and both the groups and the rows inside them are ordered by
+                billing date - so whatever is charged next is at the top of the screen. See
+                SubscriptionListViewModel.RebuildGroups.
+            -->
+            <CollectionView Grid.Row="2"
+                            ItemsSource="{Binding Groups}"
+                            IsGrouped="True"
+                            Margin="0,12,0,0">
+
+                <CollectionView.GroupHeaderTemplate>
+                    <DataTemplate x:DataType="viewModels:SubscriptionGroup">
+                        <Grid Padding="20,16,20,8" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                            <Ellipse Grid.Column="0"
+                                     WidthRequest="10" HeightRequest="10"
+                                     VerticalOptions="Center"
+                                     Fill="{Binding CategoryName, Converter={StaticResource CategoryColorConverter}}" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="1">
+                                <Label Style="{StaticResource SectionHeading}" Text="{Binding CategoryName}" />
+                                <Label Style="{StaticResource Caption}" Text="{Binding Summary}" FontSize="12" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.GroupHeaderTemplate>
+
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="dtos:SubscriptionDto">
-                        <SwipeView Margin="16,0,16,12">
+                        <SwipeView Margin="16,0,16,10">
                             <SwipeView.RightItems>
                                 <SwipeItems>
                                     <SwipeItem Text="Delete"
@@ -57,32 +83,34 @@
 
                                 <Grid ColumnSpacing="12" ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
 
-                                    <!-- Category as a stripe down the row: same colour the dashboard
-                                         breakdown uses, so the two screens agree at a glance. The
-                                         category name is still printed below, so this is a cue and
-                                         never the only way to tell rows apart. -->
+                                    <!-- Category as a stripe down the row: same colour the group
+                                         header and the dashboard breakdown use, so a row still
+                                         carries its category once it has scrolled away from its
+                                         header. -->
                                     <Rectangle Grid.Row="0" Grid.Column="0" Grid.RowSpan="2"
                                                WidthRequest="4"
                                                RadiusX="2" RadiusY="2"
                                                VerticalOptions="Fill"
                                                Fill="{Binding CategoryName, Converter={StaticResource CategoryColorConverter}}" />
 
-                                    <!-- The placeholder sits underneath and is simply never covered when
-                                         CatalogLogoUrl is null/empty, or when the remote image fails to
-                                         load: MAUI leaves an Image with an unreachable UriImageSource
-                                         blank rather than throwing, so a dead URL or a fully offline
-                                         device degrades to the fallback with no extra handling. -->
+                                    <!-- Drawn on the device rather than fetched. The catalog's
+                                         CatalogLogoUrl points at a Simple Icons SVG, and MAUI hands
+                                         remote images to Android's bitmap decoder, which cannot read
+                                         SVG - Glide logged "Failed to load resource" and the tile
+                                         stayed empty. A letter needs no network, so it survives the
+                                         offline path this list already supports, and every row gets
+                                         one whether or not it matched the catalog. -->
                                     <Border Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
                                             Style="{StaticResource Chip}"
-                                            Padding="7"
+                                            Padding="0"
                                             WidthRequest="44" HeightRequest="44"
-                                            VerticalOptions="Center">
-                                        <Grid>
-                                            <Image Source="subscription_placeholder.png" Aspect="AspectFit" />
-                                            <Image Source="{Binding CatalogLogoUrl}"
-                                                   Aspect="AspectFit"
-                                                   IsVisible="{Binding CatalogLogoUrl, Converter={StaticResource StringToBoolConverter}}" />
-                                        </Grid>
+                                            VerticalOptions="Center"
+                                            BackgroundColor="{Binding CategoryName, Converter={StaticResource CategoryColorConverter}, ConverterParameter=soft}">
+                                        <Label Text="{Binding CustomName, Converter={StaticResource InitialConverter}}"
+                                               Style="{StaticResource BodyStrong}"
+                                               FontSize="18"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
                                     </Border>
 
                                     <HorizontalStackLayout Grid.Row="0" Grid.Column="2" Spacing="8">
@@ -108,15 +136,12 @@
                                         </Label.FormattedText>
                                     </Label>
 
-                                    <Label Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" Style="{StaticResource Caption}">
-                                        <Label.FormattedText>
-                                            <FormattedString>
-                                                <Span Text="{Binding CategoryName}" />
-                                                <Span Text=" · Renews " />
-                                                <Span Text="{Binding NextBillingDate}" />
-                                            </FormattedString>
-                                        </Label.FormattedText>
-                                    </Label>
+                                    <!-- The category lives in the group header now, so the row's
+                                         second line answers the question the list is for: when does
+                                         this get charged. -->
+                                    <Label Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2"
+                                           Style="{StaticResource Caption}"
+                                           Text="{Binding NextBillingDate, Converter={StaticResource RelativeDateConverter}, StringFormat='Renews {0}'}" />
                                 </Grid>
                             </Border>
                         </SwipeView>
