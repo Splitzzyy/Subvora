@@ -165,6 +165,27 @@ public class SubscriptionsController : ControllerBase
         return deleted ? NoContent() : NotFound();
     }
 
+    /// <summary>Records the outstanding charge as paid and moves the subscription on one billing cycle.</summary>
+    /// <remarks>
+    /// The date settled is the subscription's current next_billing_date, not today: paying a 23 Apr
+    /// charge on 7 Aug still settles 23 Apr, and the following charge falls a cycle after that date.
+    /// A OneTime subscription has nothing further to bill, so it is deactivated instead of advanced.
+    /// Nothing else moves next_billing_date - a date in the past means the charge is genuinely
+    /// outstanding, which is what lets a client show it as overdue.
+    /// </remarks>
+    /// <response code="200">Returns the updated subscription.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="404">No such subscription owned by the caller.</response>
+    [HttpPost("{id:guid}/mark-paid")]
+    [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> MarkPaid(Guid id, CancellationToken cancellationToken)
+    {
+        var updated = await _subscriptionRepository.MarkPaidAsync(id, GetUserId(), cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
+    }
+
     /// <summary>Resolves free-text subscription input (e.g. "nflx mobile plan") to a catalog match via AI embedding + cosine similarity.</summary>
     /// <remarks>
     /// Similarity ≥0.85 auto-fills from the matched catalog entry; 0.70-0.85 returns the same match

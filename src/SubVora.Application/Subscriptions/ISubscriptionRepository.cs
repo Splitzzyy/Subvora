@@ -13,4 +13,10 @@ public interface ISubscriptionRepository
     Task<SubscriptionDto?> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Records the current billing date as paid and moves the subscription on one cycle. Returns
+    /// null when the subscription does not exist for this user.
+    /// </summary>
+    Task<SubscriptionDto?> MarkPaidAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 }

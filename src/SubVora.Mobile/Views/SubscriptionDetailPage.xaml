@@ -126,7 +126,7 @@
                         <DatePicker Date="{Binding NextBillingDate}" />
                     </Border>
                     <Label Style="{StaticResource Caption}"
-                           Text="Worked out from the purchase date and billing cycle. Change it if your provider bills on a different day."
+                           Text="One billing period after the purchase date. Change it if your provider bills on a different day."
                            Margin="4,0,0,0" />
 
                     <Label Style="{StaticResource FieldLabel}" Text="Remind me this many days ahead" />
