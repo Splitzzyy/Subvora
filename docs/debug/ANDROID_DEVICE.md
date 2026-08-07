@@ -10,6 +10,105 @@ all of the below because `10.0.2.2` means nothing to it.
 
 ---
 
+## Everyday situations — what happened, what to do
+
+The rest of this document is the detail. This section is the day-to-day loop. Sections 1 and 2 are
+one-time setup; you should not need them again once the phone is working.
+
+### I changed mobile code (XAML, a view-model, anything in `SubVora.Mobile`)
+
+Run this. It rebuilds, reinstalls over the app that is already there, and relaunches it. Usually
+10-20 seconds. You stay logged in and the local cache is kept.
+
+```powershell
+dotnet build src/SubVora.Mobile/SubVora.Mobile.csproj -f net10.0-android -t:Run `
+  -p:ApiBaseAddress=http://localhost:8080/ `
+  -p:AndroidSdkDirectory="$env:LOCALAPPDATA\Android\Sdk" `
+  -p:JavaSdkDirectory="$env:LOCALAPPDATA\Android\jdk"
+```
+
+### I changed API code (`SubVora.Api`, `Application`, `Infrastructure`, `Domain`)
+
+```powershell
+docker compose up -d --build api
+```
+
+**`--build` is the important part.** Without it Docker reuses the old image, your change is not
+running, and you will spend a while debugging code that was never deployed. Migrations re-run by
+themselves when the container starts.
+
+### I changed both
+
+API first, then mobile. Nothing else.
+
+### I unplugged the USB cable and plugged it back in
+
+```powershell
+adb reverse tcp:8080 tcp:8080
+```
+
+That is all. The app is still installed and does not need rebuilding. This one mapping is the only
+thing lost, and losing it is quiet: the phone still resolves `localhost:8080` — to itself — so calls
+fail with a connection error rather than anything that mentions the cable.
+
+### I restarted the phone
+
+Same as above: re-run `adb reverse`. If you had set up wireless ADB, re-run `adb connect` too.
+
+### I restarted my machine
+
+```powershell
+docker compose up -d
+adb reverse tcp:8080 tcp:8080
+```
+
+### The app opens but nothing loads
+
+Work outwards from the phone:
+
+```powershell
+adb shell "curl -s http://localhost:8080/health"   # phone -> your machine. Expect: Healthy
+curl http://localhost:8080/health                  # your machine -> API. Expect: Healthy
+docker compose ps                                  # api and db both Up
+```
+
+The first command failing while the second works means the tunnel is down — re-run `adb reverse`.
+
+### The app crashes
+
+```powershell
+adb logcat -c        # clear old noise first, then reproduce the crash
+adb logcat -b crash -v brief -d | Select-String -Pattern "FATAL|Exception|Process:" | Select-Object -First 20
+```
+
+That prints the real exception message. See §7 for more and §8 for ones already met.
+
+### I am signed out, or my login stopped working
+
+Register again. This is normal after the database has been cleared — an access token stays
+signature-valid until it expires, so the app can look logged in while every call fails against a user
+that no longer exists.
+
+### Something looks stale even though the build succeeded
+
+```powershell
+dotnet clean src/SubVora.Mobile/SubVora.Mobile.csproj -f net10.0-android
+```
+
+Then build again. Worth trying after changing the `.csproj`, adding a package, or adding an image or
+icon.
+
+### Before you deploy a mobile change
+
+```powershell
+dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj
+```
+
+Fast, and it catches view-model mistakes. It cannot see XAML, Shell navigation, or DI lifetimes —
+both crashes in §8 passed a green test run. Open the app on the phone before calling a UI change done.
+
+---
+
 ## 1. One-time machine setup
 
 `dotnet workload list` should show `maui-android`. If it doesn't:
