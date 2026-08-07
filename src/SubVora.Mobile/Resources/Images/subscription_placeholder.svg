@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Fallback shown when a subscription has no matched catalog logo, or the remote logo fails to load. -->
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <rect x="4" y="12" width="56" height="40" rx="6" fill="#512BD4" />
-  <rect x="4" y="22" width="56" height="7" fill="#FFFFFF" opacity="0.85" />
-  <rect x="11" y="38" width="18" height="5" rx="2.5" fill="#FFFFFF" opacity="0.85" />
-</svg>

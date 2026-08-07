@@ -112,7 +112,8 @@ public class BurnRateBannerTests
             new FakeCategoriesApi(),
             new FakePaymentSourcesApi(),
             new FakeDebouncer(),
-            messenger)
+            messenger,
+            new FakeUserPrompt())
         {
             CustomName = "Netflix",
             CostAmount = 15.99m,
@@ -140,7 +141,8 @@ public class BurnRateBannerTests
             new FakeCategoriesApi(),
             new FakePaymentSourcesApi(),
             new FakeDebouncer(),
-            messenger)
+            messenger,
+            new FakeUserPrompt())
         {
             CustomName = "Netflix",
             CostAmount = 15.99m,

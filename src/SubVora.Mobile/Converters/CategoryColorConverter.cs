@@ -34,16 +34,23 @@ public class CategoryColorConverter : IValueConverter
     private const string NeutralLight = "#8A8A99";
     private const string NeutralDark = "#767686";
 
+    /// <summary>
+    /// Pass <c>ConverterParameter=soft</c> for a faded version, used behind text. The hue still
+    /// identifies the category while dark ink on top keeps its own contrast - painting a letter
+    /// white on the full-strength hue would fail on the lighter slots (yellow against white is
+    /// about 2:1).
+    /// </summary>
+    private const float SoftAlpha = 0.20f;
+
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var isDark = Application.Current?.RequestedTheme == AppTheme.Dark;
 
-        if (value is string name && ByCategory.TryGetValue(name, out var pair))
-        {
-            return Color.FromArgb(isDark ? pair.Dark : pair.Light);
-        }
+        var color = value is string name && ByCategory.TryGetValue(name, out var pair)
+            ? Color.FromArgb(isDark ? pair.Dark : pair.Light)
+            : Color.FromArgb(isDark ? NeutralDark : NeutralLight);
 
-        return Color.FromArgb(isDark ? NeutralDark : NeutralLight);
+        return parameter as string == "soft" ? color.WithAlpha(SoftAlpha) : color;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>

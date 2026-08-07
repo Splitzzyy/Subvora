@@ -28,7 +28,18 @@ public partial class SubscriptionListViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsShowingCachedData { get; set; }
 
+    /// <summary>
+    /// Flat, in server order. Stays the authoritative set - the notification scheduler, the cache
+    /// write-back and delete all read it - while <see cref="Groups"/> is the display projection.
+    /// </summary>
     public ObservableCollection<SubscriptionDto> Subscriptions { get; } = [];
+
+    /// <summary>
+    /// What the list actually renders: one group per category, groups ordered by whichever bills
+    /// soonest and rows within a group likewise, so the next thing to be charged is at the top of
+    /// the screen rather than wherever the server happened to return it.
+    /// </summary>
+    public ObservableCollection<SubscriptionGroup> Groups { get; } = [];
 
     /// <summary>Raised when a row is tapped, to navigate to the detail screen in edit mode.</summary>
     public event EventHandler<Guid>? SubscriptionSelected;
@@ -94,6 +105,9 @@ public partial class SubscriptionListViewModel : ObservableObject
         }
         finally
         {
+            // Whichever branch above won - live, cached, or neither - Groups has to match the flat
+            // list, including being emptied when a failure left nothing to show.
+            RebuildGroups();
             IsLoading = false;
         }
 
@@ -104,6 +118,27 @@ public partial class SubscriptionListViewModel : ObservableObject
         // an edit made without visiting the list, move this behind a SubscriptionsChangedMessage
         // subscriber that reads the local cache.
         await _notificationScheduler.SyncAsync(Subscriptions);
+    }
+
+    /// <summary>
+    /// Rebuilds <see cref="Groups"/> from <see cref="Subscriptions"/>. Called from every place that
+    /// mutates the flat list, so the two cannot drift apart.
+    /// </summary>
+    private void RebuildGroups()
+    {
+        Groups.Clear();
+
+        var grouped = Subscriptions
+            .GroupBy(s => string.IsNullOrWhiteSpace(s.CategoryName) ? SubscriptionGroup.UncategorisedName : s.CategoryName!)
+            .Select(g => new SubscriptionGroup(g.Key, g.OrderBy(s => s.NextBillingDate).ThenBy(s => s.CustomName)))
+            .OrderBy(g => g.NextBillingDate)
+            // Two categories billing the same day would otherwise reorder between loads.
+            .ThenBy(g => g.CategoryName, StringComparer.CurrentCultureIgnoreCase);
+
+        foreach (var group in grouped)
+        {
+            Groups.Add(group);
+        }
     }
 
     [RelayCommand]
@@ -133,6 +168,7 @@ public partial class SubscriptionListViewModel : ObservableObject
             if (toRemove is not null)
             {
                 Subscriptions.Remove(toRemove);
+                RebuildGroups();
             }
 
             await _localCacheService.ClearAsync<CachedSubscription>();

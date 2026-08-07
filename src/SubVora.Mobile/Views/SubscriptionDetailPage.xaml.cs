@@ -13,6 +13,7 @@ public partial class SubscriptionDetailPage : ContentPage
 		BindingContext = _viewModel;
 		_viewModel.SaveSucceeded += OnSaveSucceeded;
 		_viewModel.SubscriptionNotFound += OnSubscriptionNotFound;
+		_viewModel.Deleted += OnDeleted;
 	}
 
 	protected override void OnAppearing()
@@ -22,6 +23,11 @@ public partial class SubscriptionDetailPage : ContentPage
 	}
 
 	private async void OnSaveSucceeded(object? sender, EventArgs e)
+	{
+		await Shell.Current.GoToAsync("..");
+	}
+
+	private async void OnDeleted(object? sender, EventArgs e)
 	{
 		await Shell.Current.GoToAsync("..");
 	}

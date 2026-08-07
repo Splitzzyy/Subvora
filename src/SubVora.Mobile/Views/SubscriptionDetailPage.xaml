@@ -37,9 +37,8 @@
                     <Border IsVisible="{Binding SuggestedTier, Converter={StaticResource IsNotNullConverter}}"
                             Style="{StaticResource Chip}"
                             Padding="12">
-                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                            <Image Grid.Column="0" Source="{Binding SuggestedLogoUrl}" WidthRequest="28" HeightRequest="28" VerticalOptions="Center" />
-                            <Label Grid.Column="1"
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                            <Label Grid.Column="0"
                                    Style="{StaticResource BodyText}"
                                    Text="{Binding SuggestedProviderName, StringFormat='Looks like {0}'}"
                                    VerticalOptions="Center" />
@@ -140,6 +139,13 @@
             <Button Text="{Binding SaveButtonText}"
                     Command="{Binding SaveCommand}"
                     IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+
+            <!-- Edit mode only: there is nothing to delete on a record that has not been created. -->
+            <Button Style="{StaticResource DangerButton}"
+                    Text="Delete subscription"
+                    Command="{Binding DeleteCommand}"
+                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                    IsVisible="{Binding IsEditMode}" />
 
         </VerticalStackLayout>
     </ScrollView>
