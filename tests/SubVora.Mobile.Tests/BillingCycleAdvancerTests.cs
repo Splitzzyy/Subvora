@@ -1,26 +1,27 @@
+using System.Globalization;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Billing;
 
 namespace SubVora.Mobile.Tests;
 
 /// <summary>
-/// Mirrors the server's BillingCycleAdvancer semantics. If one side's stepping rule changes, these
-/// are the assertions that should stop the two drifting apart unnoticed.
+/// The next billing date is one billing period after the purchase date - the end of the period the
+/// purchase started - and nothing else. It is deliberately not "the next occurrence after today":
+/// skipping a passed period hides the dates the user entered. Rolling a passed date forward is the
+/// server's job (BillingDateAdvanceBackgroundService).
 /// </summary>
 public class BillingCycleAdvancerTests
 {
-    private static readonly DateTime Today = new(2026, 8, 7);
-
     private static DateTime Next(DateTime purchase, BillingCycleType cadence) =>
-        BillingCycleAdvancer.NextBillingDate(purchase, cadence, Today);
+        BillingCycleAdvancer.NextBillingDate(purchase, cadence);
 
     [Theory]
-    [InlineData(BillingCycleType.Weekly, 2026, 8, 14)]
-    [InlineData(BillingCycleType.Monthly, 2026, 9, 7)]
-    [InlineData(BillingCycleType.Yearly, 2027, 8, 7)]
-    public void PurchasedToday_BillsOneFullCycleFromNow(BillingCycleType cadence, int year, int month, int day)
+    [InlineData("2026-08-07", BillingCycleType.Weekly, "2026-08-14")]
+    [InlineData("2026-08-07", BillingCycleType.Monthly, "2026-09-07")]
+    [InlineData("2026-08-07", BillingCycleType.Yearly, "2027-08-07")]
+    public void OneCycleAfterThePurchaseDate(string purchase, BillingCycleType cadence, string expected)
     {
-        Assert.Equal(new DateTime(year, month, day), Next(Today, cadence));
+        Assert.Equal(Date(expected), Next(Date(purchase), cadence));
     }
 
     [Fact]
@@ -31,50 +32,51 @@ public class BillingCycleAdvancerTests
         Assert.Equal(purchase, Next(purchase, BillingCycleType.OneTime));
     }
 
-    [Fact]
-    public void FuturePurchaseDate_BillsOnThatDateRatherThanAdvancingPastIt()
+    /// <summary>
+    /// The reported bug: a subscription bought in 2025 and billed yearly ends its period in 2026.
+    /// Advancing to 2027 because 2026 has already gone by loses the period that was entered.
+    /// </summary>
+    [Theory]
+    [InlineData("2025-04-23", "2026-04-23")]
+    [InlineData("2025-01-15", "2026-01-15")]
+    [InlineData("2025-12-01", "2026-12-01")]
+    public void YearlyFromAPreviousYear_EndsItsPeriodTheFollowingYear(string purchase, string expected)
     {
-        var purchase = new DateTime(2026, 12, 1);
-
-        Assert.Equal(purchase, Next(purchase, BillingCycleType.Monthly));
+        Assert.Equal(Date(expected), Next(Date(purchase), BillingCycleType.Yearly));
     }
 
     [Fact]
-    public void LongStalePurchaseDate_LandsInTheFutureNotOneCycleOn()
+    public void APurchaseSeveralPeriodsOldStillReportsItsOwnPeriodEnd()
     {
-        // Two years of monthly cycles behind us; stepping must not stop at 2024-04-10. The 10th of
-        // this month is still ahead of today (the 7th), so that is where it lands.
-        var result = Next(new DateTime(2024, 3, 10), BillingCycleType.Monthly);
-
-        Assert.Equal(new DateTime(2026, 8, 10), result);
+        // Not 2026-08-10 or any later step - one cycle, once.
+        Assert.Equal(new DateTime(2024, 4, 10), Next(new DateTime(2024, 3, 10), BillingCycleType.Monthly));
     }
 
     [Fact]
-    public void MonthEndPurchase_StaysAnchoredToTheClampedDayNotTheOriginal()
+    public void MonthEndPurchase_ClampsRatherThanOverflowing()
     {
-        // Jan 31 clamps to Feb 28, and every later step runs from the clamped date - the same
-        // sequence a billing provider charges on, and why this steps one cycle at a time.
-        var result = BillingCycleAdvancer.NextBillingDate(
-            new DateTime(2026, 1, 31), BillingCycleType.Monthly, new DateTime(2026, 3, 1));
-
-        Assert.Equal(new DateTime(2026, 3, 28), result);
+        // 31 Jan has no counterpart in February, so AddMonths clamps to the 28th rather than
+        // spilling into March.
+        Assert.Equal(new DateTime(2026, 2, 28), Next(new DateTime(2026, 1, 31), BillingCycleType.Monthly));
     }
 
     [Fact]
     public void LeapDayPurchase_SurvivesANonLeapYear()
     {
-        var result = BillingCycleAdvancer.NextBillingDate(
-            new DateTime(2024, 2, 29), BillingCycleType.Yearly, new DateTime(2024, 6, 1));
+        Assert.Equal(new DateTime(2025, 2, 28), Next(new DateTime(2024, 2, 29), BillingCycleType.Yearly));
+    }
 
-        Assert.Equal(new DateTime(2025, 2, 28), result);
+    [Fact]
+    public void FuturePurchaseDate_IsTreatedNoDifferently()
+    {
+        Assert.Equal(new DateTime(2027, 3, 1), Next(new DateTime(2027, 2, 1), BillingCycleType.Monthly));
     }
 
     [Fact]
     public void TimeOfDayOnThePurchaseDate_DoesNotLeakIntoTheResult()
     {
-        var result = BillingCycleAdvancer.NextBillingDate(
-            new DateTime(2026, 8, 7, 22, 45, 0), BillingCycleType.Weekly, Today);
-
-        Assert.Equal(new DateTime(2026, 8, 14), result);
+        Assert.Equal(new DateTime(2026, 8, 14), Next(new DateTime(2026, 8, 7, 22, 45, 0), BillingCycleType.Weekly));
     }
+
+    private static DateTime Date(string value) => DateTime.Parse(value, CultureInfo.InvariantCulture);
 }

@@ -108,6 +108,9 @@ CREATE TABLE user_subscriptions (
     cycle_cadence billing_cycle_type NOT NULL DEFAULT 'Monthly',
     purchase_date DATE NOT NULL,
     next_billing_date DATE NOT NULL,
+    -- Null until the user first marks a charge paid. Nothing advances next_billing_date on a
+    -- timer, so a past next_billing_date means the charge is genuinely outstanding.
+    last_paid_date DATE,
     alert_days_advance INT DEFAULT 3,
     deduction_source VARCHAR(100), -- Example: 'Chase Card ending in 4021'
     is_free_trial BOOLEAN DEFAULT FALSE,

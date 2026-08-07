@@ -15,6 +15,10 @@ public class CachedSubscription
     public BillingCycleType CycleCadence { get; set; }
     public DateTime PurchaseDate { get; set; }
     public DateTime NextBillingDate { get; set; }
+
+    /// <summary>Nullable so "never marked paid" survives a round trip through the cache as itself.</summary>
+    public DateTime? LastPaidDate { get; set; }
+
     public int AlertDaysAdvance { get; set; }
     public Guid? CategoryId { get; set; }
     public string? CategoryName { get; set; }
@@ -34,6 +38,7 @@ public class CachedSubscription
         CycleCadence = dto.CycleCadence,
         PurchaseDate = dto.PurchaseDate.ToDateTime(TimeOnly.MinValue),
         NextBillingDate = dto.NextBillingDate.ToDateTime(TimeOnly.MinValue),
+        LastPaidDate = dto.LastPaidDate?.ToDateTime(TimeOnly.MinValue),
         AlertDaysAdvance = dto.AlertDaysAdvance,
         CategoryId = dto.CategoryId,
         CategoryName = dto.CategoryName,
@@ -54,6 +59,7 @@ public class CachedSubscription
         CycleCadence = CycleCadence,
         PurchaseDate = DateOnly.FromDateTime(PurchaseDate),
         NextBillingDate = DateOnly.FromDateTime(NextBillingDate),
+        LastPaidDate = LastPaidDate is null ? null : DateOnly.FromDateTime(LastPaidDate.Value),
         AlertDaysAdvance = AlertDaysAdvance,
         CategoryId = CategoryId,
         CategoryName = CategoryName,
