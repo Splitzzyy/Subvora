@@ -182,17 +182,6 @@
         <Setter Property="TextColor" Value="{AppThemeBinding Light=#8A5A00, Dark=#FAB219}" />
     </Style>
 
-    <!-- Critical, from the status palette: an unpaid charge is a state that wants acting on, and it
-         is deliberately not any categorical hue - a category must never be mistaken for a problem.
-         Always paired with the word OVERDUE, so the colour never carries the meaning alone. -->
-    <Style x:Key="OverdueChip" TargetType="Border" BasedOn="{StaticResource Chip}">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#FBE3E3, Dark=#4A1D1D}" />
-    </Style>
-
-    <Style x:Key="OverdueChipText" TargetType="Label" BasedOn="{StaticResource ChipText}">
-        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource DangerLight}, Dark={StaticResource DangerDark}}" />
-    </Style>
-
     <!-- Recessive track so the filled portion is what the eye lands on. -->
     <Style TargetType="ProgressBar">
         <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceMutedLight}, Dark={StaticResource SurfaceMutedDark}}" />

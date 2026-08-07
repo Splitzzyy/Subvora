@@ -3,56 +3,71 @@ using SubVora.Domain.Enums;
 
 namespace SubVora.Application.Tests;
 
-/// <summary>
-/// Only reached when a user marks a charge paid, so it moves exactly one cycle - never "forward
-/// until the date is in the future". A charge settled late still settles the date it was for.
-/// </summary>
 public class BillingCycleAdvancerTests
 {
-    [Theory]
-    [InlineData(BillingCycleType.Weekly, 2026, 8, 14)]
-    [InlineData(BillingCycleType.Monthly, 2026, 9, 7)]
-    [InlineData(BillingCycleType.Yearly, 2027, 8, 7)]
-    public void AdvancesExactlyOneCycle(BillingCycleType cadence, int year, int month, int day)
+    [Fact]
+    public void AdvanceTo_Weekly_AddsSevenDays()
     {
-        var result = BillingCycleAdvancer.AdvanceOneCycle(new DateOnly(2026, 8, 7), cadence);
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2026, 3, 1), BillingCycleType.Weekly, new DateOnly(2026, 3, 2));
 
-        Assert.Equal(new DateOnly(year, month, day), result);
+        Assert.Equal(new DateOnly(2026, 3, 8), result);
     }
 
     [Fact]
-    public void ALongOverdueChargeMovesOnOneCycleOnly()
+    public void AdvanceTo_MonthlyFromJanuary31InCommonYear_ClampsToFebruary28()
     {
-        // Two years late, but paying settles one period - the next charge is a month after the one
-        // just paid, not a month after today. Anything else silently forgives the periods between.
-        var result = BillingCycleAdvancer.AdvanceOneCycle(new DateOnly(2024, 3, 10), BillingCycleType.Monthly);
-
-        Assert.Equal(new DateOnly(2024, 4, 10), result);
-    }
-
-    [Fact]
-    public void OneTimeNeverRecurs()
-    {
-        var current = new DateOnly(2026, 5, 1);
-
-        Assert.Equal(current, BillingCycleAdvancer.AdvanceOneCycle(current, BillingCycleType.OneTime));
-    }
-
-    [Fact]
-    public void MonthEndClampsRatherThanOverflowing()
-    {
-        // 31 Jan has no counterpart in February, so it clamps to the 28th instead of spilling into
-        // March - the same day a billing provider would charge.
-        var result = BillingCycleAdvancer.AdvanceOneCycle(new DateOnly(2026, 1, 31), BillingCycleType.Monthly);
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2026, 1, 31), BillingCycleType.Monthly, new DateOnly(2026, 2, 1));
 
         Assert.Equal(new DateOnly(2026, 2, 28), result);
     }
 
     [Fact]
-    public void LeapDaySurvivesANonLeapYear()
+    public void AdvanceTo_MonthlyFromJanuary31InLeapYear_ClampsToFebruary29()
     {
-        var result = BillingCycleAdvancer.AdvanceOneCycle(new DateOnly(2024, 2, 29), BillingCycleType.Yearly);
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2028, 1, 31), BillingCycleType.Monthly, new DateOnly(2028, 2, 1));
 
-        Assert.Equal(new DateOnly(2025, 2, 28), result);
+        Assert.Equal(new DateOnly(2028, 2, 29), result);
+    }
+
+    [Fact]
+    public void AdvanceTo_YearlyFromFebruary29_ClampsToFebruary28()
+    {
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2028, 2, 29), BillingCycleType.Yearly, new DateOnly(2028, 3, 1));
+
+        Assert.Equal(new DateOnly(2029, 2, 28), result);
+    }
+
+    [Fact]
+    public void AdvanceTo_DateSeveralCyclesStale_LandsOnFirstOccurrenceAfterToday()
+    {
+        // Three monthly cycles behind: advancing once would still leave the date in the past.
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2026, 1, 10), BillingCycleType.Monthly, new DateOnly(2026, 4, 15));
+
+        Assert.Equal(new DateOnly(2026, 5, 10), result);
+    }
+
+    [Fact]
+    public void AdvanceTo_DateExactlyToday_MovesToNextCycle()
+    {
+        // "Strictly after today": a date landing on today has already been billed for this cycle.
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2026, 3, 10), BillingCycleType.Monthly, new DateOnly(2026, 3, 10));
+
+        Assert.Equal(new DateOnly(2026, 4, 10), result);
+    }
+
+    [Fact]
+    public void AdvanceTo_FutureDate_IsUnchanged()
+    {
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2026, 6, 1), BillingCycleType.Monthly, new DateOnly(2026, 3, 10));
+
+        Assert.Equal(new DateOnly(2026, 6, 1), result);
+    }
+
+    [Fact]
+    public void AdvanceTo_OneTime_IsNeverAdvanced()
+    {
+        var result = BillingCycleAdvancer.AdvanceTo(new DateOnly(2026, 1, 10), BillingCycleType.OneTime, new DateOnly(2026, 4, 15));
+
+        Assert.Equal(new DateOnly(2026, 1, 10), result);
     }
 }

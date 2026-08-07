@@ -25,22 +25,6 @@ public class SubscriptionGroup : List<SubscriptionDto>
     /// </summary>
     public DateOnly NextBillingDate => this.Min(s => s.NextBillingDate);
 
-    /// <summary>How many charges in this category have gone unpaid past their date.</summary>
-    public int OverdueCount => this.Count(s => s.IsOverdue);
-
-    /// <summary>
-    /// Right-hand side of the group header. Money owed outranks money due, so an overdue count
-    /// replaces the usual "next ..." line rather than sitting alongside it.
-    /// </summary>
-    public string Summary
-    {
-        get
-        {
-            var subscriptions = $"{Count} {(Count == 1 ? "subscription" : "subscriptions")}";
-
-            return OverdueCount > 0
-                ? $"{subscriptions} · {OverdueCount} overdue"
-                : $"{subscriptions} · next {RelativeDate.Describe(NextBillingDate)}";
-        }
-    }
+    /// <summary>Right-hand side of the group header: how many, and when the next charge lands.</summary>
+    public string Summary => $"{Count} {(Count == 1 ? "subscription" : "subscriptions")} · next {RelativeDate.Describe(NextBillingDate)}";
 }

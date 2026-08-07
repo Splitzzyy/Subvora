@@ -145,7 +145,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     partial void OnCycleCadenceChanged(BillingCycleType value) => RecalculateNextBillingDate();
 
     private void RecalculateNextBillingDate() =>
-        NextBillingDate = BillingCycleAdvancer.NextBillingDate(PurchaseDate, CycleCadence);
+        NextBillingDate = BillingCycleAdvancer.NextBillingDate(PurchaseDate, CycleCadence, DateTime.Today);
 
     partial void OnCustomNameChanged(string value)
     {

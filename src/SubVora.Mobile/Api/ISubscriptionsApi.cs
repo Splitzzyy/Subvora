@@ -20,10 +20,6 @@ public interface ISubscriptionsApi
     [Delete("/api/v1/subscriptions/{id}")]
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
 
-    /// <summary>Settles the outstanding charge and moves the subscription on one cycle. Returns the updated record.</summary>
-    [Post("/api/v1/subscriptions/{id}/mark-paid")]
-    Task<SubscriptionDto> MarkPaidAsync(Guid id, CancellationToken cancellationToken = default);
-
     [Post("/api/v1/subscriptions/resolve")]
     Task<ResolveSubscriptionResponse> ResolveAsync([Body] ResolveSubscriptionRequest request, CancellationToken cancellationToken = default);
 }

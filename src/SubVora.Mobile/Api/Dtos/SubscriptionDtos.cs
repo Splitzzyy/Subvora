@@ -17,19 +17,7 @@ public class SubscriptionDto
     public BillingCycleType CycleCadence { get; set; }
     public DateOnly PurchaseDate { get; set; }
     public DateOnly NextBillingDate { get; set; }
-
-    /// <summary>The billing date the user last marked paid, or null if they never have.</summary>
-    public DateOnly? LastPaidDate { get; set; }
-
     public int AlertDaysAdvance { get; set; }
-
-    /// <summary>
-    /// True once the billing date has gone by without being marked paid. Nothing moves that date on
-    /// a timer any more, so a date in the past means the charge is genuinely outstanding.
-    /// Compared against the device's today, not the server's, so a user is never told a charge is
-    /// late while it is still today where they are.
-    /// </summary>
-    public bool IsOverdue => IsActive && NextBillingDate < DateOnly.FromDateTime(DateTime.Today);
     public Guid? CategoryId { get; set; }
     public string? CategoryName { get; set; }
     public Guid? PaymentSourceId { get; set; }

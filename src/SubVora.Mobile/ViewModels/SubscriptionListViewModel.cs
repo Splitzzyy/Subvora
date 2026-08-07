@@ -141,38 +141,6 @@ public partial class SubscriptionListViewModel : ObservableObject
         }
     }
 
-    /// <summary>
-    /// Settles the outstanding charge. The server decides the new billing date - it moves one cycle
-    /// from the date just paid, not from today - so the row is replaced with what came back rather
-    /// than with anything guessed here.
-    /// </summary>
-    [RelayCommand]
-    private async Task MarkPaidAsync(Guid id)
-    {
-        try
-        {
-            var updated = await _subscriptionsApi.MarkPaidAsync(id);
-
-            var index = Subscriptions.ToList().FindIndex(s => s.Id == id);
-            if (index >= 0)
-            {
-                Subscriptions[index] = updated;
-                RebuildGroups();
-            }
-
-            await _localCacheService.UpsertAsync(CachedSubscription.FromDto(updated));
-
-            // The paid charge changes nothing about the burn rate, but a OneTime subscription
-            // deactivates on payment, and that does move the dashboard.
-            _messenger.Send(new SubscriptionsChangedMessage());
-            await _notificationScheduler.SyncAsync(Subscriptions);
-        }
-        catch (Exception ex)
-        {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
-        }
-    }
-
     [RelayCommand]
     private void SelectSubscription(Guid id) => SubscriptionSelected?.Invoke(this, id);
 

@@ -15,14 +15,6 @@ public class UserSubscription
     public BillingCycleType CycleCadence { get; set; } = BillingCycleType.Monthly;
     public DateOnly PurchaseDate { get; set; }
     public DateOnly NextBillingDate { get; set; }
-
-    /// <summary>
-    /// The billing date the user last confirmed they paid, or null if they never have. Set by
-    /// marking a subscription paid, which also moves <see cref="NextBillingDate"/> on one cycle.
-    /// Nothing advances the billing date on its own, so a date left in the past means the charge is
-    /// genuinely outstanding rather than merely stale.
-    /// </summary>
-    public DateOnly? LastPaidDate { get; set; }
     public int AlertDaysAdvance { get; set; } = 3;
     public bool IsFreeTrial { get; set; }
     public bool IsActive { get; set; } = true;

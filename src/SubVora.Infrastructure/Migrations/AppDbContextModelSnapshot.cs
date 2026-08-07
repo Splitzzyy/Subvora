@@ -378,10 +378,6 @@ namespace SubVora.Infrastructure.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_free_trial");
 
-                    b.Property<DateOnly?>("LastPaidDate")
-                        .HasColumnType("date")
-                        .HasColumnName("last_paid_date");
-
                     b.Property<DateOnly>("NextBillingDate")
                         .HasColumnType("date")
                         .HasColumnName("next_billing_date");

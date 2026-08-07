@@ -29,10 +29,6 @@ public class UserSubscriptionConfiguration : IEntityTypeConfiguration<UserSubscr
         builder.Property(s => s.PurchaseDate).IsRequired();
         builder.Property(s => s.NextBillingDate).IsRequired();
 
-        // Nullable on purpose: null is "never paid through this app", which is not the same as
-        // "paid on some default date".
-        builder.Property(s => s.LastPaidDate);
-
         builder.Property(s => s.AlertDaysAdvance).HasDefaultValue(3).IsRequired();
         builder.Property(s => s.IsFreeTrial).HasDefaultValue(false).IsRequired();
         builder.Property(s => s.IsActive).HasDefaultValue(true).IsRequired();

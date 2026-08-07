@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using SubVora.Application.Billing;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Entities;
-using SubVora.Domain.Enums;
 using SubVora.Infrastructure.Data;
 
 namespace SubVora.Infrastructure.Repositories;
@@ -81,34 +79,6 @@ public class SubscriptionRepository : ISubscriptionRepository
         return true;
     }
 
-    public async Task<SubscriptionDto?> MarkPaidAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
-    {
-        var subscription = await _dbContext.UserSubscriptions
-            .SingleOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
-        if (subscription is null)
-        {
-            return null;
-        }
-
-        // The date being settled is the one currently outstanding, not today: paying a 23 Apr charge
-        // on 7 Aug still settles 23 Apr, and the next one is due a cycle after that date rather than
-        // a cycle after the user got round to recording it.
-        subscription.LastPaidDate = subscription.NextBillingDate;
-
-        if (subscription.CycleCadence == BillingCycleType.OneTime)
-        {
-            // Nothing further to bill, so the subscription is done rather than perpetually due.
-            subscription.IsActive = false;
-        }
-        else
-        {
-            subscription.NextBillingDate = BillingCycleAdvancer.AdvanceOneCycle(subscription.NextBillingDate, subscription.CycleCadence);
-        }
-
-        await _dbContext.SaveChangesAsync(cancellationToken);
-        return await GetByIdAsync(id, userId, cancellationToken);
-    }
-
     private IQueryable<SubscriptionDto> BuildDtoQuery(Guid userId) =>
         from s in _dbContext.UserSubscriptions.AsNoTracking()
         where s.UserId == userId
@@ -127,7 +97,6 @@ public class SubscriptionRepository : ISubscriptionRepository
             CycleCadence = s.CycleCadence,
             PurchaseDate = s.PurchaseDate,
             NextBillingDate = s.NextBillingDate,
-            LastPaidDate = s.LastPaidDate,
             AlertDaysAdvance = s.AlertDaysAdvance,
             CategoryId = s.CategoryId,
             CategoryName = category != null ? category.Name : null,

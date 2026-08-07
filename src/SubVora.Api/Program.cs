@@ -6,6 +6,7 @@ using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
 using SubVora.Api;
+using SubVora.Application.Billing;
 using SubVora.Application.Notifications;
 using SubVora.Infrastructure.Notifications;
 using SubVora.Application.Auth;
@@ -16,6 +17,7 @@ using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
+using SubVora.Infrastructure.Billing;
 using SubVora.Infrastructure.Catalog;
 using SubVora.Infrastructure.Auth;
 using SubVora.Infrastructure.Configuration;
@@ -88,9 +90,10 @@ builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(clie
 });
 builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 
-// No job advances next_billing_date any more. A date left in the past is how the app says a charge
-// is outstanding, and a nightly roll-forward would erase that signal - the billing date now moves
-// only when the user marks the charge paid (POST /api/v1/subscriptions/{id}/mark-paid).
+// Renewal reminders are scheduled on-device by the mobile client; this only keeps
+// next_billing_date honest, which nothing on the client can do.
+builder.Services.AddSingleton<IBillingDateScanner, BillingDateScanner>();
+builder.Services.AddHostedService<BillingDateAdvanceBackgroundService>();
 
 // Adds any provider in subscription-catalog.json that the database does not have yet.
 builder.Services.AddHostedService<SubscriptionCatalogSyncService>();

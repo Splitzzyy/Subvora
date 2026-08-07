@@ -3,28 +3,40 @@ using SubVora.Domain.Enums;
 namespace SubVora.Application.Billing;
 
 /// <summary>
-/// Pure date arithmetic for moving a subscription on to its next billing date - same "no EF in
-/// Application" pattern as <c>BurnRateCalculator</c>.
-/// <para>
-/// Only ever called when a user marks a charge paid. Nothing advances a billing date on a timer any
-/// more: a date left in the past is the signal that a charge is outstanding, and a background job
-/// that quietly moved it would erase exactly that signal.
-/// </para>
+/// Pure date arithmetic for rolling a passed <c>next_billing_date</c> forward - same "no EF in
+/// Application" pattern as <c>BurnRateCalculator</c>. Driven purely by comparing the stored date
+/// against today, never by a counter, so re-running it on the same day is a no-op.
 /// </summary>
 public static class BillingCycleAdvancer
 {
     /// <summary>
-    /// One cycle on from <paramref name="current"/>. <c>OneTime</c> never recurs, so it is returned
-    /// unchanged - callers end the subscription instead.
+    /// Returns the first occurrence of <paramref name="current"/>'s cadence strictly after
+    /// <paramref name="today"/>. A date several cycles stale lands in the future, not one cycle
+    /// forward. <c>OneTime</c> never recurs, so it is returned unchanged.
     /// </summary>
-    public static DateOnly AdvanceOneCycle(DateOnly current, BillingCycleType cadence) => cadence switch
+    public static DateOnly AdvanceTo(DateOnly current, BillingCycleType cadence, DateOnly today)
     {
-        // AddMonths/AddYears clamp rather than overflow (31 Jan -> 28 Feb), which is the sequence a
-        // billing provider charges on.
-        BillingCycleType.Weekly => current.AddDays(7),
-        BillingCycleType.Monthly => current.AddMonths(1),
-        BillingCycleType.Yearly => current.AddYears(1),
-        BillingCycleType.OneTime => current,
-        _ => throw new ArgumentOutOfRangeException(nameof(cadence), cadence, "Unhandled billing cycle cadence."),
-    };
+        if (cadence == BillingCycleType.OneTime)
+        {
+            return current;
+        }
+
+        // Stepping one cycle at a time (rather than computing the cycle count) is what keeps
+        // month-end and leap-day behaviour anchored to the original day-of-month: DateOnly's
+        // AddMonths/AddYears clamp Jan 31 -> Feb 28, and stepping from the clamped date onward
+        // is the same sequence a billing provider would charge on.
+        var next = current;
+        while (next <= today)
+        {
+            next = cadence switch
+            {
+                BillingCycleType.Weekly => next.AddDays(7),
+                BillingCycleType.Monthly => next.AddMonths(1),
+                BillingCycleType.Yearly => next.AddYears(1),
+                _ => throw new ArgumentOutOfRangeException(nameof(cadence), cadence, "Unhandled billing cycle cadence."),
+            };
+        }
+
+        return next;
+    }
 }
