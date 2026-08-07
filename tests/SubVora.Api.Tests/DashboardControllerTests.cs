@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -30,7 +30,7 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
         const string password = "correct-horse-battery-staple";
 
         var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
-        Assert.Equal(HttpStatusCode.Created, registerResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
 
         var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password });
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);

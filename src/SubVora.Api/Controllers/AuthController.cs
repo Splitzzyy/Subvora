@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,14 +34,18 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>Creates a new account.</summary>
-    /// <response code="201">Account created.</response>
+    /// <response code="202">The request was accepted.</response>
     /// <response code="400">The email or password failed validation.</response>
-    /// <response code="409">An account with this email already exists.</response>
+    /// <remarks>
+    /// Answers 202 whether or not the address was already registered, and returns no body.
+    /// Distinguishing the two - by status, by message, or by an id in the response - would let
+    /// anyone test which email addresses have SubVora accounts. An address that already exists
+    /// gets an email instead; only its real owner learns anything.
+    /// </remarks>
     [HttpPost("register")]
     [EnableRateLimiting("auth")]
-    [ProducesResponseType(typeof(RegisteredUserResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
         var validationResult = await _registerValidator.ValidateAsync(request, cancellationToken);
@@ -50,13 +54,8 @@ public class AuthController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
-        var result = await _authService.RegisterAsync(request, cancellationToken);
-        if (result.EmailAlreadyExists)
-        {
-            return Conflict(new { message = "An account with this email already exists." });
-        }
-
-        return CreatedAtAction(nameof(Register), new { id = result.User!.Id }, result.User);
+        await _authService.RegisterAsync(request, cancellationToken);
+        return Accepted();
     }
 
     /// <summary>Signs in with email and password.</summary>

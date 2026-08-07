@@ -57,7 +57,13 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, RegisterRequestValidator
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<ForgotPasswordRequest>, ForgotPasswordRequestValidator>();
 builder.Services.AddScoped<IValidator<ResetPasswordRequest>, ResetPasswordRequestValidator>();
-builder.Services.AddScoped<IEmailSender, SmtpEmailSender>();
+// Requests enqueue and return; a background service does the SMTP round trip. Sending inline made
+// response time and status depend on whether the address existed, which is exactly what
+// forgot-password and register are written to hide - see QueuedEmailSender.
+builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddSingleton<QueuedEmailSender>();
+builder.Services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<QueuedEmailSender>());
+builder.Services.AddHostedService<EmailDispatchBackgroundService>();
 
 builder.Services.AddScoped<ISubscriptionRepository, SubscriptionRepository>();
 builder.Services.AddScoped<IValidator<CreateSubscriptionRequest>, CreateSubscriptionRequestValidator>();
