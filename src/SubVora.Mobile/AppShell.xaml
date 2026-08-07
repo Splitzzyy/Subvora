@@ -1,74 +1,52 @@
 <?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    No Shell.TitleView. It used to hold the burn-rate summary and an offline strip, which cost the
+    toolbar its per-page title (Shell hides the title whenever a TitleView is set) and left a blank
+    coloured bar on every screen. The dashboard prints those figures itself, and the two pages that
+    can actually serve stale data - dashboard and subscriptions - carry their own offline notice.
+
+    Each tab is an explicit <Tab> holding one <ShellContent>. Bare ShellContent children of a TabBar
+    also render a second, redundant tab strip above the page.
+-->
 <Shell
     x:Class="SubVora.Mobile.AppShell"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:views="clr-namespace:SubVora.Mobile.Views"
-    xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
-    xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
-    x:DataType="viewModels:DashboardViewModel"
+    FlyoutBehavior="Disabled"
     Title="SubVora">
 
-    <Shell.Resources>
-        <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
-    </Shell.Resources>
+    <TabBar>
+        <Tab Title="Home" Icon="tab_dashboard.png">
+            <ShellContent ContentTemplate="{DataTemplate views:DashboardPage}" Route="DashboardPage" />
+        </Tab>
+
+        <Tab Title="Subs" Icon="tab_subscriptions.png">
+            <ShellContent ContentTemplate="{DataTemplate views:SubscriptionListPage}" Route="SubscriptionListPage" />
+        </Tab>
+
+        <Tab Title="Categories" Icon="tab_categories.png">
+            <ShellContent ContentTemplate="{DataTemplate views:CategoriesPage}" Route="CategoriesPage" />
+        </Tab>
+
+        <Tab Title="Payment" Icon="tab_payments.png">
+            <ShellContent ContentTemplate="{DataTemplate views:PaymentSourcesPage}" Route="PaymentSourcesPage" />
+        </Tab>
+
+        <Tab Title="Settings" Icon="tab_settings.png">
+            <ShellContent ContentTemplate="{DataTemplate views:SettingsPage}" Route="SettingsPage" />
+        </Tab>
+    </TabBar>
 
     <!--
-        One strip, two states. The offline notice sits on top of the spend summary rather than
-        beside it: the title bar has room for one line, and "these numbers may be stale" is the
-        more urgent thing to say when both are true.
+        Sign-in lives in the Shell hierarchy rather than being a Routing.RegisterRoute global route.
+        Signing out and expiring a session both navigate to "//LoginPage", which leaves it as the
+        only page on the stack - Shell throws on that for a global route. Sitting outside the TabBar
+        also means the tabs disappear while signed out, which is what you want anyway.
     -->
-    <Shell.TitleView>
-        <Grid>
-            <Label x:Name="BurnRateBanner"
-                   Text="{Binding Summary}"
-                   BackgroundColor="#512BD4"
-                   TextColor="White"
-                   FontSize="13"
-                   HorizontalOptions="Fill"
-                   HorizontalTextAlignment="Center"
-                   VerticalTextAlignment="Center"
-                   LineBreakMode="TailTruncation"
-                   Padding="4"
-                   IsVisible="{Binding Summary, Converter={StaticResource StringToBoolConverter}}" />
-
-            <Label x:Name="OfflineBanner"
-                   Text="You're offline — showing saved data"
-                   BackgroundColor="OrangeRed"
-                   TextColor="White"
-                   HorizontalOptions="Fill"
-                   HorizontalTextAlignment="Center"
-                   VerticalTextAlignment="Center"
-                   Padding="4"
-                   IsVisible="False" />
-        </Grid>
-    </Shell.TitleView>
-
-    <TabBar>
-        <ShellContent
-            Title="Dashboard"
-            ContentTemplate="{DataTemplate views:DashboardPage}"
-            Route="DashboardPage" />
-
-        <ShellContent
-            Title="Subscriptions"
-            ContentTemplate="{DataTemplate views:SubscriptionListPage}"
-            Route="SubscriptionListPage" />
-
-        <ShellContent
-            Title="Categories"
-            ContentTemplate="{DataTemplate views:CategoriesPage}"
-            Route="CategoriesPage" />
-
-        <ShellContent
-            Title="Payment Sources"
-            ContentTemplate="{DataTemplate views:PaymentSourcesPage}"
-            Route="PaymentSourcesPage" />
-
-        <ShellContent
-            Title="Settings"
-            ContentTemplate="{DataTemplate views:SettingsPage}"
-            Route="SettingsPage" />
-    </TabBar>
+    <ShellContent
+        Title="Sign in"
+        ContentTemplate="{DataTemplate views:LoginPage}"
+        Route="LoginPage" />
 
 </Shell>

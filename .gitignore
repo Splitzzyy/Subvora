@@ -9,6 +9,8 @@
 
 # Build results
 [Dd]ebug/
+# ...but docs/debug/ is documentation, not build output, and the rule above swallows it.
+!docs/debug/
 [Dd]ebugPublic/
 [Rr]elease/
 [Rr]eleases/

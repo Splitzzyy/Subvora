@@ -15,20 +15,45 @@
     </ContentPage.Resources>
 
     <ScrollView>
-        <VerticalStackLayout Padding="30" Spacing="16" VerticalOptions="Center">
-            <Label Text="SubVora" FontSize="32" HorizontalOptions="Center" />
+        <Grid Padding="24" RowDefinitions="*,Auto,*">
 
-            <Entry Placeholder="Email" Keyboard="Email" Text="{Binding Email}" />
-            <Entry Placeholder="Password" IsPassword="True" Text="{Binding Password}" />
+            <VerticalStackLayout Grid.Row="1" Spacing="20">
 
-            <Label Text="{Binding ErrorMessage}"
-                   TextColor="Red"
-                   IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+                <VerticalStackLayout Spacing="4" Margin="0,0,0,8">
+                    <Label Style="{StaticResource Display}" Text="SubVora" HorizontalTextAlignment="Center" />
+                    <Label Style="{StaticResource Caption}"
+                           Text="Every subscription, one honest number."
+                           HorizontalTextAlignment="Center" />
+                </VerticalStackLayout>
 
-            <Button Text="Log In" Command="{Binding LoginCommand}" IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+                <Border Style="{StaticResource Card}">
+                    <VerticalStackLayout Spacing="12">
+                        <Border Style="{StaticResource FieldBorder}">
+                            <Entry Placeholder="Email" Keyboard="Email" Text="{Binding Email}" />
+                        </Border>
 
-            <Button Text="Don't have an account? Register" Clicked="OnRegisterTapped" BackgroundColor="Transparent" TextColor="{StaticResource Primary}" />
-        </VerticalStackLayout>
+                        <Border Style="{StaticResource FieldBorder}">
+                            <Entry Placeholder="Password" IsPassword="True" Text="{Binding Password}" />
+                        </Border>
+
+                        <Label Style="{StaticResource ErrorText}"
+                               Text="{Binding ErrorMessage}"
+                               IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+                        <Button Text="Log in"
+                                Command="{Binding LoginCommand}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                                Margin="0,4,0,0" />
+                    </VerticalStackLayout>
+                </Border>
+
+                <Button Style="{StaticResource LinkButton}"
+                        Text="Don't have an account? Register"
+                        Clicked="OnRegisterTapped" />
+
+            </VerticalStackLayout>
+
+        </Grid>
     </ScrollView>
 
 </ContentPage>

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.Extensions.DependencyInjection;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
 using SubVora.Mobile.Services;
@@ -71,7 +72,8 @@ public class AuthDelegatingHandlerTests
         var tokenStore = new FakeTokenStore();
         var cache = new FakeLocalCacheService();
         var refreshClient = new HttpClient(inner) { BaseAddress = new Uri("https://test.local/") };
-        var handler = new AuthDelegatingHandler(tokenStore, refreshClient, cache) { InnerHandler = inner };
+        var refresher = new SessionRefresher(tokenStore, refreshClient, cache);
+        var handler = new AuthDelegatingHandler(tokenStore, refresher) { InnerHandler = inner };
         return (handler, inner, tokenStore, cache);
     }
 
@@ -258,5 +260,36 @@ public class AuthDelegatingHandlerTests
         Assert.True(tokenStore.Cleared);
         Assert.Empty(await cache.GetAllAsync<CachedBurnRate>());
         Assert.Empty(await cache.GetAllAsync<CachedSubscription>());
+    }
+
+    /// <summary>
+    /// Mirrors how MauiProgram wires the Refit clients. HttpClientFactory assigns InnerHandler to
+    /// whichever handler instance it is handed and rejects one that already has a pipeline, so a
+    /// shared instance survives the first client and throws on the second - which in the app meant
+    /// the first tab loading and the next one crashing.
+    /// </summary>
+    [Fact]
+    public void EveryClientGetsItsOwnHandler_SoBuildingASecondOneDoesNotThrow()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ITokenStore>(new FakeTokenStore());
+        services.AddSingleton<ILocalCacheService>(new FakeLocalCacheService());
+        services.AddHttpClient("AuthRefresh");
+        services.AddSingleton(sp => new SessionRefresher(
+            sp.GetRequiredService<ITokenStore>(),
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient("AuthRefresh"),
+            sp.GetRequiredService<ILocalCacheService>()));
+        services.AddTransient(sp => new AuthDelegatingHandler(
+            sp.GetRequiredService<ITokenStore>(),
+            sp.GetRequiredService<SessionRefresher>()));
+
+        services.AddHttpClient("subscriptions").AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
+        services.AddHttpClient("categories").AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
+
+        using var provider = services.BuildServiceProvider();
+        var factory = provider.GetRequiredService<IHttpClientFactory>();
+
+        Assert.NotNull(factory.CreateClient("subscriptions"));
+        Assert.NotNull(factory.CreateClient("categories"));
     }
 }

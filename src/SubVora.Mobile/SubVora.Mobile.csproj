@@ -63,6 +63,11 @@
 		<AssemblyMetadata Include="ApiBaseAddress" Value="$(ApiBaseAddress)" />
 	</ItemGroup>
 
+	<!-- Lets Debug builds talk to a locally-run API over plain HTTP; see the overlay's own comment. -->
+	<ItemGroup Condition="'$(Configuration)' == 'Debug'">
+		<AndroidManifestOverlay Include="Platforms\Android\AndroidManifest.Debug.xml" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />

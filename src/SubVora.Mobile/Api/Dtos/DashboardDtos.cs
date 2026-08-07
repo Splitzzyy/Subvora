@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SubVora.Mobile.Api.Dtos;
 
 public class BurnRateResult
@@ -17,4 +19,12 @@ public class CategoryBreakdownItem
     public Guid? CategoryId { get; set; }
     public string CategoryName { get; set; } = string.Empty;
     public decimal MonthlyAmount { get; set; }
+
+    /// <summary>
+    /// 0-1 bar length for the dashboard breakdown, computed on the client by DashboardViewModel.
+    /// JsonIgnored so it never reaches the server's contract and never survives into the SQLite
+    /// cache, where it would go stale the moment another category's amount moved.
+    /// </summary>
+    [JsonIgnore]
+    public double Share { get; set; }
 }

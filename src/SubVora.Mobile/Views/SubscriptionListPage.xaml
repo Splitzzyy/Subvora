@@ -6,11 +6,13 @@
     xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
     xmlns:dtos="clr-namespace:SubVora.Mobile.Api.Dtos"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:converters="clr-namespace:SubVora.Mobile.Converters"
     x:DataType="viewModels:SubscriptionListViewModel"
     Title="Subscriptions">
 
     <ContentPage.Resources>
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+        <converters:CategoryColorConverter x:Key="CategoryColorConverter" />
     </ContentPage.Resources>
 
     <ContentPage.ToolbarItems>
@@ -21,79 +23,113 @@
         <Grid RowDefinitions="Auto,Auto,*">
 
             <Label Grid.Row="0"
+                   Style="{StaticResource Caption}"
                    Text="Offline — showing last synced data"
-                   TextColor="OrangeRed"
                    FontAttributes="Italic"
-                   Margin="20,10,20,0"
+                   Margin="20,12,20,0"
                    IsVisible="{Binding IsShowingCachedData}" />
 
             <Label Grid.Row="1"
+                   Style="{StaticResource ErrorText}"
                    Text="{Binding ErrorMessage}"
-                   TextColor="Red"
-                   Margin="20,10,20,0"
+                   Margin="20,12,20,0"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
-            <CollectionView Grid.Row="2" ItemsSource="{Binding Subscriptions}">
+            <CollectionView Grid.Row="2" ItemsSource="{Binding Subscriptions}" Margin="0,12,0,0">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="dtos:SubscriptionDto">
-                        <SwipeView>
+                        <SwipeView Margin="16,0,16,12">
                             <SwipeView.RightItems>
                                 <SwipeItems>
                                     <SwipeItem Text="Delete"
-                                               BackgroundColor="Red"
+                                               BackgroundColor="#C62828"
                                                Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=DeleteSubscriptionCommand}"
                                                CommandParameter="{Binding Id}" />
                                 </SwipeItems>
                             </SwipeView.RightItems>
 
-                            <Grid Padding="20,12" ColumnSpacing="12" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
-                                <Grid.GestureRecognizers>
+                            <Border Style="{StaticResource Card}" Padding="14">
+                                <Border.GestureRecognizers>
                                     <TapGestureRecognizer
                                         Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=SelectSubscriptionCommand}"
                                         CommandParameter="{Binding Id}" />
-                                </Grid.GestureRecognizers>
+                                </Border.GestureRecognizers>
 
-                                <!-- The placeholder sits underneath and is simply never covered when
-                                     CatalogLogoUrl is null/empty, or when the remote image fails to
-                                     load: MAUI leaves an Image with an unreachable UriImageSource
-                                     blank rather than throwing, so a dead URL or a fully offline
-                                     device degrades to the fallback with no extra handling. -->
-                                <Grid Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" WidthRequest="36" HeightRequest="36" VerticalOptions="Center">
-                                    <Image Source="subscription_placeholder.png" Aspect="AspectFit" />
-                                    <Image Source="{Binding CatalogLogoUrl}"
-                                           Aspect="AspectFit"
-                                           IsVisible="{Binding CatalogLogoUrl, Converter={StaticResource StringToBoolConverter}}" />
-                                </Grid>
+                                <Grid ColumnSpacing="12" ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto" RowSpacing="4">
 
-                                <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="8">
-                                    <Label Text="{Binding CustomName}" FontAttributes="Bold" VerticalOptions="Center" />
-                                    <Border IsVisible="{Binding IsFreeTrial}"
-                                            BackgroundColor="{StaticResource Primary}"
-                                            StrokeThickness="0"
-                                            Padding="6,2"
+                                    <!-- Category as a stripe down the row: same colour the dashboard
+                                         breakdown uses, so the two screens agree at a glance. The
+                                         category name is still printed below, so this is a cue and
+                                         never the only way to tell rows apart. -->
+                                    <Rectangle Grid.Row="0" Grid.Column="0" Grid.RowSpan="2"
+                                               WidthRequest="4"
+                                               RadiusX="2" RadiusY="2"
+                                               VerticalOptions="Fill"
+                                               Fill="{Binding CategoryName, Converter={StaticResource CategoryColorConverter}}" />
+
+                                    <!-- The placeholder sits underneath and is simply never covered when
+                                         CatalogLogoUrl is null/empty, or when the remote image fails to
+                                         load: MAUI leaves an Image with an unreachable UriImageSource
+                                         blank rather than throwing, so a dead URL or a fully offline
+                                         device degrades to the fallback with no extra handling. -->
+                                    <Border Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
+                                            Style="{StaticResource Chip}"
+                                            Padding="7"
+                                            WidthRequest="44" HeightRequest="44"
                                             VerticalOptions="Center">
-                                        <Border.StrokeShape>
-                                            <RoundRectangle CornerRadius="8" />
-                                        </Border.StrokeShape>
-                                        <Label Text="TRIAL" TextColor="White" FontSize="10" FontAttributes="Bold" />
+                                        <Grid>
+                                            <Image Source="subscription_placeholder.png" Aspect="AspectFit" />
+                                            <Image Source="{Binding CatalogLogoUrl}"
+                                                   Aspect="AspectFit"
+                                                   IsVisible="{Binding CatalogLogoUrl, Converter={StaticResource StringToBoolConverter}}" />
+                                        </Grid>
                                     </Border>
-                                </HorizontalStackLayout>
-                                <Label Grid.Row="0" Grid.Column="2" Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
 
-                                <Label Grid.Row="1" Grid.Column="1">
-                                    <Label.FormattedText>
-                                        <FormattedString>
-                                            <Span Text="{Binding CategoryName}" />
-                                            <Span Text=" · Next: " />
-                                            <Span Text="{Binding NextBillingDate}" />
-                                        </FormattedString>
-                                    </Label.FormattedText>
-                                </Label>
-                                <Label Grid.Row="1" Grid.Column="2" Text="{Binding Currency}" />
-                            </Grid>
+                                    <HorizontalStackLayout Grid.Row="0" Grid.Column="2" Spacing="8">
+                                        <Label Style="{StaticResource BodyStrong}"
+                                               Text="{Binding CustomName}"
+                                               FontSize="16"
+                                               VerticalOptions="Center" />
+                                        <Border Style="{StaticResource TrialChip}" IsVisible="{Binding IsFreeTrial}">
+                                            <Label Style="{StaticResource TrialChipText}" Text="TRIAL" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+
+                                    <Label Grid.Row="0" Grid.Column="3"
+                                           Style="{StaticResource BodyStrong}"
+                                           FontSize="16"
+                                           VerticalOptions="Center">
+                                        <Label.FormattedText>
+                                            <FormattedString>
+                                                <Span Text="{Binding Currency}" FontSize="12" />
+                                                <Span Text=" " />
+                                                <Span Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
+                                            </FormattedString>
+                                        </Label.FormattedText>
+                                    </Label>
+
+                                    <Label Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="2" Style="{StaticResource Caption}">
+                                        <Label.FormattedText>
+                                            <FormattedString>
+                                                <Span Text="{Binding CategoryName}" />
+                                                <Span Text=" · Renews " />
+                                                <Span Text="{Binding NextBillingDate}" />
+                                            </FormattedString>
+                                        </Label.FormattedText>
+                                    </Label>
+                                </Grid>
+                            </Border>
                         </SwipeView>
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
+
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout Padding="40,60" Spacing="8">
+                        <Label Style="{StaticResource EmptyTitle}" Text="No subscriptions yet" />
+                        <Label Style="{StaticResource EmptyBody}"
+                               Text="Tap Add in the top right to track your first one. Swipe a row left to delete it." />
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
             </CollectionView>
 
         </Grid>
