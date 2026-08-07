@@ -59,131 +59,43 @@ The application automates mundane workflows like logo provisioning, smart catego
    * **Renewal Reminders:** Local notifications scheduled on-device from the local mirror. The OS delivers them with the app closed, so no push service, vendor project or API key is involved.
 2. **Microservice Backend API (ASP.NET Core):**
    * **Authentication Matrix:** Secure stateless JWT (JSON Web Tokens) handling verification flows via industry-grade encryption frameworks.
-   * **Background Orchestration:** An automated `.NET BackgroundService` running asynchronously on a rolling midnight chronometer to compute upcoming expiration matrices and enqueue notifications.
+   * **Background Work:** Only what a client cannot do for itself — refreshing cached FX rates, syncing the provider catalog, and dispatching queued email. Nothing advances a billing date on a timer: that moves when the user marks a charge paid, so a date left in the past means the charge is genuinely outstanding.
 3. **Storage Layout (PostgreSQL + `pg_trgm`):**
    * **Unified Relational Topology:** One store for financial rows and the provider catalog they link to, with no separate vector or search service to keep in sync.
    * **Fuzzy Provider Retrieval:** Trigram similarity (`word_similarity`, scored in both directions) tolerates typos and partial names without a network call or an API key.
 
 ---
 
-## 🗄️ Database Schema Blueprint
+## 🗄️ Database Schema
 
-Below is the production-ready PostgreSQL layout initialization script:
+**The schema itself lives in the code**, not here: the EF Core entity configurations under
+`src/SubVora.Infrastructure/Data/Configurations/` define it, and the migrations under
+`src/SubVora.Infrastructure/Migrations/` are the record of how it got that way. This section
+describes what each table is *for* and the decisions behind it — column names, types and defaults
+are deliberately not repeated, because a second copy only ever drifts from the first.
 
-```sql
--- 1. Initialize and enable the trigram extension used by provider matching
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+To see the live schema: `docker compose exec db psql -U subvora -d subvora_dev -c "\d user_subscriptions"`.
 
--- 2. Define standard lookup Enum constructs for recurring models
-CREATE TYPE billing_cycle_type AS ENUM ('Weekly', 'Monthly', 'Yearly', 'OneTime');
+| Table | Holds | Worth knowing |
+|---|---|---|
+| `users` | Account and home currency | Home currency is a display preference; it never rewrites what a subscription is billed in |
+| `subscription_catalog` | Canonical provider list, category, logo URL | Matched on `provider_name` by `pg_trgm`. Seeded from `subscription-catalog.json` on start; existing rows are never overwritten |
+| `user_subscriptions` | One row per tracked subscription | Stores its own currency and amount, unconverted. `next_billing_date` moves only when the user marks a charge paid, so a past date means the charge is outstanding — see `last_paid_date` |
+| `categories` | System and per-user categories | `user_id IS NULL` marks a system default. Deleting a user cascades to theirs |
+| `payment_sources` | A user's cards, accounts and wallets | Optional on a subscription |
+| `fx_rates` | Cached conversion rates | Burn-rate totals are converted at read time from this cache, never by mutating a stored amount |
+| `refresh_tokens` | Opaque refresh tokens | Only the SHA-256 hash is persisted, never the plaintext. Access tokens are stateless and not stored at all |
 
--- 3. Users Collection Context
-CREATE TABLE users (
-    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(512) NOT NULL,
-    preferred_currency VARCHAR(3) DEFAULT 'INR',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+There is no `notifications_log` or `device_tokens` table. Renewal reminders are scheduled on-device
+from the client's local mirror, so nothing server-side decides when to notify and there is no push
+token to keep (see the `DropPushNotificationTables` migration).
 
--- 4. Master Catalog for intelligent matching and icon lookup
-CREATE TABLE subscription_catalog (
-    catalog_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    provider_name VARCHAR(100) UNIQUE NOT NULL,
-    standard_category VARCHAR(100) NOT NULL,
-    logo_url VARCHAR(512),
-    -- Matching reads provider_name directly via pg_trgm. The former semantic_embedding
-    -- vector(1536) column was dropped in ReplaceCatalogEmbeddingWithTrigram.
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+### Indexes and extensions
 
--- 5. Active User Subscription Profiles
-CREATE TABLE user_subscriptions (
-    subscription_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
-    catalog_id UUID REFERENCES subscription_catalog(catalog_id) ON DELETE SET NULL,
-    custom_name VARCHAR(150) NOT NULL,
-    cost_amount NUMERIC(12, 2) NOT NULL,
-    currency VARCHAR(3) DEFAULT 'INR',
-    cycle_cadence billing_cycle_type NOT NULL DEFAULT 'Monthly',
-    purchase_date DATE NOT NULL,
-    next_billing_date DATE NOT NULL,
-    -- Null until the user first marks a charge paid. Nothing advances next_billing_date on a
-    -- timer, so a past next_billing_date means the charge is genuinely outstanding.
-    last_paid_date DATE,
-    alert_days_advance INT DEFAULT 3,
-    deduction_source VARCHAR(100), -- Example: 'Chase Card ending in 4021'
-    is_free_trial BOOLEAN DEFAULT FALSE,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- 6. Optimize Search with high-performance indices
-CREATE INDEX IF NOT EXISTS idx_subs_user_id ON user_subscriptions(user_id);
-CREATE INDEX IF NOT EXISTS idx_subs_next_billing ON user_subscriptions(next_billing_date) WHERE is_active = TRUE;
--- Serves the renewal scan's alert-due half. Its two predicates are OR'd, and Postgres falls back to
--- a sequential scan unless both sides are indexable.
-CREATE INDEX IF NOT EXISTS idx_subs_alert_due ON user_subscriptions((next_billing_date - alert_days_advance)) WHERE is_active = TRUE;
-
--- Trigram similarity backs the free-text provider match.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
--- No trigram index: the catalog is ~54 rows, where a sequential scan is microseconds. Add a
--- GiST gist_trgm_ops index (GIN cannot accelerate an ORDER BY on similarity) past a few thousand.
-```
-
-### Additional Tables (added post-v1, kept in sync with `src/SubVora.Infrastructure/Migrations/`)
-
-The blueprint above predates several tables that shipped afterward. This section is the authoritative DDL for those - transcribed directly from the EF Core migrations, not re-derived, so column names/types match the real schema exactly (including the `id`/`snake_case` naming EF Core's Npgsql provider generates, which differs from the illustrative `user_id`-as-PK style above).
-
-```sql
--- 7. User-defined and system-default subscription categories
-CREATE TYPE payment_source_type AS ENUM ('bank_account', 'card', 'other', 'wallet');
-
-CREATE TABLE categories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE, -- NULL = system default category
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE UNIQUE INDEX ix_categories_user_id_name ON categories(user_id, name);
-
--- 8. A user's own payment methods (cards/accounts/wallets), attachable to subscriptions
-CREATE TABLE payment_sources (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    label VARCHAR(100) NOT NULL,
-    source_type payment_source_type NOT NULL DEFAULT 'other',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE INDEX ix_payment_sources_user_id ON payment_sources(user_id);
-
--- 9. Cached FX conversion rates - burn-rate totals are converted at read time from this
--- cache, never by mutating a subscription's stored native currency/amount (see CLAUDE.md).
-CREATE TABLE fx_rates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    base_currency VARCHAR(3) NOT NULL,
-    target_currency VARCHAR(3) NOT NULL,
-    rate NUMERIC(18, 8) NOT NULL,
-    fetched_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE UNIQUE INDEX ix_fx_rates_base_currency_target_currency ON fx_rates(base_currency, target_currency);
-
--- 10. Opaque refresh tokens (JWT access tokens are stateless and not stored) - only the
--- SHA-256 hash is persisted, never the plaintext token.
-CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash VARCHAR(512) NOT NULL,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    revoked_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
-
--- Renewal reminders are scheduled on-device by the mobile client from its local mirror, so there
--- are no notifications_log or device_tokens tables: nothing server-side decides when to notify,
--- and there is no push token to store. See DropPushNotificationTables.
-```
+- `pg_trgm` backs free-text provider matching.
+- `user_subscriptions` is indexed on `user_id`, and on `next_billing_date` filtered to active rows.
+- **No trigram index.** The catalog is ~90 rows, where a sequential scan is microseconds. Past a few
+  thousand, add a GiST `gist_trgm_ops` index — GIN cannot accelerate an `ORDER BY` on similarity.
 
 ---
 
@@ -203,21 +115,19 @@ Free-text entry is standardized in the database, with no external service on the
 [3-tier decision: >= 0.70 AutoFill | >= 0.50 SuggestConfirm | else Manual]
 ```
 
-### Core Matching Implementation (C# API code snippet)
+### How the score is computed
 
-```csharp
-// word_similarity is directional, so both directions are scored and the better one wins:
-//   "adobe" inside "Adobe Creative Cloud" -> word_similarity(input, name) = 1.0
-//   "Netflix" inside "Netflix Premium"    -> word_similarity(name, input) = 1.0
-var rows = await context.Database.SqlQuery<CatalogMatchRow>($"""
-    SELECT id, provider_name, category_id, logo_url,
-           greatest(word_similarity({input}, provider_name),
-                    word_similarity(provider_name, {input})) AS score
-    FROM subscription_catalog
-    ORDER BY score DESC, provider_name
-    LIMIT 1
-    """).ToListAsync();
-```
+The whole match is one parameterised query against `subscription_catalog`, ordered by score, taking
+the single best row. It lives in `SubscriptionCatalogSearchRepository`.
+
+**Both directions are scored and the higher one wins.** `word_similarity` is directional, which
+matters more than it sounds:
+
+- `"adobe"` inside `"Adobe Creative Cloud"` scores 1.0 one way round
+- `"Netflix"` against `"Netflix Premium"` scores 1.0 the *other* way round
+
+Score one direction only and half of the realistic inputs stop matching. The thresholds are measured
+rather than guessed, and `SubscriptionCatalogTrigramMatchTests` pins them.
 
 ### Keeping the catalog current
 

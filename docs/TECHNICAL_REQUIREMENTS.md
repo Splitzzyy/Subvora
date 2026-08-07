@@ -64,7 +64,7 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 
 ## 5. Database Schema (PostgreSQL + pg_trgm)
 
-See full DDL in [Design.md](./Design.md#-database-schema-blueprint). Key tables:
+The schema itself is defined by the EF Core entity configurations and migrations under `src/SubVora.Infrastructure/`; [Design.md](./Design.md#-database-schema) describes what each table is for. Key tables:
 
 - `categories` — system categories seeded with `user_id IS NULL` (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Food`, `Travel`, `Other`), plus per-user ones.
 - `users` — account, `preferred_currency`.

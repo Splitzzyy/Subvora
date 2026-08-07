@@ -17,6 +17,7 @@ public partial class SettingsViewModel : ObservableObject
     private readonly ILocalCacheService _localCacheService;
     private readonly IUserPrompt _userPrompt;
     private readonly IMessenger _messenger;
+    private readonly IThemeService _themeService;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -33,10 +34,22 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int? DefaultAlertDaysAdvance { get; set; }
 
+    /// <summary>
+    /// Appearance is applied the moment it changes rather than on Save - there is nothing to
+    /// confirm about a setting whose result you can see immediately, and it is stored on the device
+    /// rather than on the profile the Save button writes.
+    /// </summary>
+    [ObservableProperty]
+    public partial ThemeChoice Theme { get; set; }
+
+    public IReadOnlyList<ThemeChoice> Themes { get; } = Enum.GetValues<ThemeChoice>();
+
+    partial void OnThemeChanged(ThemeChoice value) => _themeService.Apply(value);
+
     /// <summary>Raised after sign-out completes so the view can navigate back to Login.</summary>
     public event EventHandler? SignedOut;
 
-    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger)
+    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService)
     {
         _usersApi = usersApi;
         _authApi = authApi;
@@ -44,6 +57,13 @@ public partial class SettingsViewModel : ObservableObject
         _localCacheService = localCacheService;
         _userPrompt = userPrompt;
         _messenger = messenger;
+        _themeService = themeService;
+
+        // Seeded from what is already applied, so the picker opens showing the truth rather than
+        // resetting the user's choice to System the first time they visit Settings. This re-enters
+        // OnThemeChanged and re-applies the value it already has, which is a no-op - the theme was
+        // applied at startup, long before this page is built.
+        Theme = _themeService.Current;
     }
 
     [RelayCommand]

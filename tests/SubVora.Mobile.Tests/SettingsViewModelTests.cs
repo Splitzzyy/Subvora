@@ -15,14 +15,16 @@ public class SettingsViewModelTests
         FakeTokenStore? tokenStore = null,
         FakeLocalCacheService? cache = null,
         FakeUserPrompt? userPrompt = null,
-        IMessenger? messenger = null) =>
+        IMessenger? messenger = null,
+        FakeThemeService? themeService = null) =>
         new(
             usersApi ?? new FakeUsersApi(),
             authApi ?? new FakeAuthApi(),
             tokenStore ?? new FakeTokenStore(),
             cache ?? new FakeLocalCacheService(),
             userPrompt ?? new FakeUserPrompt(),
-            messenger ?? new WeakReferenceMessenger());
+            messenger ?? new WeakReferenceMessenger(),
+            themeService ?? new FakeThemeService());
 
     [Fact]
     public async Task LoadAsync_PopulatesPreferredCurrencyAndDefaultAlertDaysAdvance()

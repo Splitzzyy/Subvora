@@ -52,7 +52,8 @@
                     </CollectionView.ItemTemplate>
 
                     <CollectionView.EmptyView>
-                        <VerticalStackLayout Padding="0,40" Spacing="6">
+                        <VerticalStackLayout Padding="0,40" Spacing="10">
+                            <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconTag}" />
                             <Label Style="{StaticResource EmptyTitle}" Text="No categories" />
                             <Label Style="{StaticResource EmptyBody}"
                                    Text="Add one above to group your subscriptions." />

@@ -8,7 +8,7 @@ SubVora — cross-platform subscription tracker with cancellation reminders, bur
 
 - `docs/TECHNICAL_REQUIREMENTS.md` — architecture, stack, API/DB requirements
 - `docs/NON_TECHNICAL_REQUIREMENTS.md` — feature/product requirements
-- `docs/Design.md` — architecture diagram, DB schema (DDL), matching flow, sample code
+- `docs/Design.md` — architecture diagram, what each table is for, matching flow
 - `docs/ADDING_A_PROVIDER.md` — how to add, rename, or remove a subscription provider
 - `docs/debug/ANDROID_DEVICE.md` — running/debugging the MAUI app on a physical phone against a local API
 
@@ -93,7 +93,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 ## When Implementing
 
 1. Check `docs/TECHNICAL_REQUIREMENTS.md` §6 for the specific feature's data model and behavior before writing code.
-2. Match the DDL in `docs/Design.md` unless there's a reason to deviate — if you do deviate, update `docs/Design.md` in the same change.
+2. The schema is defined by the EF Core entity configurations in `src/SubVora.Infrastructure/Data/Configurations/` and the migrations beside them — there is no DDL copy to keep in step. `docs/Design.md` describes what each table is *for*; update it when a table's purpose or a design decision changes, not when a column does.
 3. Local config lives in `src/SubVora.Api/appsettings.Development.json` — gitignored, dockerignored, used directly by `dotnet run`, and mounted read-only by `docker-compose.yml` as `appsettings.Docker.json` (the environment stays `Docker` because `Program.cs` skips `UseHttpsRedirection` only for it). Copy `appsettings.Development.example.json` to create it. Compose overrides only the database and SMTP hosts; no secret is passed via `environment:` or baked into an image layer.
 4. Keep secrets (DB connection string, JWT signing key) out of source control — use user-secrets/environment config locally, a managed vault in deployed environments.
 

@@ -23,7 +23,10 @@
 
             <Border Grid.Row="1" Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="12">
-                    <Label Style="{StaticResource SectionHeading}" Text="Add a source" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconWallet}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Add a source" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
 
                     <Border Style="{StaticResource FieldBorder}">
                         <Entry Placeholder="Label — e.g. HDFC Credit ••4021" Text="{Binding NewLabel}" />
@@ -65,7 +68,8 @@
                     </CollectionView.ItemTemplate>
 
                     <CollectionView.EmptyView>
-                        <VerticalStackLayout Padding="0,40" Spacing="6">
+                        <VerticalStackLayout Padding="0,40" Spacing="10">
+                            <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconWallet}" />
                             <Label Style="{StaticResource EmptyTitle}" Text="No payment sources" />
                             <Label Style="{StaticResource EmptyBody}"
                                    Text="Add the cards and accounts your subscriptions bill to. Swipe a row left to delete it." />

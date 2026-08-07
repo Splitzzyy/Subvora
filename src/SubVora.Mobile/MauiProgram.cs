@@ -42,6 +42,8 @@ public static class MauiProgram
 
 		builder.Services.AddSingleton<IConnectivityService, ConnectivityService>();
 
+		builder.Services.AddSingleton<IThemeService, ThemeService>();
+
 		builder.Services.AddSingleton<IRenewalNotificationScheduler, LocalRenewalNotificationScheduler>();
 
 		builder.Services.AddSingleton<ILocalCacheService>(_ =>

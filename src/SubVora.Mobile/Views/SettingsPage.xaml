@@ -22,7 +22,10 @@
 
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="12">
-                    <Label Style="{StaticResource SectionHeading}" Text="Preferences" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconSliders}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Preferences" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
 
                     <Label Style="{StaticResource FieldLabel}" Text="Home currency" />
                     <Border Style="{StaticResource FieldBorder}">
@@ -41,6 +44,28 @@
                             Command="{Binding SaveCommand}"
                             IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
                             Margin="0,8,0,0" />
+                </VerticalStackLayout>
+            </Border>
+
+            <!-- Separate card from Preferences: appearance is stored on this device and applies as
+                 soon as it is picked, so it must not look like it is waiting on the Save button
+                 above. -->
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconSparkle}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Appearance" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Picker Title="Choose an appearance"
+                                ItemsSource="{Binding Themes}"
+                                SelectedItem="{Binding Theme}" />
+                    </Border>
+
+                    <Label Style="{StaticResource Caption}"
+                           Text="System follows your phone's light/dark setting. Applies straight away and is remembered on this device."
+                           Margin="4,0,0,0" />
                 </VerticalStackLayout>
             </Border>
 

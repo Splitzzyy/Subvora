@@ -25,7 +25,10 @@
             <!-- ===== What it is ===== -->
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="12">
-                    <Label Style="{StaticResource SectionHeading}" Text="Service" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconSparkle}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Service" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
 
                     <Label Style="{StaticResource FieldLabel}" Text="Name" />
                     <Border Style="{StaticResource FieldBorder}">
@@ -65,7 +68,10 @@
             <!-- ===== What it costs ===== -->
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="12">
-                    <Label Style="{StaticResource SectionHeading}" Text="Cost" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconWallet}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Cost" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
 
                     <Grid ColumnDefinitions="2*,*" ColumnSpacing="10">
                         <VerticalStackLayout Grid.Column="0" Spacing="12">
@@ -114,7 +120,10 @@
             <!-- ===== When it bills ===== -->
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="12">
-                    <Label Style="{StaticResource SectionHeading}" Text="Dates &amp; reminders" />
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconCalendar}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Dates &amp; reminders" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
 
                     <Label Style="{StaticResource FieldLabel}" Text="Purchase date" />
                     <Border Style="{StaticResource FieldBorder}">
@@ -141,11 +150,14 @@
                     IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
 
             <!-- Edit mode only: there is nothing to delete on a record that has not been created. -->
-            <Button Style="{StaticResource DangerButton}"
-                    Text="Delete subscription"
-                    Command="{Binding DeleteCommand}"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
-                    IsVisible="{Binding IsEditMode}" />
+            <Border Style="{StaticResource Card}"
+                    Padding="6"
+                    IsVisible="{Binding IsEditMode}">
+                <Button Style="{StaticResource DangerButton}"
+                        Text="Delete subscription"
+                        Command="{Binding DeleteCommand}"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+            </Border>
 
         </VerticalStackLayout>
     </ScrollView>

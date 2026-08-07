@@ -118,7 +118,8 @@
                         </CollectionView.ItemTemplate>
 
                         <CollectionView.EmptyView>
-                            <VerticalStackLayout Padding="0,26" Spacing="6">
+                            <VerticalStackLayout Padding="0,26" Spacing="10">
+                                <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconTag}" />
                                 <Label Style="{StaticResource EmptyTitle}" Text="Nothing tracked yet" />
                                 <Label Style="{StaticResource EmptyBody}"
                                        Text="Add a subscription and your spend will break down by category here." />
