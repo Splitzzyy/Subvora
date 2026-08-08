@@ -47,6 +47,40 @@ public class SchemaMigrationTests : IClassFixture<PostgresContainerFixture>, IAs
     public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();
 
     [Fact]
+    public async Task Migration_PutsAUniqueIndexOnTheColumnRefreshTokensAreLookedUpBy()
+    {
+        // AuthService.RefreshAsync and LogoutAsync both filter on token_hash, and until
+        // AddRefreshTokenHashUniqueIndex it was the one column on that path with no index - a
+        // sequential scan every ~15 minutes per active client, over the fastest-growing table.
+        //
+        // Unique because SingleOrDefaultAsync already depends on it: two matching rows would throw
+        // rather than return either.
+        var indexes = new List<(string Name, bool IsUnique)>();
+
+        await using var command = _dbContext.Database.GetDbConnection().CreateCommand();
+        command.CommandText = """
+            SELECT i.relname, ix.indisunique
+            FROM pg_index ix
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            JOIN pg_class t ON t.oid = ix.indrelid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+            WHERE t.relname = 'refresh_tokens' AND a.attname = 'token_hash'
+            """;
+
+        await _dbContext.Database.OpenConnectionAsync();
+        await using (var reader = await command.ExecuteReaderAsync())
+        {
+            while (await reader.ReadAsync())
+            {
+                indexes.Add((reader.GetString(0), reader.GetBoolean(1)));
+            }
+        }
+
+        Assert.NotEmpty(indexes);
+        Assert.Contains(indexes, index => index.IsUnique);
+    }
+
+    [Fact]
     public async Task Migration_CreatesUsersCategoriesPaymentSourcesTablesWithExpectedColumns()
     {
         var expectedColumnsByTable = new Dictionary<string, string[]>
