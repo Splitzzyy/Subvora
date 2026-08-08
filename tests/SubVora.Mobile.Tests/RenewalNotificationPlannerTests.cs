@@ -1,4 +1,4 @@
-using SubVora.Mobile.Api.Dtos;
+﻿using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Notifications;
 
 namespace SubVora.Mobile.Tests;
@@ -33,7 +33,7 @@ public class RenewalNotificationPlannerTests
         // 10 days out, remind 3 days before -> 7 days from now, at 09:00.
         Assert.Equal(new DateTime(2026, 8, 14, 9, 0, 0), notification.NotifyAt);
         Assert.Equal("Subscription renewing soon", notification.Title);
-        Assert.Equal("Netflix renews in 3 days - 15.99 USD", notification.Body);
+        Assert.Equal("Netflix renews in 3 days - $15.99", notification.Body);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class RenewalNotificationPlannerTests
             Now);
 
         // "renews in 3 days" is a fact; the amount is what turns it into a decision.
-        Assert.Contains("1,699.50 USD", Assert.Single(plan).Body);
+        Assert.Contains("$1,699.50", Assert.Single(plan).Body);
     }
 
     [Fact]
