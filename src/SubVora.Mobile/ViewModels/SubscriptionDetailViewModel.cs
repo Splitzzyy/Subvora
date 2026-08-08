@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Billing;
+using SubVora.Mobile.Formatting;
 using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
@@ -42,7 +43,43 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     public partial decimal CostAmount { get; set; }
 
     [ObservableProperty]
-    public partial string Currency { get; set; } = "INR";
+    public partial string Currency { get; set; } = SupportedCurrencies.DefaultCode;
+
+    /// <summary>
+    /// The picker's options. Rebuilt when an existing subscription loads so a code the runtime does
+    /// not recognise still appears - otherwise opening a subscription would leave the picker on
+    /// nothing and saving would quietly change what it is billed in.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<CurrencyOption> Currencies { get; set; } = SupportedCurrencies.All;
+
+    /// <summary>
+    /// Kept in step with <see cref="Currency"/> in both directions, exactly as Settings does it:
+    /// choosing an option writes the code, and loading a subscription moves the selection.
+    /// </summary>
+    [ObservableProperty]
+    public partial CurrencyOption? SelectedCurrency { get; set; }
+
+    partial void OnSelectedCurrencyChanged(CurrencyOption? value)
+    {
+        if (value is not null)
+        {
+            Currency = value.Code;
+        }
+    }
+
+    partial void OnCurrencyChanged(string value)
+    {
+        // Guarded, or the two handlers bounce off each other. Searched against Currencies rather
+        // than the full set, because that list may carry an extra entry for an unrecognised code.
+        if (string.Equals(SelectedCurrency?.Code, value, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        SelectedCurrency = Currencies.FirstOrDefault(option =>
+            string.Equals(option.Code, value?.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
 
     [ObservableProperty]
     public partial BillingCycleType CycleCadence { get; set; } = BillingCycleType.Monthly;
@@ -142,6 +179,10 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         // PurchaseDate and CycleCadence start at their defaults, so neither change handler has fired
         // yet and the add form would otherwise open showing today as the next billing date.
         RecalculateNextBillingDate();
+
+        // Same reason: Currency's property initializer assigns the backing field directly, so
+        // OnCurrencyChanged never ran for it and the add form opened with an empty picker.
+        SelectedCurrency = SupportedCurrencies.Find(Currency);
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -311,6 +352,8 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             var subscription = await _subscriptionsApi.GetByIdAsync(id);
             CustomName = subscription.CustomName;
             CostAmount = subscription.CostAmount;
+            // Options before the value, so the selection has something to land on.
+            Currencies = SupportedCurrencies.Including(subscription.Currency);
             Currency = subscription.Currency;
             CycleCadence = subscription.CycleCadence;
             PurchaseDate = subscription.PurchaseDate.ToDateTime(TimeOnly.MinValue);

@@ -18,7 +18,7 @@ public class CategoriesViewModelTests
                 new CategoryDto { Id = Guid.NewGuid(), Name = "My Custom Category", IsSystemDefault = false },
             ]),
         };
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService());
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -31,7 +31,7 @@ public class CategoriesViewModelTests
     public async Task AddAsync_WithValidName_CallsCreateAndAppendsToList()
     {
         var api = new FakeCategoriesApi();
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService()) { NewCategoryName = "Streaming" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "Streaming" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -48,7 +48,7 @@ public class CategoriesViewModelTests
         {
             CreateHandler = _ => throw TestApiExceptions.Create(HttpStatusCode.Conflict),
         };
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService()) { NewCategoryName = "Utilities" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "Utilities" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -65,7 +65,7 @@ public class CategoriesViewModelTests
                 HttpStatusCode.BadRequest,
                 """{"errors":{"Name":["'Name' must not be empty."]}}"""),
         };
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService()) { NewCategoryName = "" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 

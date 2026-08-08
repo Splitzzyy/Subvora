@@ -81,7 +81,7 @@ public class OfflineFailureTests
     public async Task Categories_WhenApiIsUnreachable_ShowsOfflineMessageInsteadOfCrashing()
     {
         var categoriesApi = new FakeCategoriesApi { GetAllHandler = () => throw Unreachable() };
-        var viewModel = new CategoriesViewModel(categoriesApi, new FakeConnectivityService());
+        var viewModel = new CategoriesViewModel(categoriesApi, new FakeConnectivityService(), new FakeUserPrompt());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -95,7 +95,7 @@ public class OfflineFailureTests
         // The 409 special-case in this catch block used to read ex.StatusCode directly, which only
         // exists on ApiException - the transport failure has no status at all.
         var categoriesApi = new FakeCategoriesApi { CreateHandler = _ => throw Unreachable() };
-        var viewModel = new CategoriesViewModel(categoriesApi, new FakeConnectivityService()) { NewCategoryName = "Streaming" };
+        var viewModel = new CategoriesViewModel(categoriesApi, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "Streaming" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 

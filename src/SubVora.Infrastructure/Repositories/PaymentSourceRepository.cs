@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using SubVora.Application.PaymentSources;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Data;
@@ -48,6 +48,22 @@ public class PaymentSourceRepository : IPaymentSourceRepository
         _dbContext.PaymentSources.Remove(paymentSource);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
+    }
+
+    public async Task<PaymentSourceDto?> UpdateAsync(Guid id, Guid userId, CreatePaymentSourceRequest request, CancellationToken cancellationToken = default)
+    {
+        var paymentSource = await _dbContext.PaymentSources
+            .SingleOrDefaultAsync(p => p.Id == id && p.UserId == userId, cancellationToken);
+        if (paymentSource is null)
+        {
+            return null;
+        }
+
+        paymentSource.Label = request.Label;
+        paymentSource.SourceType = request.SourceType;
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        return new PaymentSourceDto { Id = paymentSource.Id, Label = paymentSource.Label, SourceType = paymentSource.SourceType };
     }
 
     public Task<bool> IsOwnedByUserAsync(Guid paymentSourceId, Guid userId, CancellationToken cancellationToken = default) =>
