@@ -96,6 +96,9 @@ builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 // Adds any provider in subscription-catalog.json that the database does not have yet.
 builder.Services.AddHostedService<SubscriptionCatalogSyncService>();
 
+// Nothing else deletes from refresh_tokens or password_reset_codes; both otherwise grow forever.
+builder.Services.AddHostedService<ExpiredCredentialCleanupBackgroundService>();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
 
