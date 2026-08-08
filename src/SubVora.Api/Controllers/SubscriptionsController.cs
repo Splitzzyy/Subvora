@@ -132,16 +132,27 @@ public class SubscriptionsController : ControllerBase
     }
 
     /// <summary>Updates a subscription owned by the authenticated user.</summary>
-    /// <remarks>Uses the same request shape and validation rules as create - the editable field set is identical.</remarks>
+    /// <remarks>
+    /// Uses the same request shape and validation rules as create - the editable field set is identical.
+    /// <para>
+    /// Send back the <c>Version</c> from the record you read and the update is rejected with 409 if
+    /// anything changed in between, rather than overwriting it. The case that matters is an edit
+    /// screen opened before a mark-paid: without the check, saving it writes the pre-payment billing
+    /// date back and silently reverses the payment. Omit <c>Version</c> and the write applies
+    /// unconditionally, which is what clients built before this existed do.
+    /// </para>
+    /// </remarks>
     /// <response code="200">Returns the updated subscription.</response>
     /// <response code="400">The payload failed validation.</response>
     /// <response code="401">The caller is not authenticated.</response>
     /// <response code="404">No such subscription owned by the caller.</response>
+    /// <response code="409">The subscription changed since the version supplied was read.</response>
     [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Update(Guid id, [FromBody] CreateSubscriptionRequest request, CancellationToken cancellationToken)
     {
         var validationResult = await _createValidator.ValidateAsync(request, cancellationToken);
@@ -157,8 +168,17 @@ public class SubscriptionsController : ControllerBase
             return referenceProblem;
         }
 
-        var updated = await _subscriptionRepository.UpdateAsync(id, userId, request, cancellationToken);
-        return updated is null ? NotFound() : Ok(updated);
+        var result = await _subscriptionRepository.UpdateAsync(id, userId, request, cancellationToken);
+
+        return result.Status switch
+        {
+            SubscriptionUpdateStatus.Updated => Ok(result.Subscription),
+            SubscriptionUpdateStatus.VersionConflict => Conflict(new
+            {
+                message = "This subscription changed somewhere else while you were editing it.",
+            }),
+            _ => NotFound(),
+        };
     }
 
     /// <summary>Deletes a subscription owned by the authenticated user.</summary>

@@ -30,6 +30,12 @@ public class SubscriptionDto
     /// late while it is still today where they are.
     /// </summary>
     public bool IsOverdue => IsActive && NextBillingDate < DateOnly.FromDateTime(DateTime.Today);
+
+    /// <summary>
+    /// The row's version when this was read. Sent back on update so the server can reject the save
+    /// if the subscription changed in the meantime - see SubscriptionDetailViewModel.SaveAsync.
+    /// </summary>
+    public uint Version { get; set; }
     public Guid? CategoryId { get; set; }
     public string? CategoryName { get; set; }
     public Guid? PaymentSourceId { get; set; }
@@ -58,6 +64,12 @@ public class CreateSubscriptionRequest
 
     /// <summary>Null preserves the stored state; false deactivates a cancelled subscription without deleting its history.</summary>
     public bool? IsActive { get; set; }
+
+    /// <summary>
+    /// The version of the record this edit was made against, on update. The server answers 409 if
+    /// the subscription changed since. Null on create, where there is nothing to conflict with.
+    /// </summary>
+    public uint? Version { get; set; }
 }
 
 public enum MatchConfidenceTier
