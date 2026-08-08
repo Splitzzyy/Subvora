@@ -70,6 +70,10 @@ public partial class RegisterViewModel : ObservableObject
             await _tokenStore.SaveTokensAsync(loginResponse.Content);
             RegisterSucceeded?.Invoke(this, EventArgs.Empty);
         }
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
+        {
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+        }
         finally
         {
             IsBusy = false;

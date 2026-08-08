@@ -62,6 +62,13 @@ public partial class LoginViewModel : ObservableObject
                 ? "Invalid email or password."
                 : ApiErrorMapper.ToDisplayMessage(response);
         }
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
+        {
+            // IApiResponse hands back HTTP error statuses as values, which is why this was easy to
+            // miss - but an unreachable API throws before any response exists, and an exception
+            // escaping a RelayCommand crashes the app rather than showing anything.
+            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+        }
         finally
         {
             IsBusy = false;

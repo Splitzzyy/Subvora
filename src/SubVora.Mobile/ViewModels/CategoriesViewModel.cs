@@ -42,7 +42,7 @@ public partial class CategoriesViewModel : ObservableObject
                 Categories.Add(category);
             }
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -62,10 +62,10 @@ public partial class CategoriesViewModel : ObservableObject
             Categories.Add(created);
             NewCategoryName = string.Empty;
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             // 409 (duplicate name) isn't in the mapper's table - keep that specific wording.
-            ErrorMessage = ex.StatusCode == System.Net.HttpStatusCode.Conflict
+            ErrorMessage = ex is ApiException { StatusCode: System.Net.HttpStatusCode.Conflict }
                 ? "A category with this name already exists."
                 : ApiErrorMapper.ToDisplayMessage(ex);
         }

@@ -264,7 +264,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
                 PaymentSources.Add(paymentSource);
             }
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -298,7 +298,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         {
             SubscriptionNotFound?.Invoke(this, EventArgs.Empty);
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -325,7 +325,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             _messenger.Send(new SubscriptionsChangedMessage());
             SaveSucceeded?.Invoke(this, EventArgs.Empty);
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -376,7 +376,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             _messenger.Send(new SubscriptionsChangedMessage());
             Deleted?.Invoke(this, EventArgs.Empty);
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
