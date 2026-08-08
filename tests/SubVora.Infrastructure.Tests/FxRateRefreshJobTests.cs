@@ -157,6 +157,83 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
         Assert.Equal(0, countingClient.CallCount);
     }
 
+    private async Task<IReadOnlyDictionary<string, CachedFxRate>> GetRatesAsync(IReadOnlyCollection<string> baseCurrencies, string targetCurrency)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        return await scope.ServiceProvider.GetRequiredService<IFxRateService>().GetRatesAsync(baseCurrencies, targetCurrency);
+    }
+
+    [Fact]
+    public async Task GetRates_ReturnsEveryCachedPairInOneCall()
+    {
+        // Exercises the Contains translation against a real database - Npgsql turns it into
+        // base_currency = ANY(...), which is the whole point of the batch.
+        OnDemandClient = new FakeExchangeRateClient(1m);
+        await _dbContext.FxRates.AddRangeAsync(
+            new FxRate { BaseCurrency = "GBP", TargetCurrency = "INR", Rate = 105m, FetchedAt = DateTimeOffset.UtcNow },
+            new FxRate { BaseCurrency = "JPY", TargetCurrency = "INR", Rate = 0.55m, FetchedAt = DateTimeOffset.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var rates = await GetRatesAsync(["GBP", "JPY"], "INR");
+
+        Assert.Equal(2, rates.Count);
+        Assert.Equal(105m, rates["GBP"].Rate);
+        Assert.Equal(0.55m, rates["JPY"].Rate);
+    }
+
+    [Fact]
+    public async Task GetRates_DropsTheTargetCurrencyAndDeduplicates()
+    {
+        // Nothing stores an identity rate, so asking for one would be a guaranteed miss - and would
+        // then trigger a pointless on-demand provider call.
+        var countingClient = new FakeExchangeRateClient(1m);
+        OnDemandClient = countingClient;
+        await _dbContext.FxRates.AddAsync(
+            new FxRate { BaseCurrency = "CHF", TargetCurrency = "INR", Rate = 92m, FetchedAt = DateTimeOffset.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var rates = await GetRatesAsync(["CHF", "CHF", "INR"], "INR");
+
+        Assert.Equal(92m, Assert.Single(rates).Value.Rate);
+        Assert.False(rates.ContainsKey("INR"));
+        Assert.Equal(0, countingClient.CallCount);
+    }
+
+    [Fact]
+    public async Task GetRates_FetchesOnlyThePairsTheBatchMissed()
+    {
+        // The on-demand path has to survive batching: a user's first subscription in a new currency
+        // must still count toward their totals before the next scheduled pass.
+        await _dbContext.FxRates.AddAsync(
+            new FxRate { BaseCurrency = "SEK", TargetCurrency = "INR", Rate = 8m, FetchedAt = DateTimeOffset.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var countingClient = new FakeExchangeRateClient(3.5m);
+        OnDemandClient = countingClient;
+
+        var rates = await GetRatesAsync(["SEK", "NOK"], "INR");
+
+        Assert.Equal(8m, rates["SEK"].Rate);
+        Assert.Equal(3.5m, rates["NOK"].Rate);
+        // Once, for NOK only - the cached SEK row must not trigger a provider call.
+        Assert.Equal(1, countingClient.CallCount);
+
+        var cachedNok = await _dbContext.FxRates.AsNoTracking().SingleAsync(r => r.BaseCurrency == "NOK" && r.TargetCurrency == "INR");
+        Assert.Equal(3.5m, cachedNok.Rate);
+    }
+
+    [Fact]
+    public async Task GetRates_OmitsPairsThatCannotBeResolvedAtAll()
+    {
+        // Absent from the dictionary is how the batch says "no rate", and it is what puts the
+        // subscription into UnresolvedSubscriptionIds rather than silently valuing it at zero.
+        OnDemandClient = new ThrowingExchangeRateClient();
+
+        var rates = await GetRatesAsync(["ZZZ"], "INR");
+
+        Assert.Empty(rates);
+    }
+
     private class FakeExchangeRateClient : IExchangeRateClient
     {
         private readonly decimal _rate;
