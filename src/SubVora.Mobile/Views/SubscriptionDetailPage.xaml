@@ -83,8 +83,15 @@
 
                         <VerticalStackLayout Grid.Column="1" Spacing="12">
                             <Label Style="{StaticResource FieldLabel}" Text="Currency" />
+                            <!-- Picker, matching Settings. Typing a code means knowing it, and a
+                                 typo only surfaced as a 400 after Save. This is the currency the
+                                 subscription is billed in, not a preference, so it defaults to the
+                                 form's own default rather than following the home currency. -->
                             <Border Style="{StaticResource FieldBorder}">
-                                <Entry Text="{Binding Currency}" Placeholder="INR" MaxLength="3" />
+                                <Picker ItemsSource="{Binding Currencies}"
+                                        SelectedItem="{Binding SelectedCurrency}"
+                                        ItemDisplayBinding="{Binding Display}"
+                                        Title="Select a currency" />
                             </Border>
                         </VerticalStackLayout>
                     </Grid>
