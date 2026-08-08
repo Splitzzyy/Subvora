@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -41,7 +41,7 @@ public class OfflineWriteGuardTests
 
         Assert.False(Settings(offline).CanSubmit);
         Assert.False(Detail(offline).CanSubmit);
-        Assert.False(new CategoriesViewModel(new FakeCategoriesApi(), offline).CanSubmit);
+        Assert.False(new CategoriesViewModel(new FakeCategoriesApi(), offline, new FakeUserPrompt()).CanSubmit);
         Assert.False(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), offline).CanSubmit);
     }
 
@@ -52,7 +52,7 @@ public class OfflineWriteGuardTests
 
         Assert.True(Settings(online).CanSubmit);
         Assert.True(Detail(online).CanSubmit);
-        Assert.True(new CategoriesViewModel(new FakeCategoriesApi(), online).CanSubmit);
+        Assert.True(new CategoriesViewModel(new FakeCategoriesApi(), online, new FakeUserPrompt()).CanSubmit);
         Assert.True(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), online).CanSubmit);
     }
 

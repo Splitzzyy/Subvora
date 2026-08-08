@@ -14,6 +14,7 @@
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
         <converters:CategoryColorConverter x:Key="CategoryColorConverter" />
         <converters:CategoryIconConverter x:Key="CategoryIconConverter" />
+        <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
@@ -35,6 +36,26 @@
                 <CollectionView ItemsSource="{Binding Categories}">
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="dtos:CategoryDto">
+                            <!-- Swipe actions rather than inline buttons: the row is mostly a name,
+                                 and two buttons per row would crowd out the thing being named.
+                                 Hidden entirely for system defaults - they are shared by every
+                                 account, and the server answers 404 for them anyway. -->
+                            <SwipeView>
+                                <SwipeView.RightItems>
+                                    <SwipeItems>
+                                        <SwipeItem Text="Rename"
+                                                   BackgroundColor="#512BD4"
+                                                   IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
+                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=RenameCommand}"
+                                                   CommandParameter="{Binding .}" />
+                                        <SwipeItem Text="Delete"
+                                                   BackgroundColor="#C62828"
+                                                   IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
+                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=DeleteCommand}"
+                                                   CommandParameter="{Binding .}" />
+                                    </SwipeItems>
+                                </SwipeView.RightItems>
+
                             <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto">
                                 <!-- Tile rather than the old 10px dot: at that size the colour was
                                      the only thing distinguishing one row from the next, and a hue
@@ -55,6 +76,7 @@
                                     <Label Style="{StaticResource ChipText}" Text="SYSTEM" />
                                 </Border>
                             </Grid>
+                            </SwipeView>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
 
@@ -63,7 +85,7 @@
                             <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconTag}" />
                             <Label Style="{StaticResource EmptyTitle}" Text="No categories" />
                             <Label Style="{StaticResource EmptyBody}"
-                                   Text="Add one above to group your subscriptions." />
+                                   Text="Add one above to group your subscriptions. Swipe a row left to rename or delete it." />
                         </VerticalStackLayout>
                     </CollectionView.EmptyView>
                 </CollectionView>

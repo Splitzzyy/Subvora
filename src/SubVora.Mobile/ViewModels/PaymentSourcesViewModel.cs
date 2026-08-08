@@ -128,4 +128,43 @@ public partial class PaymentSourcesViewModel : ObservableObject
             ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
         }
     }
+
+    /// <summary>
+    /// Renames a payment source in place. Deliberately not delete-and-recreate: the subscriptions
+    /// foreign key is ON DELETE SET NULL, so recreating would silently detach every subscription
+    /// that billed to it.
+    /// </summary>
+    [RelayCommand]
+    private async Task RenameAsync(PaymentSourceDto paymentSource)
+    {
+        var newLabel = await _userPrompt.PromptAsync("Rename payment source", "New label", paymentSource.Label);
+        if (string.IsNullOrWhiteSpace(newLabel) || newLabel.Trim() == paymentSource.Label)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        try
+        {
+            var updated = await _paymentSourcesApi.UpdateAsync(paymentSource.Id, new CreatePaymentSourceRequest
+            {
+                Label = newLabel.Trim(),
+                // Unchanged - this action renames, and the type is set when the source is created.
+                SourceType = paymentSource.SourceType,
+            });
+
+            // Replaced rather than mutated: PaymentSourceDto is not observable, so the row would
+            // not repaint.
+            var index = PaymentSources.IndexOf(paymentSource);
+            if (index >= 0)
+            {
+                PaymentSources[index] = updated;
+            }
+        }
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
+        {
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
+        }
+    }
 }

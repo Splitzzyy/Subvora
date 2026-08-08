@@ -55,6 +55,10 @@
                             <SwipeView>
                                 <SwipeView.RightItems>
                                     <SwipeItems>
+                                        <SwipeItem Text="Rename"
+                                                   BackgroundColor="#512BD4"
+                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=RenameCommand}"
+                                                   CommandParameter="{Binding .}" />
                                         <SwipeItem Text="Delete"
                                                    BackgroundColor="#C62828"
                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=DeleteCommand}"
@@ -91,7 +95,7 @@
                             <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconWallet}" />
                             <Label Style="{StaticResource EmptyTitle}" Text="No payment sources" />
                             <Label Style="{StaticResource EmptyBody}"
-                                   Text="Add the cards and accounts your subscriptions bill to. Swipe a row left to delete it." />
+                                   Text="Add the cards and accounts your subscriptions bill to. Swipe a row left to rename or delete it." />
                         </VerticalStackLayout>
                     </CollectionView.EmptyView>
                 </CollectionView>

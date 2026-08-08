@@ -1,4 +1,4 @@
-using Refit;
+﻿using Refit;
 using SubVora.Mobile.Api.Dtos;
 
 namespace SubVora.Mobile.Api;
@@ -10,6 +10,10 @@ public interface IPaymentSourcesApi
 
     [Post("/api/v1/payment-sources")]
     Task<PaymentSourceDto> CreateAsync([Body] CreatePaymentSourceRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>In place, not delete-and-recreate: the subscriptions foreign key is SET NULL, so recreating detaches everything that used it.</summary>
+    [Put("/api/v1/payment-sources/{id}")]
+    Task<PaymentSourceDto> UpdateAsync(Guid id, [Body] CreatePaymentSourceRequest request, CancellationToken cancellationToken = default);
 
     [Delete("/api/v1/payment-sources/{id}")]
     Task DeleteAsync(Guid id, CancellationToken cancellationToken = default);
