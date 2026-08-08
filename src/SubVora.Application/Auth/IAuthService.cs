@@ -1,4 +1,4 @@
-namespace SubVora.Application.Auth;
+﻿namespace SubVora.Application.Auth;
 
 public interface IAuthService
 {
@@ -19,4 +19,11 @@ public interface IAuthService
     Task ForgotPasswordAsync(string email, CancellationToken cancellationToken = default);
 
     Task<ResetPasswordResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Changes the password of an already-authenticated user, after checking they know the current
+    /// one. Revokes every refresh token the account has - the same eviction a reset performs, for
+    /// the same reason - and returns a fresh pair so the caller's own device stays signed in.
+    /// </summary>
+    Task<ChangePasswordResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default);
 }
