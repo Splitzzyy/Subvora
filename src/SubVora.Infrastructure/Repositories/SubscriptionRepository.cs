@@ -109,12 +109,19 @@ public class SubscriptionRepository : ISubscriptionRepository
         return await GetByIdAsync(id, userId, cancellationToken);
     }
 
+    // The category and payment-source sides are filtered to what this user may see before they are
+    // joined, so a subscription pointing at someone else's row resolves to a null name/label rather
+    // than disclosing it. The controller rejects such a reference on write; this makes the read side
+    // safe on its own, including for rows written before that check existed. The catalog is global
+    // and unowned, so it joins unfiltered.
     private IQueryable<SubscriptionDto> BuildDtoQuery(Guid userId) =>
         from s in _dbContext.UserSubscriptions.AsNoTracking()
         where s.UserId == userId
-        join category in _dbContext.Categories.AsNoTracking() on s.CategoryId equals category.Id into categoryJoin
+        join category in _dbContext.Categories.AsNoTracking().Where(c => c.UserId == null || c.UserId == userId)
+            on s.CategoryId equals category.Id into categoryJoin
         from category in categoryJoin.DefaultIfEmpty()
-        join paymentSource in _dbContext.PaymentSources.AsNoTracking() on s.PaymentSourceId equals paymentSource.Id into paymentSourceJoin
+        join paymentSource in _dbContext.PaymentSources.AsNoTracking().Where(p => p.UserId == userId)
+            on s.PaymentSourceId equals paymentSource.Id into paymentSourceJoin
         from paymentSource in paymentSourceJoin.DefaultIfEmpty()
         join catalogItem in _dbContext.SubscriptionCatalog.AsNoTracking() on s.CatalogId equals catalogItem.Id into catalogJoin
         from catalogItem in catalogJoin.DefaultIfEmpty()

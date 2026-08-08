@@ -49,4 +49,8 @@ public class PaymentSourceRepository : IPaymentSourceRepository
         await _dbContext.SaveChangesAsync(cancellationToken);
         return true;
     }
+
+    public Task<bool> IsOwnedByUserAsync(Guid paymentSourceId, Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.PaymentSources.AsNoTracking()
+            .AnyAsync(p => p.Id == paymentSourceId && p.UserId == userId, cancellationToken);
 }

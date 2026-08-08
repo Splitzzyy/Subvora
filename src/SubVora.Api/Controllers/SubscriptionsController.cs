@@ -3,7 +3,9 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using SubVora.Application.Categories;
 using SubVora.Application.Matching;
+using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
 using SubVora.Domain.Entities;
@@ -24,6 +26,8 @@ public class SubscriptionsController : ControllerBase
     private readonly ISubscriptionMatchService _subscriptionMatchService;
     private readonly IValidator<ResolveSubscriptionRequest> _resolveValidator;
     private readonly ISubscriptionCatalogSearchRepository _catalogSearchRepository;
+    private readonly ICategoryRepository _categoryRepository;
+    private readonly IPaymentSourceRepository _paymentSourceRepository;
     private readonly IUserRepository _userRepository;
 
     public SubscriptionsController(
@@ -32,6 +36,8 @@ public class SubscriptionsController : ControllerBase
         ISubscriptionMatchService subscriptionMatchService,
         IValidator<ResolveSubscriptionRequest> resolveValidator,
         ISubscriptionCatalogSearchRepository catalogSearchRepository,
+        ICategoryRepository categoryRepository,
+        IPaymentSourceRepository paymentSourceRepository,
         IUserRepository userRepository)
     {
         _subscriptionRepository = subscriptionRepository;
@@ -39,6 +45,8 @@ public class SubscriptionsController : ControllerBase
         _subscriptionMatchService = subscriptionMatchService;
         _resolveValidator = resolveValidator;
         _catalogSearchRepository = catalogSearchRepository;
+        _categoryRepository = categoryRepository;
+        _paymentSourceRepository = paymentSourceRepository;
         _userRepository = userRepository;
     }
 
@@ -85,12 +93,12 @@ public class SubscriptionsController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
-        if (await ValidateCatalogReferenceAsync(request, cancellationToken) is { } catalogProblem)
-        {
-            return catalogProblem;
-        }
-
         var userId = GetUserId();
+
+        if (await ValidateReferencesAsync(request, userId, cancellationToken) is { } referenceProblem)
+        {
+            return referenceProblem;
+        }
 
         var subscription = new UserSubscription
         {
@@ -142,12 +150,14 @@ public class SubscriptionsController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
-        if (await ValidateCatalogReferenceAsync(request, cancellationToken) is { } catalogProblem)
+        var userId = GetUserId();
+
+        if (await ValidateReferencesAsync(request, userId, cancellationToken) is { } referenceProblem)
         {
-            return catalogProblem;
+            return referenceProblem;
         }
 
-        var updated = await _subscriptionRepository.UpdateAsync(id, GetUserId(), request, cancellationToken);
+        var updated = await _subscriptionRepository.UpdateAsync(id, userId, request, cancellationToken);
         return updated is null ? NotFound() : Ok(updated);
     }
 
@@ -215,27 +225,40 @@ public class SubscriptionsController : ControllerBase
     }
 
     /// <summary>
-    /// Returns a 400 ValidationProblem when the request names a catalog row that doesn't exist,
-    /// or null when there's nothing to complain about. Lives here rather than in
+    /// Returns a 400 ValidationProblem when the request points at a row the caller may not use, or
+    /// null when there's nothing to complain about. Lives here rather than in
     /// CreateSubscriptionRequestValidator because that validator is pure and has no repository
     /// access - the surrounding controllers already do cross-entity checks this way.
+    /// <para>
+    /// Ownership, not just existence. The foreign keys on user_subscriptions accept any id that is
+    /// present in the target table, so without these checks a caller could attach another user's
+    /// private category or payment source to their own subscription - and read the name and label
+    /// back out through the joined DTO.
+    /// </para>
     /// </summary>
-    private async Task<IActionResult?> ValidateCatalogReferenceAsync(CreateSubscriptionRequest request, CancellationToken cancellationToken)
+    private async Task<IActionResult?> ValidateReferencesAsync(CreateSubscriptionRequest request, Guid userId, CancellationToken cancellationToken)
     {
-        if (request.CatalogId is not Guid catalogId)
+        var errors = new Dictionary<string, string[]>();
+
+        // The catalog is global and unowned, so existence is the whole check here.
+        if (request.CatalogId is Guid catalogId && !await _catalogSearchRepository.ExistsAsync(catalogId, cancellationToken))
         {
-            return null;
+            errors[nameof(CreateSubscriptionRequest.CatalogId)] = ["No subscription catalog entry exists with that id."];
         }
 
-        if (await _catalogSearchRepository.ExistsAsync(catalogId, cancellationToken))
+        // Deliberately the same message whether the row is missing or belongs to someone else -
+        // telling the two apart would confirm that a given id exists.
+        if (request.CategoryId is Guid categoryId && !await _categoryRepository.IsAccessibleToUserAsync(categoryId, userId, cancellationToken))
         {
-            return null;
+            errors[nameof(CreateSubscriptionRequest.CategoryId)] = ["No category is available to you with that id."];
         }
 
-        return ValidationProblem(new ValidationProblemDetails(new Dictionary<string, string[]>
+        if (request.PaymentSourceId is Guid paymentSourceId && !await _paymentSourceRepository.IsOwnedByUserAsync(paymentSourceId, userId, cancellationToken))
         {
-            [nameof(CreateSubscriptionRequest.CatalogId)] = ["No subscription catalog entry exists with that id."],
-        }));
+            errors[nameof(CreateSubscriptionRequest.PaymentSourceId)] = ["No payment source is available to you with that id."];
+        }
+
+        return errors.Count == 0 ? null : ValidationProblem(new ValidationProblemDetails(errors));
     }
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
