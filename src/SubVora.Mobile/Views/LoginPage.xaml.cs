@@ -1,4 +1,4 @@
-using SubVora.Mobile.ViewModels;
+﻿using SubVora.Mobile.ViewModels;
 
 namespace SubVora.Mobile.Views;
 
@@ -17,6 +17,11 @@ public partial class LoginPage : ContentPage
     private async void OnLoginSucceeded(object? sender, EventArgs e)
     {
         await Shell.Current.GoToAsync("//DashboardPage");
+    }
+
+    private async void OnForgotPasswordTapped(object? sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync(nameof(ForgotPasswordPage));
     }
 
     private async void OnRegisterTapped(object? sender, EventArgs e)

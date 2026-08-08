@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using Refit;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
@@ -17,12 +17,24 @@ public class FakeAuthApi : IAuthApi
     public Func<RefreshRequest, Task<IApiResponse<AuthTokenResponse>>> RefreshHandler =
         _ => Task.FromResult(CreateResponse(HttpStatusCode.OK, SampleTokens()));
 
+    public Func<ForgotPasswordRequest, Task<IApiResponse>> ForgotPasswordHandler =
+        _ => Task.FromResult(CreateResponse(HttpStatusCode.OK));
+
+    public Func<ResetPasswordRequest, Task<IApiResponse>> ResetPasswordHandler =
+        _ => Task.FromResult(CreateResponse(HttpStatusCode.OK));
+
+    public Func<ChangePasswordRequest, Task<IApiResponse<AuthTokenResponse>>> ChangePasswordHandler =
+        _ => Task.FromResult(CreateResponse(HttpStatusCode.OK, SampleTokens()));
+
     public Func<RefreshRequest, Task<IApiResponse>> LogoutHandler =
         _ => Task.FromResult(CreateResponse(HttpStatusCode.NoContent));
 
     public List<RegisterRequest> RegisterCalls { get; } = [];
     public List<LoginRequest> LoginCalls { get; } = [];
     public List<RefreshRequest> LogoutCalls { get; } = [];
+    public List<ForgotPasswordRequest> ForgotPasswordCalls { get; } = [];
+    public List<ResetPasswordRequest> ResetPasswordCalls { get; } = [];
+    public List<ChangePasswordRequest> ChangePasswordCalls { get; } = [];
 
     public Task<IApiResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
@@ -43,6 +55,24 @@ public class FakeAuthApi : IAuthApi
     {
         LogoutCalls.Add(request);
         return LogoutHandler(request);
+    }
+
+    public Task<IApiResponse> ForgotPasswordAsync(ForgotPasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        ForgotPasswordCalls.Add(request);
+        return ForgotPasswordHandler(request);
+    }
+
+    public Task<IApiResponse> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        ResetPasswordCalls.Add(request);
+        return ResetPasswordHandler(request);
+    }
+
+    public Task<IApiResponse<AuthTokenResponse>> ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        ChangePasswordCalls.Add(request);
+        return ChangePasswordHandler(request);
     }
 
     public static AuthTokenResponse SampleTokens() => new()

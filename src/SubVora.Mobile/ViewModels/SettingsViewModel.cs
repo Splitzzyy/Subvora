@@ -92,8 +92,23 @@ public partial class SettingsViewModel : ObservableObject
 
     partial void OnThemeChanged(ThemeChoice value) => _themeService.Apply(value);
 
+    [ObservableProperty]
+    public partial string CurrentPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string NewPassword { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string? PasswordMessage { get; set; }
+
+    [ObservableProperty]
+    public partial string? PasswordErrorMessage { get; set; }
+
     /// <summary>Raised after sign-out completes so the view can navigate back to Login.</summary>
     public event EventHandler? SignedOut;
+
+    /// <summary>Raised after the password changes, so the view can confirm it.</summary>
+    public event EventHandler? PasswordChanged;
 
     public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService, IConnectivityService connectivity)
     {
@@ -181,6 +196,49 @@ public partial class SettingsViewModel : ObservableObject
         {
             IsOffline = !_connectivity.IsConnected;
             ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ChangePasswordAsync()
+    {
+        PasswordErrorMessage = null;
+        PasswordMessage = null;
+        IsBusy = true;
+        try
+        {
+            var response = await _authApi.ChangePasswordAsync(new ChangePasswordRequest
+            {
+                CurrentPassword = CurrentPassword,
+                NewPassword = NewPassword,
+            });
+
+            if (!response.IsSuccessStatusCode || response.Content is null)
+            {
+                // 400 covers both a wrong current password and a new one that fails validation;
+                // the server's own message distinguishes them, so surface that rather than guess.
+                PasswordErrorMessage = ApiErrorMapper.ToDisplayMessage(response);
+                return;
+            }
+
+            // Succeeding revoked every refresh token on the account, this device's included. The
+            // replacement pair has to be stored or the next 401 signs the user out of the phone
+            // they just used - which is the change appearing to have broken the app.
+            await _tokenStore.SaveTokensAsync(response.Content);
+
+            CurrentPassword = string.Empty;
+            NewPassword = string.Empty;  // pragma: allowlist secret
+            PasswordMessage = "Password changed. Any other devices have been signed out.";  // pragma: allowlist secret
+            PasswordChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
+        {
+            IsOffline = !_connectivity.IsConnected;
+            PasswordErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
         }
         finally
         {

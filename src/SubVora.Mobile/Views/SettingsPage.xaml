@@ -80,6 +80,43 @@
                 </VerticalStackLayout>
             </Border>
 
+            <!-- Its own card, and its own message pair: a failure here must not look like the
+                 preferences above failed to save, and vice versa. -->
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="12">
+                    <HorizontalStackLayout Spacing="8">
+                        <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconCheckCircle}" />
+                        <Label Style="{StaticResource SectionHeading}" Text="Password" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <Label Style="{StaticResource FieldLabel}" Text="Current password" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Text="{Binding CurrentPassword}" IsPassword="True" /> <!-- pragma: allowlist secret -->
+                    </Border>
+
+                    <Label Style="{StaticResource FieldLabel}" Text="New password" Margin="4,8,0,-4" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Entry Text="{Binding NewPassword}" IsPassword="True" Placeholder="At least 8 characters" /> <!-- pragma: allowlist secret -->
+                    </Border>
+
+                    <Label Style="{StaticResource Caption}"
+                           Text="{Binding PasswordMessage}"
+                           IsVisible="{Binding PasswordMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+                    <Label Style="{StaticResource ErrorText}"
+                           Text="{Binding PasswordErrorMessage}"
+                           IsVisible="{Binding PasswordErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
+
+                    <Label Style="{StaticResource Caption}"
+                           Text="Changing your password signs out every other device. This one stays signed in."
+                           Margin="4,0,0,0" />
+
+                    <Button Text="Change password"
+                            Command="{Binding ChangePasswordCommand}"
+                            IsEnabled="{Binding CanSubmit}" />
+                </VerticalStackLayout>
+            </Border>
+
             <Border Style="{StaticResource Card}" Padding="8">
                 <Button Style="{StaticResource DangerButton}"
                         Text="Sign out"

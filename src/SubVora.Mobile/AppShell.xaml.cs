@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 using SubVora.Mobile.Views;
@@ -24,6 +24,7 @@ public partial class AppShell : Shell
 
         // LoginPage is declared in AppShell.xaml instead - see the comment there.
         Routing.RegisterRoute(nameof(RegisterPage), typeof(RegisterPage));
+        Routing.RegisterRoute(nameof(ForgotPasswordPage), typeof(ForgotPasswordPage));
         Routing.RegisterRoute(nameof(SubscriptionDetailPage), typeof(SubscriptionDetailPage));
 
         _sessionRefresher.SessionExpired += OnSessionExpired;
