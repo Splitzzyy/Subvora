@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 
 namespace SubVora.Mobile.Converters;
 
@@ -30,6 +30,9 @@ public class CategoryColorConverter : IValueConverter
         ["Finance"] = ("#008300", "#008300"),
         ["Productivity"] = ("#4a3aa7", "#9085e9"),
     };
+
+    /// <summary>The categories with a dedicated hue. Held against CategoryIconConverter.KnownCategories by a test, so the two cannot drift apart.</summary>
+    public static IReadOnlyCollection<string> KnownCategories => ByCategory.Keys;
 
     private const string NeutralLight = "#8A8A99";
     private const string NeutralDark = "#767686";

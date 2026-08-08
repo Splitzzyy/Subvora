@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SubVora.Mobile.Views.PaymentSourcesPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -6,11 +6,14 @@
     xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
     xmlns:dtos="clr-namespace:SubVora.Mobile.Api.Dtos"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+    xmlns:converters="clr-namespace:SubVora.Mobile.Converters"
     x:DataType="viewModels:PaymentSourcesViewModel"
     Title="Payment Sources">
 
     <ContentPage.Resources>
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
+        <converters:PaymentSourceIconConverter x:Key="PaymentSourceIconConverter" />
+        <converters:PaymentSourceColorConverter x:Key="PaymentSourceColorConverter" />
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
@@ -54,12 +57,23 @@
                                     </SwipeItems>
                                 </SwipeView.RightItems>
 
-                                <Grid Style="{StaticResource CardRow}" ColumnDefinitions="*,Auto">
-                                    <Label Grid.Column="0"
-                                           Style="{StaticResource BodyText}"
+                                <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto">
+                                    <!-- Tinted by type, not per row: a person's cards are not
+                                         categories, and a hue each would imply a distinction the
+                                         data does not have. -->
+                                    <Border Grid.Column="0"
+                                            Style="{StaticResource IconTile}"
+                                            Margin="0,0,12,0"
+                                            BackgroundColor="{Binding SourceType, Converter={StaticResource PaymentSourceColorConverter}, ConverterParameter=soft}">
+                                        <Path Style="{StaticResource IconTileGlyph}"
+                                              Data="{Binding SourceType, Converter={StaticResource PaymentSourceIconConverter}}"
+                                              Fill="{Binding SourceType, Converter={StaticResource PaymentSourceColorConverter}}" />
+                                    </Border>
+                                    <Label Grid.Column="1"
+                                           Style="{StaticResource BodyStrong}"
                                            Text="{Binding Label}"
                                            VerticalOptions="Center" />
-                                    <Border Grid.Column="1" Style="{StaticResource Chip}">
+                                    <Border Grid.Column="2" Style="{StaticResource Chip}">
                                         <Label Style="{StaticResource ChipText}" Text="{Binding SourceType}" />
                                     </Border>
                                 </Grid>

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SubVora.Mobile.Views.CategoriesPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -13,6 +13,7 @@
     <ContentPage.Resources>
         <toolkit:IsStringNotNullOrEmptyConverter x:Key="StringToBoolConverter" />
         <converters:CategoryColorConverter x:Key="CategoryColorConverter" />
+        <converters:CategoryIconConverter x:Key="CategoryIconConverter" />
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
@@ -35,13 +36,19 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="dtos:CategoryDto">
                             <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto">
-                                <Ellipse Grid.Column="0"
-                                         WidthRequest="10" HeightRequest="10"
-                                         VerticalOptions="Center"
-                                         Margin="0,0,10,0"
-                                         Fill="{Binding Name, Converter={StaticResource CategoryColorConverter}}" />
+                                <!-- Tile rather than the old 10px dot: at that size the colour was
+                                     the only thing distinguishing one row from the next, and a hue
+                                     alone cannot say "Fitness". -->
+                                <Border Grid.Column="0"
+                                        Style="{StaticResource IconTile}"
+                                        Margin="0,0,12,0"
+                                        BackgroundColor="{Binding Name, Converter={StaticResource CategoryColorConverter}, ConverterParameter=soft}">
+                                    <Path Style="{StaticResource IconTileGlyph}"
+                                          Data="{Binding Name, Converter={StaticResource CategoryIconConverter}}"
+                                          Fill="{Binding Name, Converter={StaticResource CategoryColorConverter}}" />
+                                </Border>
                                 <Label Grid.Column="1"
-                                       Style="{StaticResource BodyText}"
+                                       Style="{StaticResource BodyStrong}"
                                        Text="{Binding Name}"
                                        VerticalOptions="Center" />
                                 <Border Grid.Column="2" Style="{StaticResource Chip}" IsVisible="{Binding IsSystemDefault}">
