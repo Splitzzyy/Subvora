@@ -17,9 +17,12 @@ public static class BillingCycleAdvancer
     /// and reads as the app having got the date wrong.
     /// </para>
     /// <para>
-    /// Keeping a passed date honest is the server's job, not this one:
-    /// <c>BillingDateAdvanceBackgroundService</c> rolls <c>next_billing_date</c> forward a cycle at a
-    /// time once it is in the past, using <c>SubVora.Application.Billing.BillingCycleAdvancer</c>.
+    /// A date that has passed is left alone on purpose, here and on the server. That is how the app
+    /// says a charge is outstanding - it is what <c>SubscriptionDto.IsOverdue</c> reads - and it
+    /// moves only when the user marks the charge paid
+    /// (<c>POST /api/v1/subscriptions/{id}/mark-paid</c>), which steps on one cycle from the date
+    /// just settled. Nothing advances it on a timer; a job that did would erase the signal overdue
+    /// depends on.
     /// </para>
     /// <c>OneTime</c> never recurs, so it is returned unchanged.
     /// </summary>
