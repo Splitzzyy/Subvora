@@ -196,11 +196,24 @@ public class SubscriptionsController : ControllerBase
         return updated is null ? NotFound() : Ok(updated);
     }
 
-    /// <summary>Resolves free-text subscription input (e.g. "nflx mobile plan") to a catalog match via AI embedding + cosine similarity.</summary>
+    /// <summary>Resolves free-text subscription input (e.g. "nflx mobile plan") to a catalog match by trigram similarity.</summary>
     /// <remarks>
-    /// Similarity ≥0.85 auto-fills from the matched catalog entry; 0.70-0.85 returns the same match
-    /// flagged for user confirmation; below 0.70 (or an empty catalog) returns no match and records
-    /// the input as a new subscription_catalog entry for future matching.
+    /// Matching is a single pg_trgm query against the provider catalog - no AI, no embeddings, no
+    /// third-party call. Scoring is the better of the two <c>word_similarity</c> directions, since
+    /// the function is directional and either argument can be the substring.
+    /// <para>
+    /// The response carries one of three tiers. <c>AutoFill</c> means confident enough to populate
+    /// the form from the matched entry; <c>SuggestConfirm</c> means show it and let the user accept
+    /// or reject; <c>Manual</c> means no usable match, and the client keeps whatever the user typed.
+    /// The thresholds separating them were measured against the seeded catalog rather than guessed -
+    /// see <c>SubscriptionMatchService</c> for the figures and
+    /// <c>SubscriptionCatalogSearchRepositoryTests</c>, which pins them.
+    /// </para>
+    /// <para>
+    /// Nothing is written. An unmatched input is <em>not</em> added to the catalog: the catalog is
+    /// global and unowned, so storing raw input would publish one user's typing ("alimony - Sarah")
+    /// into every other user's fuzzy match.
+    /// </para>
     /// </remarks>
     /// <response code="200">Returns the resolution result.</response>
     /// <response code="400">The payload failed validation.</response>

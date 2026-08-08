@@ -1,7 +1,39 @@
+# Migrate, then deploy - in that order, automatically.
+#
+# Render used to auto-deploy on every push to main while this workflow was manual
+# (workflow_dispatch only), so nothing sequenced the two: a push carrying a migration shipped the
+# code immediately and changed the schema only if someone remembered to click Run. Forgetting it
+# did not fail loudly - SubscriptionCatalogSyncService swallows its own error and /health probes
+# the connection rather than the migration state, so the instance reported healthy while serving
+# 500s against an old schema.
+#
+# So render.yaml now sets autoDeploy: false and this workflow owns the ordering. A failed migration
+# fails this job, the deploy hook never fires, and the previous release keeps serving on the schema
+# it was built for. The blast radius of a bad migration is a red check mark rather than an outage.
+#
+# The API still does not migrate on startup (Program.cs migrates only under Development/Docker).
+# That stays deliberate: it keeps DDL rights out of the app's own runtime credential, and it keeps
+# a slow migration from colliding with Render's health-check timeout mid-DDL.
+#
+# Caveat this does not solve: code and schema still land seconds apart, so a migration that breaks
+# the *currently running* release - dropping or renaming a column it still reads - causes errors in
+# that window. Use expand-contract: add the new column, ship code that writes both, drop the old
+# one a release later.
 name: Database Migration (Production)
 
 on:
+  push:
+    branches: [main]
+  # Kept for the first deploy, when there is no previous release to sequence against, and for
+  # re-running a migration without a code change.
   workflow_dispatch: {}
+
+# A second push while the first is mid-migration would race two migration bundles against one
+# database. Queue them instead, and never cancel one in flight - a half-applied migration is the
+# one outcome with no clean recovery.
+concurrency:
+  group: db-migrate-production
+  cancel-in-progress: false
 
 jobs:
   migrate:
@@ -31,3 +63,12 @@ jobs:
 
       - name: Apply migrations
         run: ./migrate --connection "${{ secrets.PROD_DB_CONNECTION_STRING }}"
+
+      # Only reached when the migration succeeded - that is the whole point of the ordering.
+      # RENDER_DEPLOY_HOOK_URL carries its own key, so it is a secret rather than a plain URL.
+      # --fail-with-body exits non-zero on a non-2xx while still printing what Render said, so a
+      # rejected hook fails the job rather than passing silently and leaving the schema ahead of
+      # the code.
+      - name: Trigger Render deploy
+        if: github.event_name == 'push'
+        run: curl --silent --show-error --fail-with-body "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
