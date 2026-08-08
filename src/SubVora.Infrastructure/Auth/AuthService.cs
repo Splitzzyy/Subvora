@@ -294,6 +294,37 @@ public class AuthService : IAuthService
         return ResetPasswordResult.Success();
     }
 
+    public async Task<ChangePasswordResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        if (user is null)
+        {
+            return ChangePasswordResult.Failed();
+        }
+
+        // The access token proves the session; this proves the person. Skipping it would let a
+        // stolen token be traded for permanent ownership of the account, which is the exact thing
+        // changing a password is meant to stop.
+        if (!_passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
+        {
+            _logger.LogWarning("Change-password rejected for user {UserId}: current password did not match.", userId);
+            return ChangePasswordResult.Failed();
+        }
+
+        user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
+        await _dbContext.SaveChangesAsync(cancellationToken);
+
+        // Every existing session dies, exactly as it does on reset: refresh tokens live 30 days and
+        // would otherwise keep minting access tokens off the password that was just replaced.
+        await RevokeAllActiveTokensForUserAsync(user.Id, cancellationToken);
+
+        // Then a new pair, after the sweep so it survives it. The caller changed their own
+        // password; signing them out of the device they are holding would read as a bug, while
+        // every other device is now evicted.
+        var tokens = await IssueTokenPairAsync(user, cancellationToken);
+        return ChangePasswordResult.Success(tokens);
+    }
+
     /// <summary>
     /// Npgsql surfaces a unique-index violation as SQLSTATE 23505. Matching on the state code
     /// rather than the message keeps this working across locales and server versions.

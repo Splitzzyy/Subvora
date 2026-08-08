@@ -18,19 +18,22 @@ public class AuthController : ControllerBase
     private readonly IValidator<LoginRequest> _loginValidator;
     private readonly IValidator<ForgotPasswordRequest> _forgotPasswordValidator;
     private readonly IValidator<ResetPasswordRequest> _resetPasswordValidator;
+    private readonly IValidator<ChangePasswordRequest> _changePasswordValidator;
 
     public AuthController(
         IAuthService authService,
         IValidator<RegisterRequest> registerValidator,
         IValidator<LoginRequest> loginValidator,
         IValidator<ForgotPasswordRequest> forgotPasswordValidator,
-        IValidator<ResetPasswordRequest> resetPasswordValidator)
+        IValidator<ResetPasswordRequest> resetPasswordValidator,
+        IValidator<ChangePasswordRequest> changePasswordValidator)
     {
         _authService = authService;
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
         _forgotPasswordValidator = forgotPasswordValidator;
         _resetPasswordValidator = resetPasswordValidator;
+        _changePasswordValidator = changePasswordValidator;
     }
 
     /// <summary>Creates a new account.</summary>
@@ -152,6 +155,51 @@ public class AuthController : ControllerBase
         }
 
         return Ok();
+    }
+
+    /// <summary>Changes the signed-in user's password.</summary>
+    /// <remarks>
+    /// Requires the current password as well as a valid access token: the token proves the session,
+    /// the password proves the person. Without that check a stolen access token could be traded for
+    /// permanent ownership of the account.
+    /// <para>
+    /// Succeeding revokes every refresh token the account holds - the same eviction a reset
+    /// performs - and returns a fresh pair, so the device that made the change stays signed in
+    /// while every other one is signed out.
+    /// </para>
+    /// </remarks>
+    /// <response code="200">Returns a new access/refresh token pair.</response>
+    /// <response code="400">The payload failed validation, or the current password is wrong.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    [Authorize]
+    [HttpPost("change-password")]
+    [EnableRateLimiting("auth")]
+    [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request, CancellationToken cancellationToken)
+    {
+        var validationResult = await _changePasswordValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+        var result = await _authService.ChangePasswordAsync(userId, request, cancellationToken);
+
+        if (!result.Succeeded)
+        {
+            // 400, not 401: the caller is authenticated - it is the password in the body that is
+            // wrong. A 401 would send the client into its token-refresh path for no reason.
+            return ValidationProblem(new ValidationProblemDetails
+            {
+                Title = "Your current password is incorrect.",
+                Status = StatusCodes.Status400BadRequest,
+            });
+        }
+
+        return Ok(result.Tokens);
     }
 
     /// <summary>Revokes the caller's refresh token, ending that session.</summary>

@@ -106,6 +106,8 @@ public static class MauiProgram
 		builder.Services.AddTransient<AppShell>();
 		builder.Services.AddTransient<LoginViewModel>();
 		builder.Services.AddTransient<LoginPage>();
+		builder.Services.AddTransient<ForgotPasswordViewModel>();
+		builder.Services.AddTransient<ForgotPasswordPage>();
 		builder.Services.AddTransient<RegisterViewModel>();
 		builder.Services.AddTransient<RegisterPage>();
 		// Singleton, unlike every other view model: AppShell's banner and DashboardPage bind to
