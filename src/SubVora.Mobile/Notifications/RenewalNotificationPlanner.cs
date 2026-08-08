@@ -1,4 +1,5 @@
-using SubVora.Mobile.Api.Dtos;
+﻿using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Formatting;
 
 namespace SubVora.Mobile.Notifications;
 
@@ -57,7 +58,9 @@ public static class RenewalNotificationPlanner
         };
 
         // The amount is the point of the reminder - "Netflix renews in 3 days" is a fact,
-        // "Netflix renews in 3 days - 15.99 USD" is a decision.
-        return $"{subscription.CustomName} {when} - {subscription.CostAmount:N2} {subscription.Currency}";
+        // "Netflix renews in 3 days - ₹1,699.50" is a decision. Symbol rather than the trailing
+        // code: a notification is read at a glance on a lock screen, where "₹1,699.50" lands and
+        // "1,699.50 INR" has to be parsed. Codes without an unambiguous symbol still print as codes.
+        return $"{subscription.CustomName} {when} - {CurrencySymbols.Format(subscription.CostAmount, subscription.Currency)}";
     }
 }

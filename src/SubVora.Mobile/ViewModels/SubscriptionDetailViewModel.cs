@@ -22,6 +22,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     private readonly IDebouncer _debouncer;
     private readonly IMessenger _messenger;
     private readonly IUserPrompt _userPrompt;
+    private readonly IConnectivityService _connectivity;
     private ResolveSubscriptionResponse? _pendingSuggestion;
 
     // The catalog row this subscription is linked to, carried from a resolve result (or from the
@@ -67,7 +68,25 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     public partial PaymentSourceDto? SelectedPaymentSource { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
     public partial bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Whether the device has no network. Refreshed when the screen loads and after a failed write
+    /// rather than by subscribing to the connectivity event: this view model is transient while
+    /// IConnectivityService is a singleton, so a subscription would outlive the screen.
+    /// <para>
+    /// Only covers "this phone has no network". A reachable phone talking to a server that is down
+    /// still reads as online - that case is caught by the write failing, with a message saying the
+    /// change was not saved.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial bool IsOffline { get; set; }
+
+    /// <summary>Gates Save and Delete, so an edit that cannot possibly succeed is not offered.</summary>
+    public bool CanSubmit => !IsOffline && !IsBusy;
 
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
@@ -108,7 +127,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     /// <summary>Raised after a successful delete so the view can navigate back.</summary>
     public event EventHandler? Deleted;
 
-    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer, IMessenger messenger, IUserPrompt userPrompt)
+    public SubscriptionDetailViewModel(ISubscriptionsApi subscriptionsApi, ICategoriesApi categoriesApi, IPaymentSourcesApi paymentSourcesApi, IDebouncer debouncer, IMessenger messenger, IUserPrompt userPrompt, IConnectivityService connectivity)
     {
         _subscriptionsApi = subscriptionsApi;
         _categoriesApi = categoriesApi;
@@ -116,6 +135,9 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         _debouncer = debouncer;
         _messenger = messenger;
         _userPrompt = userPrompt;
+        _connectivity = connectivity;
+
+        IsOffline = !connectivity.IsConnected;
 
         // PurchaseDate and CycleCadence start at their defaults, so neither change handler has fired
         // yet and the add form would otherwise open showing today as the next billing date.
@@ -282,6 +304,8 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             return;
         }
 
+        IsOffline = !_connectivity.IsConnected;
+
         try
         {
             var subscription = await _subscriptionsApi.GetByIdAsync(id);
@@ -346,7 +370,8 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
         }
         finally
         {
@@ -397,7 +422,8 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
         }
         finally
         {

@@ -42,7 +42,11 @@ public class DashboardController : ControllerBase
     public async Task<IActionResult> GetBurnRate(CancellationToken cancellationToken)
     {
         var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
-        var preferredCurrency = await _userRepository.GetPreferredCurrencyAsync(userId, cancellationToken) ?? "USD";
+        // INR, matching the users.preferred_currency column default set by
+        // DefaultPreferredCurrencyInr. This only fires if the row vanished between authenticating
+        // and reading it, but the two defaults disagreeing is the kind of thing that surfaces years
+        // later as one account inexplicably totalling in dollars.
+        var preferredCurrency = await _userRepository.GetPreferredCurrencyAsync(userId, cancellationToken) ?? "INR";
         var subscriptions = await _subscriptionRepository.GetAllForUserAsync(userId, cancellationToken);
         var result = await _burnRateCalculator.CalculateAsync(subscriptions, preferredCurrency, cancellationToken);
         return Ok(result);

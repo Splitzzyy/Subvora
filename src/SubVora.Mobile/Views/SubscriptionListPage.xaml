@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SubVora.Mobile.Views.SubscriptionListPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -15,6 +15,7 @@
         <converters:CategoryColorConverter x:Key="CategoryColorConverter" />
         <converters:RelativeDateConverter x:Key="RelativeDateConverter" />
         <converters:InitialConverter x:Key="InitialConverter" />
+        <converters:CurrencySymbolConverter x:Key="CurrencySymbolConverter" />
         <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
     </ContentPage.Resources>
 
@@ -137,7 +138,7 @@
                                            VerticalOptions="Center">
                                         <Label.FormattedText>
                                             <FormattedString>
-                                                <Span Text="{Binding Currency}" FontSize="12" />
+                                                <Span Text="{Binding Currency, Converter={StaticResource CurrencySymbolConverter}}" FontSize="14" />
                                                 <Span Text=" " />
                                                 <Span Text="{Binding CostAmount, StringFormat='{0:N2}'}" />
                                             </FormattedString>

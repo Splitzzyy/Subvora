@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Messages;
@@ -23,7 +23,8 @@ public class SubscriptionDeleteTests
             new FakePaymentSourcesApi(),
             new FakeDebouncer(),
             messenger ?? new WeakReferenceMessenger(),
-            userPrompt);
+            userPrompt,
+            new FakeConnectivityService());
 
     private static FakeSubscriptionsApi ApiReturning(Guid id) => new()
     {

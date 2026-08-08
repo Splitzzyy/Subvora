@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SubVora.Mobile.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -28,8 +28,14 @@
                     </HorizontalStackLayout>
 
                     <Label Style="{StaticResource FieldLabel}" Text="Home currency" />
+                    <!-- Picker, not a three-letter Entry: typing a code means knowing it, and a typo
+                         only surfaced as a validation error after Save. ItemDisplayBinding shows the
+                         symbol, code and name together while the bound selection keeps the code. -->
                     <Border Style="{StaticResource FieldBorder}">
-                        <Entry Text="{Binding PreferredCurrency}" Placeholder="INR" MaxLength="3" />
+                        <Picker ItemsSource="{Binding Currencies}"
+                                SelectedItem="{Binding SelectedCurrency}"
+                                ItemDisplayBinding="{Binding Display}"
+                                Title="Select a currency" />
                     </Border>
                     <Label Style="{StaticResource Caption}"
                            Text="Everything on the dashboard is converted into this currency. Your subscriptions keep the currency they are billed in."
@@ -40,9 +46,14 @@
                         <Entry Text="{Binding DefaultAlertDaysAdvance}" Keyboard="Numeric" Placeholder="3" />
                     </Border>
 
+                    <Label Style="{StaticResource WarningText}"
+                           Text="You're offline. Changes can't be saved until you reconnect."
+                           FontSize="13"
+                           IsVisible="{Binding IsOffline}" />
+
                     <Button Text="Save"
                             Command="{Binding SaveCommand}"
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                            IsEnabled="{Binding CanSubmit}"
                             Margin="0,8,0,0" />
                 </VerticalStackLayout>
             </Border>

@@ -34,6 +34,22 @@ public static class ApiErrorMapper
         _ => "Something went wrong. Please try again.",
     };
 
+    /// <summary>
+    /// The same mapping, worded for a write that failed rather than a read.
+    /// <para>
+    /// "You appear to be offline" is true and useless on a save: the reader still has to guess
+    /// whether the change was stored locally and will sync later. It will not - the SQLite mirror
+    /// is refreshed from successful GETs only and there is no write queue - so the message has to
+    /// say the change was lost, or the user walks away believing it landed.
+    /// </para>
+    /// </summary>
+    public static string ToWriteFailureMessage(Exception exception) => exception switch
+    {
+        HttpRequestException or TaskCanceledException =>
+            "You're offline — this change wasn't saved. Try again once you're connected.",
+        _ => ToDisplayMessage(exception),
+    };
+
     public static string ToDisplayMessage(ApiException exception) => ToDisplayMessage(exception.StatusCode, exception);
 
     public static string ToDisplayMessage(IApiResponse response) => ToDisplayMessage(response.StatusCode ?? 0, response.Error as ApiException);

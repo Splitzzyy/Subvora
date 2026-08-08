@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Messages;
@@ -37,7 +37,8 @@ public class SaveConflictTests
             new FakePaymentSourcesApi(),
             new FakeDebouncer(),
             messenger ?? new WeakReferenceMessenger(),
-            new FakeUserPrompt());
+            new FakeUserPrompt(),
+            new FakeConnectivityService());
 
     private static async Task<SubscriptionDetailViewModel> LoadedInEditModeAsync(FakeSubscriptionsApi api, IMessenger? messenger = null)
     {

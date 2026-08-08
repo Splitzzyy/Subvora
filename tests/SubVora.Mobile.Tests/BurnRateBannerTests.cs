@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Messages;
 using SubVora.Mobile.Tests.Fakes;
@@ -113,7 +113,8 @@ public class BurnRateBannerTests
             new FakePaymentSourcesApi(),
             new FakeDebouncer(),
             messenger,
-            new FakeUserPrompt())
+            new FakeUserPrompt(),
+            new FakeConnectivityService())
         {
             CustomName = "Netflix",
             CostAmount = 15.99m,
@@ -142,7 +143,8 @@ public class BurnRateBannerTests
             new FakePaymentSourcesApi(),
             new FakeDebouncer(),
             messenger,
-            new FakeUserPrompt())
+            new FakeUserPrompt(),
+            new FakeConnectivityService())
         {
             CustomName = "Netflix",
             CostAmount = 15.99m,
@@ -192,7 +194,8 @@ public class BurnRateBannerTests
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
             messenger,
-            new FakeThemeService())
+            new FakeThemeService(),
+            new FakeConnectivityService())
         {
             PreferredCurrency = "EUR",
         };
@@ -216,7 +219,8 @@ public class BurnRateBannerTests
             new FakeLocalCacheService(),
             new FakeUserPrompt { ConfirmResult = true },
             messenger,
-            new FakeThemeService());
+            new FakeThemeService(),
+            new FakeConnectivityService());
 
         await viewModel.SignOutCommand.ExecuteAsync(null);
 

@@ -1,9 +1,10 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Refit;
 using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Formatting;
 using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
@@ -18,18 +19,63 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IUserPrompt _userPrompt;
     private readonly IMessenger _messenger;
     private readonly IThemeService _themeService;
+    private readonly IConnectivityService _connectivity;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// The stored value and what Save sends. Still the source of truth - the picker below is a way
+    /// of setting it, not a replacement for it.
+    /// </summary>
     [ObservableProperty]
     public partial string PreferredCurrency { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The picker's options. Rebuilt when a profile loads so a code the runtime does not know about
+    /// still appears, rather than the picker silently landing on something else and Save writing
+    /// that instead.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<CurrencyOption> Currencies { get; set; } = SupportedCurrencies.All;
+
+    /// <summary>
+    /// The picker's selection. Kept in step with <see cref="PreferredCurrency"/> in both
+    /// directions: choosing an option writes the code, and loading a profile moves the selection.
+    /// </summary>
+    [ObservableProperty]
+    public partial CurrencyOption? SelectedCurrency { get; set; }
+
+    partial void OnSelectedCurrencyChanged(CurrencyOption? value)
+    {
+        if (value is not null)
+        {
+            PreferredCurrency = value.Code;
+        }
+    }
+
+    partial void OnPreferredCurrencyChanged(string value)
+    {
+        // Guarded, or the two handlers bounce off each other: this assignment re-enters
+        // OnSelectedCurrencyChanged, which assigns PreferredCurrency, which re-enters here.
+        if (string.Equals(SelectedCurrency?.Code, value, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Searched against Currencies rather than the full supported set, because Currencies is
+        // what the picker is bound to and it may carry an extra entry for a code the runtime does
+        // not recognise. Looking in the global list instead left such a profile selecting nothing.
+        SelectedCurrency = Currencies.FirstOrDefault(option =>
+            string.Equals(option.Code, value?.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
 
     [ObservableProperty]
     public partial int? DefaultAlertDaysAdvance { get; set; }
@@ -49,7 +95,7 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised after sign-out completes so the view can navigate back to Login.</summary>
     public event EventHandler? SignedOut;
 
-    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService)
+    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService, IConnectivityService connectivity)
     {
         _usersApi = usersApi;
         _authApi = authApi;
@@ -58,6 +104,9 @@ public partial class SettingsViewModel : ObservableObject
         _userPrompt = userPrompt;
         _messenger = messenger;
         _themeService = themeService;
+        _connectivity = connectivity;
+
+        IsOffline = !connectivity.IsConnected;
 
         // Seeded from what is already applied, so the picker opens showing the truth rather than
         // resetting the user's choice to System the first time they visit Settings. This re-enters
@@ -66,14 +115,36 @@ public partial class SettingsViewModel : ObservableObject
         Theme = _themeService.Current;
     }
 
+    /// <summary>
+    /// Whether the device has no network. Refreshed when the screen loads and after a failed write
+    /// rather than by subscribing to the connectivity event: these view models are transient while
+    /// IConnectivityService is a singleton, so a subscription would outlive the screen.
+    /// <para>
+    /// Only covers "this phone has no network". A reachable phone talking to a server that is down
+    /// still reads as online - that case is caught by the write failing, with a message saying the
+    /// change was not saved.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial bool IsOffline { get; set; }
+
+    /// <summary>Gates the write button, so an edit that cannot possibly succeed is not offered.</summary>
+    public bool CanSubmit => !IsOffline && !IsBusy;
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         IsLoading = true;
         ErrorMessage = null;
+        IsOffline = !_connectivity.IsConnected;
         try
         {
             var profile = await _usersApi.GetMeAsync();
+
+            // Options before the value, so the selection has something to land on. Assigning a
+            // currency the list does not contain leaves SelectedCurrency null and the picker blank.
+            Currencies = SupportedCurrencies.Including(profile.PreferredCurrency);
             PreferredCurrency = profile.PreferredCurrency;
             DefaultAlertDaysAdvance = profile.DefaultAlertDaysAdvance;
         }
@@ -108,7 +179,8 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
         }
         finally
         {
