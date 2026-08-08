@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using System.Net;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Models;
@@ -24,7 +24,8 @@ public class SettingsViewModelTests
             cache ?? new FakeLocalCacheService(),
             userPrompt ?? new FakeUserPrompt(),
             messenger ?? new WeakReferenceMessenger(),
-            themeService ?? new FakeThemeService());
+            themeService ?? new FakeThemeService(),
+            new FakeConnectivityService());
 
     [Fact]
     public async Task LoadAsync_PopulatesPreferredCurrencyAndDefaultAlertDaysAdvance()

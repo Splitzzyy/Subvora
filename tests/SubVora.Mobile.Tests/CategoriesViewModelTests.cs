@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -18,7 +18,7 @@ public class CategoriesViewModelTests
                 new CategoryDto { Id = Guid.NewGuid(), Name = "My Custom Category", IsSystemDefault = false },
             ]),
         };
-        var viewModel = new CategoriesViewModel(api);
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -31,7 +31,7 @@ public class CategoriesViewModelTests
     public async Task AddAsync_WithValidName_CallsCreateAndAppendsToList()
     {
         var api = new FakeCategoriesApi();
-        var viewModel = new CategoriesViewModel(api) { NewCategoryName = "Streaming" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService()) { NewCategoryName = "Streaming" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -48,7 +48,7 @@ public class CategoriesViewModelTests
         {
             CreateHandler = _ => throw TestApiExceptions.Create(HttpStatusCode.Conflict),
         };
-        var viewModel = new CategoriesViewModel(api) { NewCategoryName = "Utilities" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService()) { NewCategoryName = "Utilities" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -65,7 +65,7 @@ public class CategoriesViewModelTests
                 HttpStatusCode.BadRequest,
                 """{"errors":{"Name":["'Name' must not be empty."]}}"""),
         };
-        var viewModel = new CategoriesViewModel(api) { NewCategoryName = "" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService()) { NewCategoryName = "" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 

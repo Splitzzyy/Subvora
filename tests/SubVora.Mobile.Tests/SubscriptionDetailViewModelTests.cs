@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -20,7 +20,8 @@ public class SubscriptionDetailViewModelTests
             paymentSourcesApi ?? new FakePaymentSourcesApi(),
             debouncer ?? new FakeDebouncer(),
             messenger ?? new WeakReferenceMessenger(),
-            userPrompt ?? new FakeUserPrompt());
+            userPrompt ?? new FakeUserPrompt(),
+            new FakeConnectivityService());
 
     [Fact]
     public async Task LoadPickersAsync_PopulatesCategoriesAndPaymentSourcesFromApis()

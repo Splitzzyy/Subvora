@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Services;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -19,7 +19,8 @@ public class ThemeChoiceTests
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
             new WeakReferenceMessenger(),
-            themeService);
+            themeService,
+            new FakeConnectivityService());
 
     [Fact]
     public void ThePickerOpensOnWhateverIsAlreadyApplied()

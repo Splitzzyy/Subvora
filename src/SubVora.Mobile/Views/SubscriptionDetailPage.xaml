@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SubVora.Mobile.Views.SubscriptionDetailPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -147,7 +147,7 @@
 
             <Button Text="{Binding SaveButtonText}"
                     Command="{Binding SaveCommand}"
-                    IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+                    IsEnabled="{Binding CanSubmit}" />
 
             <!-- Edit mode only: there is nothing to delete on a record that has not been created. -->
             <Border Style="{StaticResource Card}"
@@ -156,7 +156,7 @@
                 <Button Style="{StaticResource DangerButton}"
                         Text="Delete subscription"
                         Command="{Binding DeleteCommand}"
-                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}" />
+                        IsEnabled="{Binding CanSubmit}" />
             </Border>
 
         </VerticalStackLayout>

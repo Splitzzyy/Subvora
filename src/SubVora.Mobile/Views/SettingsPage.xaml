@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+﻿<?xml version="1.0" encoding="UTF-8" ?>
 <ContentPage
     x:Class="SubVora.Mobile.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
@@ -46,9 +46,14 @@
                         <Entry Text="{Binding DefaultAlertDaysAdvance}" Keyboard="Numeric" Placeholder="3" />
                     </Border>
 
+                    <Label Style="{StaticResource WarningText}"
+                           Text="You're offline. Changes can't be saved until you reconnect."
+                           FontSize="13"
+                           IsVisible="{Binding IsOffline}" />
+
                     <Button Text="Save"
                             Command="{Binding SaveCommand}"
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                            IsEnabled="{Binding CanSubmit}"
                             Margin="0,8,0,0" />
                 </VerticalStackLayout>
             </Border>

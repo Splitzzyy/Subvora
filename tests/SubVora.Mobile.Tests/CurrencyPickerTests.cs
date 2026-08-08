@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Formatting;
 using SubVora.Mobile.Tests.Fakes;
@@ -20,7 +20,8 @@ public class CurrencyPickerTests
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
             new WeakReferenceMessenger(),
-            new FakeThemeService());
+            new FakeThemeService(),
+            new FakeConnectivityService());
 
     private static FakeUsersApi UsersApiReturning(string preferredCurrency) => new()
     {

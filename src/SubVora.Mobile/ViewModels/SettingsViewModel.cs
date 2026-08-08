@@ -19,11 +19,13 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IUserPrompt _userPrompt;
     private readonly IMessenger _messenger;
     private readonly IThemeService _themeService;
+    private readonly IConnectivityService _connectivity;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
     public partial bool IsBusy { get; set; }
 
     [ObservableProperty]
@@ -93,7 +95,7 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised after sign-out completes so the view can navigate back to Login.</summary>
     public event EventHandler? SignedOut;
 
-    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService)
+    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService, IConnectivityService connectivity)
     {
         _usersApi = usersApi;
         _authApi = authApi;
@@ -102,6 +104,9 @@ public partial class SettingsViewModel : ObservableObject
         _userPrompt = userPrompt;
         _messenger = messenger;
         _themeService = themeService;
+        _connectivity = connectivity;
+
+        IsOffline = !connectivity.IsConnected;
 
         // Seeded from what is already applied, so the picker opens showing the truth rather than
         // resetting the user's choice to System the first time they visit Settings. This re-enters
@@ -110,11 +115,29 @@ public partial class SettingsViewModel : ObservableObject
         Theme = _themeService.Current;
     }
 
+    /// <summary>
+    /// Whether the device has no network. Refreshed when the screen loads and after a failed write
+    /// rather than by subscribing to the connectivity event: these view models are transient while
+    /// IConnectivityService is a singleton, so a subscription would outlive the screen.
+    /// <para>
+    /// Only covers "this phone has no network". A reachable phone talking to a server that is down
+    /// still reads as online - that case is caught by the write failing, with a message saying the
+    /// change was not saved.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial bool IsOffline { get; set; }
+
+    /// <summary>Gates the write button, so an edit that cannot possibly succeed is not offered.</summary>
+    public bool CanSubmit => !IsOffline && !IsBusy;
+
     [RelayCommand]
     private async Task LoadAsync()
     {
         IsLoading = true;
         ErrorMessage = null;
+        IsOffline = !_connectivity.IsConnected;
         try
         {
             var profile = await _usersApi.GetMeAsync();
@@ -156,7 +179,8 @@ public partial class SettingsViewModel : ObservableObject
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
         }
         finally
         {

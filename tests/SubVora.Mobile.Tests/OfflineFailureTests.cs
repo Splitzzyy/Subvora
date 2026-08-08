@@ -1,4 +1,4 @@
-using CommunityToolkit.Mvvm.Messaging;
+﻿using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Services;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -19,6 +19,9 @@ namespace SubVora.Mobile.Tests;
 public class OfflineFailureTests
 {
     private const string OfflineMessage = "You appear to be offline.";
+
+    /// <summary>A failed write says more than a failed read: the change is gone, not merely unshown.</summary>
+    private const string OfflineWriteMessage = "You're offline — this change wasn't saved. Try again once you're connected.";
 
     /// <summary>What HttpClient throws when nothing is listening on the other end.</summary>
     private static HttpRequestException Unreachable() => new("Connection refused");
@@ -78,7 +81,7 @@ public class OfflineFailureTests
     public async Task Categories_WhenApiIsUnreachable_ShowsOfflineMessageInsteadOfCrashing()
     {
         var categoriesApi = new FakeCategoriesApi { GetAllHandler = () => throw Unreachable() };
-        var viewModel = new CategoriesViewModel(categoriesApi);
+        var viewModel = new CategoriesViewModel(categoriesApi, new FakeConnectivityService());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -92,18 +95,19 @@ public class OfflineFailureTests
         // The 409 special-case in this catch block used to read ex.StatusCode directly, which only
         // exists on ApiException - the transport failure has no status at all.
         var categoriesApi = new FakeCategoriesApi { CreateHandler = _ => throw Unreachable() };
-        var viewModel = new CategoriesViewModel(categoriesApi) { NewCategoryName = "Streaming" };
+        var viewModel = new CategoriesViewModel(categoriesApi, new FakeConnectivityService()) { NewCategoryName = "Streaming" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
-        Assert.Equal(OfflineMessage, viewModel.ErrorMessage);
+        // Write wording, not the read wording: nothing was queued, so the category is gone.
+        Assert.Equal(OfflineWriteMessage, viewModel.ErrorMessage);
     }
 
     [Fact]
     public async Task PaymentSources_WhenApiIsUnreachable_ShowsOfflineMessageInsteadOfCrashing()
     {
         var paymentSourcesApi = new FakePaymentSourcesApi { GetAllHandler = () => throw Unreachable() };
-        var viewModel = new PaymentSourcesViewModel(paymentSourcesApi, new FakeUserPrompt());
+        var viewModel = new PaymentSourcesViewModel(paymentSourcesApi, new FakeUserPrompt(), new FakeConnectivityService());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -155,5 +159,6 @@ public class OfflineFailureTests
             new FakeLocalCacheService(),
             new FakeUserPrompt { ConfirmResult = true },
             new WeakReferenceMessenger(),
-            new FakeThemeService());
+            new FakeThemeService(),
+            new FakeConnectivityService());
 }

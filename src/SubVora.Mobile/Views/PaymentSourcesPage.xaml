@@ -39,7 +39,12 @@
                         <Picker ItemsSource="{Binding SourceTypes}" SelectedItem="{Binding NewSourceType}" />
                     </Border>
 
-                    <Button Text="Add" Command="{Binding AddCommand}" />
+                    <Label Style="{StaticResource WarningText}"
+                           Text="You're offline. Changes can't be saved until you reconnect."
+                           FontSize="13"
+                           IsVisible="{Binding IsOffline}" />
+
+                    <Button Text="Add" Command="{Binding AddCommand}" IsEnabled="{Binding CanSubmit}" />
                 </VerticalStackLayout>
             </Border>
 
