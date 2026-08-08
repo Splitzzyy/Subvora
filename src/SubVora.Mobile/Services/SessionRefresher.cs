@@ -64,7 +64,7 @@ public class SessionRefresher
                 return null;
             }
 
-            AuthTokenResponse? refreshed = null;
+            AuthTokenResponse? refreshed;
             try
             {
                 var refreshResponse = await _refreshClient.PostAsJsonAsync(
@@ -72,18 +72,32 @@ public class SessionRefresher
                     new RefreshRequest { RefreshToken = refreshToken },
                     cancellationToken);
 
-                if (refreshResponse.IsSuccessStatusCode)
+                if (!refreshResponse.IsSuccessStatusCode)
                 {
-                    refreshed = await refreshResponse.Content.ReadFromJsonAsync<AuthTokenResponse>(cancellationToken: cancellationToken);
+                    // The server answered and refused. That is a real verdict on the session.
+                    await ExpireSessionAsync();
+                    return null;
                 }
+
+                refreshed = await refreshResponse.Content.ReadFromJsonAsync<AuthTokenResponse>(cancellationToken: cancellationToken);
             }
-            catch (HttpRequestException)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
-                refreshed = null;
+                // Could not reach the server, which is not a verdict on anything. Previously this
+                // fell through to ExpireSessionAsync, so a dropped connection during a refresh
+                // signed the user out and deleted the SQLite mirror - destroying the offline data
+                // precisely when being offline was the problem. The caller's 401 stands for this
+                // request; the tokens and the cache survive to be retried.
+                //
+                // TaskCanceledException as well as HttpRequestException: an unreachable host fails
+                // fast with the latter, but one that swallows the connection - a dead adb tunnel,
+                // a sleeping free-tier instance - fails as a connect timeout instead.
+                return null;
             }
 
             if (refreshed is null)
             {
+                // 2xx with an unreadable body. The server did answer, so treat it as a refusal.
                 await ExpireSessionAsync();
                 return null;
             }

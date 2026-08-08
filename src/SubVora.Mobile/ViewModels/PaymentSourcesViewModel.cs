@@ -49,7 +49,7 @@ public partial class PaymentSourcesViewModel : ObservableObject
                 PaymentSources.Add(paymentSource);
             }
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -70,7 +70,7 @@ public partial class PaymentSourcesViewModel : ObservableObject
             NewLabel = string.Empty;
             NewSourceType = PaymentSourceType.Other;
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -98,7 +98,7 @@ public partial class PaymentSourcesViewModel : ObservableObject
                 PaymentSources.Remove(toRemove);
             }
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }

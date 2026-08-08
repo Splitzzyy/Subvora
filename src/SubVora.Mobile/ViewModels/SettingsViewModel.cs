@@ -77,7 +77,7 @@ public partial class SettingsViewModel : ObservableObject
             PreferredCurrency = profile.PreferredCurrency;
             DefaultAlertDaysAdvance = profile.DefaultAlertDaysAdvance;
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -106,7 +106,7 @@ public partial class SettingsViewModel : ObservableObject
             // moves the headline numbers without a single subscription being touched.
             _messenger.Send(new SubscriptionsChangedMessage());
         }
-        catch (ApiException ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
@@ -132,9 +132,11 @@ public partial class SettingsViewModel : ObservableObject
             {
                 await _authApi.LogoutAsync(new RefreshRequest { RefreshToken = refreshToken });
             }
-            catch (ApiException)
+            catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
             {
                 // Best-effort server-side revoke - the local session is cleared either way below.
+                // Signing out with the API unreachable is the most likely case of all, and must
+                // still end the local session rather than crash.
             }
         }
 
