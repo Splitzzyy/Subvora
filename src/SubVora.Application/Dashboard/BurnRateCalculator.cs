@@ -7,8 +7,13 @@ namespace SubVora.Application.Dashboard;
 /// <summary>
 /// In-memory aggregation over already-fetched subscriptions, converting each one's native-currency
 /// cost to the caller's home currency via <see cref="IFxRateService"/> before summing - reads cached
-/// rates, and never a mutation of the subscription's stored currency/amount. (A pair with no cached
-/// rate is fetched once behind the interface; see IFxRateService.GetRateAsync.)
+/// rates, and never a mutation of the subscription's stored currency/amount.
+/// <para>
+/// Every rate is resolved in one call before the loop starts, rather than per subscription - see
+/// IFxRateService.GetRatesAsync. A pair with no cached rate is still fetched once behind the
+/// interface; a pair that cannot be resolved at all leaves its subscription out of the totals and
+/// named in UnresolvedSubscriptionIds.
+/// </para>
 /// </summary>
 public class BurnRateCalculator : IBurnRateCalculator
 {
@@ -34,13 +39,20 @@ public class BurnRateCalculator : IBurnRateCalculator
         var categoryDailyRates = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
         DateTimeOffset? oldestRateFetchedAt = null;
 
-        foreach (var subscription in subscriptions)
-        {
-            if (!subscription.IsActive)
-            {
-                continue;
-            }
+        // Materialized because the currencies are collected in one pass and the amounts summed in
+        // another, and the caller's sequence is not promised to survive being enumerated twice.
+        var activeSubscriptions = subscriptions.Where(subscription => subscription.IsActive).ToList();
 
+        // Every rate this calculation needs, in one round trip. Asking per subscription meant a
+        // user with twenty USD subscriptions issued the same query twenty times, on the screen the
+        // app opens to.
+        var rates = await _fxRateService.GetRatesAsync(
+            activeSubscriptions.Select(subscription => subscription.Currency).ToList(),
+            homeCurrency,
+            cancellationToken);
+
+        foreach (var subscription in activeSubscriptions)
+        {
             decimal rate;
             if (string.Equals(subscription.Currency, homeCurrency, StringComparison.OrdinalIgnoreCase))
             {
@@ -49,8 +61,7 @@ public class BurnRateCalculator : IBurnRateCalculator
             }
             else
             {
-                var cachedRate = await _fxRateService.GetRateAsync(subscription.Currency, homeCurrency, cancellationToken);
-                if (cachedRate is null)
+                if (!rates.TryGetValue(subscription.Currency, out var cachedRate))
                 {
                     unresolvedSubscriptionIds.Add(subscription.Id);
                     continue;

@@ -60,6 +60,20 @@ public class UserSubscriptionConfiguration : IEntityTypeConfiguration<UserSubscr
             .HasForeignKey(s => s.PaymentSourceId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // Postgres' own per-row version, mapped as a shadow concurrency token. No column is added -
+        // xmin is a system column every table already has - so the migration this produces is empty
+        // and existing rows need no backfill.
+        //
+        // Guards the update path only, and only when the caller sends back the version it read.
+        // Loading a row and saving it in the same call could never conflict with itself; the check
+        // is worth something precisely because the value makes a round trip through the client.
+        //
+        // Caveat: an anti-wraparound freeze can rewrite xmin on very old rows, which would show up
+        // as a spurious conflict. The cost of that is one "this changed elsewhere, please re-apply"
+        // on a subscription nobody has touched in months - acceptable against silently losing a
+        // write.
+        builder.Property<uint>("xmin").IsRowVersion().HasColumnName("xmin");
+
         builder.HasIndex(s => s.UserId).HasDatabaseName("idx_subs_user_id");
 
         builder.HasIndex(s => s.NextBillingDate)

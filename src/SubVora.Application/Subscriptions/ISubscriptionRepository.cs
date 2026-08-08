@@ -1,4 +1,4 @@
-using SubVora.Domain.Entities;
+﻿using SubVora.Domain.Entities;
 
 namespace SubVora.Application.Subscriptions;
 
@@ -10,7 +10,7 @@ public interface ISubscriptionRepository
 
     Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
-    Task<SubscriptionDto?> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default);
+    Task<SubscriptionUpdateResult> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 

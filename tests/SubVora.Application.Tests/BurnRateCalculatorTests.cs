@@ -253,6 +253,94 @@ public class BurnRateCalculatorTests
         Assert.Equal(60m, uncategorized.MonthlyAmount);
     }
 
+    [Fact]
+    public async Task CalculateAsync_ResolvesEveryRateInOneCall_WhateverTheSubscriptionCount()
+    {
+        // The N+1 this replaced: twenty USD subscriptions used to issue the same query twenty
+        // times, on the screen the app opens to.
+        _fxRateService.SetRate("USD", "INR", 83m);
+        var subscriptions = Enumerable.Range(0, 20)
+            .Select(_ => RecurringSubscription(10m, BillingCycleType.Monthly, currency: "USD"))
+            .ToList();
+
+        await _calculator.CalculateAsync(subscriptions, "INR");
+
+        Assert.Equal(1, _fxRateService.BatchCalls);
+        Assert.Equal(0, _fxRateService.SinglePairCalls);
+    }
+
+    [Fact]
+    public async Task CalculateAsync_AsksForEachCurrencyOnce_AndNotForTheHomeCurrency()
+    {
+        _fxRateService.SetRate("USD", "INR", 83m);
+        _fxRateService.SetRate("EUR", "INR", 90m);
+
+        var subscriptions = new[]
+        {
+            RecurringSubscription(10m, BillingCycleType.Monthly, currency: "USD"),
+            RecurringSubscription(10m, BillingCycleType.Monthly, currency: "USD"),
+            RecurringSubscription(10m, BillingCycleType.Monthly, currency: "EUR"),
+            // Home currency: converts at 1 and must never be looked up, since no identity row exists.
+            RecurringSubscription(10m, BillingCycleType.Monthly, currency: "INR"),
+        };
+
+        await _calculator.CalculateAsync(subscriptions, "INR");
+
+        Assert.Equal(["USD", "EUR"], _fxRateService.LastRequestedBaseCurrencies.Order().Reverse());
+        Assert.DoesNotContain("INR", _fxRateService.LastRequestedBaseCurrencies);
+    }
+
+    [Fact]
+    public async Task CalculateAsync_DoesNotAskForInactiveSubscriptionsCurrencies()
+    {
+        // Inactive rows are skipped for the totals, so fetching their rates would be work done to
+        // be thrown away - and could trigger a live provider call for a currency nobody uses.
+        _fxRateService.SetRate("USD", "INR", 83m);
+
+        var subscriptions = new[]
+        {
+            RecurringSubscription(10m, BillingCycleType.Monthly, currency: "USD"),
+            RecurringSubscription(10m, BillingCycleType.Monthly, isActive: false, currency: "JPY"),
+        };
+
+        await _calculator.CalculateAsync(subscriptions, "INR");
+
+        Assert.DoesNotContain("JPY", _fxRateService.LastRequestedBaseCurrencies);
+    }
+
+    [Fact]
+    public async Task CalculateAsync_WithASequenceThatCanOnlyBeEnumeratedOnce_StillWorks()
+    {
+        // The calculator now walks the collection twice - once for currencies, once for amounts -
+        // so it must materialize rather than trusting the caller's IEnumerable.
+        _fxRateService.SetRate("USD", "INR", 83m);
+        var subscriptions = SingleUseSequence(RecurringSubscription(10m, BillingCycleType.Monthly, currency: "USD"));
+
+        var result = await _calculator.CalculateAsync(subscriptions, "INR");
+
+        Assert.Equal(830m, result.Monthly);
+
+        static IEnumerable<SubscriptionDto> SingleUseSequence(params SubscriptionDto[] items)
+        {
+            var consumed = false;
+            return Inner();
+
+            IEnumerable<SubscriptionDto> Inner()
+            {
+                if (consumed)
+                {
+                    throw new InvalidOperationException("This sequence has already been enumerated.");
+                }
+
+                consumed = true;
+                foreach (var item in items)
+                {
+                    yield return item;
+                }
+            }
+        }
+    }
+
     private sealed class FakeFxRateService : IFxRateService
     {
         private readonly Dictionary<(string BaseCurrency, string TargetCurrency), CachedFxRate> _rates = new();
@@ -263,7 +351,45 @@ public class BurnRateCalculatorTests
         public Task UpsertRatesAsync(IReadOnlyCollection<ExchangeRate> rates, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default) =>
-            Task.FromResult(_rates.GetValueOrDefault((baseCurrency, targetCurrency)));
+        public Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default)
+        {
+            SinglePairCalls++;
+            return Task.FromResult(_rates.GetValueOrDefault((baseCurrency, targetCurrency)));
+        }
+
+        /// <summary>How many times the batch was asked. The calculator should need exactly one call, whatever the subscription count.</summary>
+        public int BatchCalls { get; private set; }
+
+        /// <summary>Should stay zero: the per-subscription path is what this change removed.</summary>
+        public int SinglePairCalls { get; private set; }
+
+        /// <summary>The base currencies of the most recent batch, so a test can assert duplicates were collapsed.</summary>
+        public IReadOnlyCollection<string> LastRequestedBaseCurrencies { get; private set; } = [];
+
+        public Task<IReadOnlyDictionary<string, CachedFxRate>> GetRatesAsync(
+            IReadOnlyCollection<string> baseCurrencies,
+            string targetCurrency,
+            CancellationToken cancellationToken = default)
+        {
+            BatchCalls++;
+
+            // Mirrors the real implementation: identity pairs are dropped, the rest deduplicated.
+            var wanted = baseCurrencies
+                .Where(currency => !string.Equals(currency, targetCurrency, StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            LastRequestedBaseCurrencies = wanted;
+
+            var resolved = new Dictionary<string, CachedFxRate>(StringComparer.OrdinalIgnoreCase);
+            foreach (var currency in wanted)
+            {
+                if (_rates.TryGetValue((currency, targetCurrency), out var rate))
+                {
+                    resolved[currency] = rate;
+                }
+            }
+
+            return Task.FromResult<IReadOnlyDictionary<string, CachedFxRate>>(resolved);
+        }
     }
 }

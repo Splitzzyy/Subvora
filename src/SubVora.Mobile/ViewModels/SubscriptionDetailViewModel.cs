@@ -29,6 +29,11 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     // the UI binds to it.
     private Guid? _appliedCatalogId;
 
+    // The version of the record this edit started from, sent back on save so the server can tell
+    // that the subscription has not moved on since. Null in add mode, where there is nothing to
+    // conflict with.
+    private uint? _loadedVersion;
+
     [ObservableProperty]
     public partial string CustomName { get; set; } = string.Empty;
 
@@ -293,6 +298,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             // Last, because the CustomName assignment above clears it: saving an untouched edit
             // must not silently strip the record's existing catalog link.
             _appliedCatalogId = subscription.CatalogId;
+            _loadedVersion = subscription.Version;
         }
         catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
@@ -324,6 +330,19 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             // Only after the write succeeded - a failed save must not move the headline figure.
             _messenger.Send(new SubscriptionsChangedMessage());
             SaveSucceeded?.Invoke(this, EventArgs.Empty);
+        }
+        catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            // The record moved on since this screen loaded it - most likely the charge was marked
+            // paid on another device, which is exactly the case that used to be silently reversed
+            // here. Reload so the form shows the current truth and carries a fresh version, then
+            // say so: the edit is not applied, and re-applying it is the user's call, not ours.
+            await LoadSubscriptionAsync();
+
+            // ??= rather than =: SaveAsync cleared this on entry and LoadSubscriptionAsync only
+            // writes to it on failure, so a non-null value here means the reload itself failed.
+            // Claiming "we've reloaded it" in that case would be a lie on top of an error.
+            ErrorMessage ??= "This subscription changed somewhere else. We've reloaded it - please check the values and save again.";
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
@@ -388,6 +407,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
 
     private CreateSubscriptionRequest BuildRequest() => new()
     {
+        Version = _loadedVersion,
         CustomName = CustomName,
         CostAmount = CostAmount,
         Currency = Currency,

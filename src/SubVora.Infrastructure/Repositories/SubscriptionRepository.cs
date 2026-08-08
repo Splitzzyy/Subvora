@@ -29,13 +29,21 @@ public class SubscriptionRepository : ISubscriptionRepository
     public async Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
         await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken);
 
-    public async Task<SubscriptionDto?> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default)
+    public async Task<SubscriptionUpdateResult> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default)
     {
         var subscription = await _dbContext.UserSubscriptions
             .SingleOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
         if (subscription is null)
         {
-            return null;
+            return SubscriptionUpdateResult.NotFound;
+        }
+
+        // The version the client read, not the one just loaded. Comparing against the freshly read
+        // value would compare the row with itself and never conflict; substituting the client's
+        // makes the UPDATE's WHERE clause assert that nothing has changed since they saw it.
+        if (request.Version is uint clientVersion)
+        {
+            _dbContext.Entry(subscription).Property("xmin").OriginalValue = clientVersion;
         }
 
         subscription.CustomName = request.CustomName;
@@ -62,9 +70,21 @@ public class SubscriptionRepository : ISubscriptionRepository
         subscription.CatalogId = request.CatalogId;
         subscription.IsFreeTrial = request.IsFreeTrial;
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Zero rows matched, so the row moved on between the client reading it and saving.
+            // Detached because this context still holds the doomed entity, and anything reusing the
+            // scope afterwards would otherwise re-attempt the same failed write.
+            _dbContext.Entry(subscription).State = EntityState.Detached;
+            return SubscriptionUpdateResult.VersionConflict;
+        }
 
-        return await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken);
+        return SubscriptionUpdateResult.Success(
+            await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken));
     }
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
@@ -145,5 +165,7 @@ public class SubscriptionRepository : ISubscriptionRepository
             IsFreeTrial = s.IsFreeTrial,
             IsActive = s.IsActive,
             CreatedAt = s.CreatedAt,
+            // Shadow property, so it has to be read through EF.Property rather than off the entity.
+            Version = EF.Property<uint>(s, "xmin"),
         };
 }
