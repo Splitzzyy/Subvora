@@ -1,5 +1,6 @@
 ﻿using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -193,8 +194,10 @@ builder.Services.AddOpenApi(options =>
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
+// Tagged "db" so the liveness endpoint below can exclude it. Everything registered here is a
+// dependency check; liveness deliberately has none.
 builder.Services.AddHealthChecks()
-    .AddNpgSql(sp => sp.GetRequiredService<IConfiguration>().GetRequiredConnectionString("Default"));
+    .AddNpgSql(sp => sp.GetRequiredService<IConfiguration>().GetRequiredConnectionString("Default"), tags: ["db"]);
 
 var app = builder.Build();
 
@@ -259,6 +262,25 @@ app.UseSerilogRequestLogging(options =>
 
 app.UseExceptionHandler();
 
+// Liveness: is this process up and serving? No dependency checks at all, which is what makes it
+// safe for a platform to poll continuously. Render's healthCheckPath points here.
+//
+// This split exists because the database probe is expensive in a way that is easy to miss. Neon's
+// free tier bills compute and scales to zero when idle, so an endpoint that opens a connection,
+// polled by the platform every few seconds forever, holds that compute awake around the clock -
+// exactly what DEPLOYMENT.md's keep-warm section routes the cron ping away from, and it was
+// happening anyway via healthCheckPath.
+//
+// It is also the right semantics regardless of host: a failing health check restarts the instance,
+// and a database blip should not restart an app that is running perfectly well.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+
+// Readiness: can this instance actually serve requests - database included? For deploy
+// verification and manual checks, not for continuous polling.
+app.MapHealthChecks("/health/ready");
+
+// Kept as-is, and identical to /health/ready. Anything already pointing here - the curl line in
+// DEPLOYMENT.md, a bookmark, an uptime monitor someone set up - keeps working unchanged.
 app.MapHealthChecks("/health");
 
 // No HTTPS endpoint is configured inside the container (see Dockerfile / ASPNETCORE_HTTP_PORTS) -

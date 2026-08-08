@@ -56,6 +56,26 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
         });
     }
 
+    /// <summary>
+    /// The same app pointed at a database that is not there, so a test can tell a check that
+    /// probes Postgres apart from one that does not. Port 1 is reserved and nothing listens on it,
+    /// so the connection is refused rather than hanging.
+    /// </summary>
+    public WebApplicationFactory<Program> WithUnreachableDatabase() =>
+        WithWebHostBuilder(builder =>
+        {
+            // Production, because Program.cs migrates on startup under Development/Docker and would
+            // fail to boot at all against a database that is not there - which is the very state
+            // this factory exists to create.
+            builder.UseEnvironment("Production");
+            builder.ConfigureAppConfiguration((_, config) =>
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ConnectionStrings:Default"] =
+                        "Host=127.0.0.1;Port=1;Database=nope;Username=nope;Password=nope;Timeout=1;Command Timeout=1",  // pragma: allowlist secret
+                }));
+        });
+
     public async Task InitializeAsync()
     {
         await _container.StartAsync();

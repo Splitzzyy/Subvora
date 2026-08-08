@@ -86,10 +86,14 @@ Nothing to write — `.github/workflows/db-migrate.yml` already exists and needs
 - [ ] These three, substituting your URL:
 
 ```
-curl -i https://subvora-api.onrender.com/health     # expect 200, body "Healthy"
-curl -i http://subvora-api.onrender.com/health      # expect 307 to https, exactly one hop
-curl -i https://subvora-api.onrender.com/swagger    # expect 404 - dev surface must not be public
+curl -i https://subvora-api.onrender.com/health       # expect 200, body "Healthy" - includes the DB probe
+curl -i https://subvora-api.onrender.com/health/live  # expect 200 - no DB, what Render polls
+curl -i http://subvora-api.onrender.com/health        # expect 307 to https, exactly one hop
+curl -i https://subvora-api.onrender.com/swagger      # expect 404 - dev surface must not be public
 ```
+
+If `/health/live` returns 200 but `/health` does not, the app is running and the database is not
+reachable — check the connection string before anything else.
 
 - [ ] Register a user and log in via `/api/v1/auth/register` and `/api/v1/auth/login`
 - [ ] Add a subscription, then GET `/api/v1/dashboard/burn-rate` — a populated category breakdown is
@@ -106,7 +110,8 @@ change; redeploy from latest `main`.
 
 Not `/health`. That endpoint probes Postgres, so pinging it every five minutes keeps Neon's compute
 awake around the clock and eats the free compute-hour allowance. The root path 404s, which still
-counts as traffic to Render.
+counts as traffic to Render. (`/health/live` would also be safe — it does not touch the database —
+but the root path is one less thing to get wrong.)
 
 A free Render service sleeps after 15 minutes idle and takes 40–60s to wake, which reads as a broken
 app. At 5-minute pings it never sleeps, using ~730 of the 750 free instance-hours a month — enough

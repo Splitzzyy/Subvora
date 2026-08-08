@@ -120,9 +120,19 @@ Add a cron-job.org job that GETs `https://subvora-api.onrender.com/` every 5 min
 services sleep after 15 minutes of no inbound traffic, and waking a .NET container takes ~40–60s —
 long enough that the app looks broken.
 
-Ping the **root path**, which 404s, not `/health`. The health check includes an Npgsql probe, so
-pinging it every five minutes would hold Neon's compute awake around the clock and burn the free
-compute-hour allowance. A 404 still counts as inbound traffic for Render's purposes.
+Ping the **root path**, which 404s, not `/health`. That endpoint probes Postgres, so pinging it
+every five minutes would hold Neon's compute awake around the clock and burn the free compute-hour
+allowance. A 404 still counts as inbound traffic for Render's purposes.
+
+The same reasoning is why `render.yaml` sets `healthCheckPath: /health/live` rather than `/health`.
+Render polls that path continuously for the life of the service — far more often than this cron job
+— so pointing it at the database-probing endpoint defeated the care taken here. There are three:
+
+| Path | Probes the database | Use |
+|---|---|---|
+| `/health/live` | no | Render's health check; anything polling on a schedule |
+| `/health/ready` | yes | deploy verification, manual checks |
+| `/health` | yes | unchanged alias for `/health/ready`, kept so existing checks keep working |
 
 At a 5-minute interval the service never sleeps, consuming ~730 of the 750 free instance-hours per
 month. That budget covers exactly one always-on service.
