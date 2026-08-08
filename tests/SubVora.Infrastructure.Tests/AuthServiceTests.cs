@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
@@ -24,7 +25,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     {
         _dbContext = new AppDbContext(AppDbContextOptionsFactory.Build(_fixture.ConnectionString));
         await _dbContext.Database.MigrateAsync();
-        _authService = new AuthService(_dbContext, _passwordHasher, new StubJwtTokenService(), _emailSender);
+        _authService = new AuthService(_dbContext, _passwordHasher, new StubJwtTokenService(), _emailSender, NullLogger<AuthService>.Instance);
     }
 
     public Task DisposeAsync() => _dbContext.DisposeAsync().AsTask();

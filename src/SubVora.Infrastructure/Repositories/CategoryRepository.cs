@@ -28,4 +28,9 @@ public class CategoryRepository : ICategoryRepository
         await _dbContext.SaveChangesAsync(cancellationToken);
         return new CategoryDto { Id = category.Id, Name = category.Name, IsSystemDefault = false };
     }
+
+    // Same predicate as GetForUserAsync - what a user may reference is exactly what a user may see.
+    public Task<bool> IsAccessibleToUserAsync(Guid categoryId, Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.Categories.AsNoTracking()
+            .AnyAsync(c => c.Id == categoryId && (c.UserId == null || c.UserId == userId), cancellationToken);
 }

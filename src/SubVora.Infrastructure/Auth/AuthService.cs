@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
@@ -26,13 +27,20 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IEmailSender _emailSender;
+    private readonly ILogger<AuthService> _logger;
 
-    public AuthService(AppDbContext dbContext, IPasswordHasher passwordHasher, IJwtTokenService jwtTokenService, IEmailSender emailSender)
+    public AuthService(
+        AppDbContext dbContext,
+        IPasswordHasher passwordHasher,
+        IJwtTokenService jwtTokenService,
+        IEmailSender emailSender,
+        ILogger<AuthService> logger)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _emailSender = emailSender;
+        _logger = logger;
     }
 
     public async Task RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
@@ -163,6 +171,14 @@ public class AuthService : IAuthService
             // previous read-then-write let *both* callers mint a pair and raised no signal at all.
             // Closing the remainder needs a per-user "sessions valid from" watermark checked at
             // token validation, which is a schema change and deliberately not done here.
+            //
+            // Logged because this is the one branch in the service that means "a credential may
+            // have been stolen", and it silently signs the user out of every device. Without a line
+            // here the support question - why was I logged out everywhere? - has no answer.
+            _logger.LogWarning(
+                "Refresh token reuse detected for user {UserId}; revoking all active refresh tokens.",
+                existingToken.UserId);
+
             await RevokeAllActiveTokensForUserAsync(existingToken.UserId, cancellationToken);
             return RefreshResult.Failed();
         }

@@ -96,6 +96,9 @@ builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 // Adds any provider in subscription-catalog.json that the database does not have yet.
 builder.Services.AddHostedService<SubscriptionCatalogSyncService>();
 
+// Nothing else deletes from refresh_tokens or password_reset_codes; both otherwise grow forever.
+builder.Services.AddHostedService<ExpiredCredentialCleanupBackgroundService>();
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer();
 
@@ -130,6 +133,17 @@ builder.Services.AddRateLimiter(options =>
     options.OnRejected = (context, _) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+
+        // Otherwise a limiter doing its job is indistinguishable from an endpoint nobody calls -
+        // there is no other record that a request was turned away. No partition key here: for the
+        // "auth" policy that is the caller's IP, and the request log already carries it.
+        context.HttpContext.RequestServices
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("SubVora.RateLimiting")
+            .LogWarning("Rate limit rejected {Method} {Path}.",
+                context.HttpContext.Request.Method,
+                context.HttpContext.Request.Path);
+
         return ValueTask.CompletedTask;
     };
 
@@ -222,6 +236,25 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
     KnownIPNetworks = { },
     KnownProxies = { },
+});
+
+// One summary line per request - method, path, status, elapsed ms. Without it the request path is
+// silent: the Microsoft.AspNetCore override above is at Warning, so a 200, a 401, a 404 and a 429
+// all produced no output at all, leaving no record of who called what. Sits after
+// UseForwardedHeaders so the client address it enriches with is the real one, and before
+// UseExceptionHandler so a request that ends in a 500 still gets its line.
+app.UseSerilogRequestLogging(options =>
+{
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        // User id only. Email addresses, tokens and reset codes must not reach the log sink, and
+        // the id is enough to follow one account's activity across requests.
+        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId is not null)
+        {
+            diagnosticContext.Set("UserId", userId);
+        }
+    };
 });
 
 app.UseExceptionHandler();
