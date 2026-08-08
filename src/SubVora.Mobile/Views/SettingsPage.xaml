@@ -28,8 +28,14 @@
                     </HorizontalStackLayout>
 
                     <Label Style="{StaticResource FieldLabel}" Text="Home currency" />
+                    <!-- Picker, not a three-letter Entry: typing a code means knowing it, and a typo
+                         only surfaced as a validation error after Save. ItemDisplayBinding shows the
+                         symbol, code and name together while the bound selection keeps the code. -->
                     <Border Style="{StaticResource FieldBorder}">
-                        <Entry Text="{Binding PreferredCurrency}" Placeholder="INR" MaxLength="3" />
+                        <Picker ItemsSource="{Binding Currencies}"
+                                SelectedItem="{Binding SelectedCurrency}"
+                                ItemDisplayBinding="{Binding Display}"
+                                Title="Select a currency" />
                     </Border>
                     <Label Style="{StaticResource Caption}"
                            Text="Everything on the dashboard is converted into this currency. Your subscriptions keep the currency they are billed in."

@@ -1,9 +1,10 @@
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Refit;
 using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Formatting;
 using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
@@ -28,8 +29,51 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// The stored value and what Save sends. Still the source of truth - the picker below is a way
+    /// of setting it, not a replacement for it.
+    /// </summary>
     [ObservableProperty]
     public partial string PreferredCurrency { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The picker's options. Rebuilt when a profile loads so a code the runtime does not know about
+    /// still appears, rather than the picker silently landing on something else and Save writing
+    /// that instead.
+    /// </summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<CurrencyOption> Currencies { get; set; } = SupportedCurrencies.All;
+
+    /// <summary>
+    /// The picker's selection. Kept in step with <see cref="PreferredCurrency"/> in both
+    /// directions: choosing an option writes the code, and loading a profile moves the selection.
+    /// </summary>
+    [ObservableProperty]
+    public partial CurrencyOption? SelectedCurrency { get; set; }
+
+    partial void OnSelectedCurrencyChanged(CurrencyOption? value)
+    {
+        if (value is not null)
+        {
+            PreferredCurrency = value.Code;
+        }
+    }
+
+    partial void OnPreferredCurrencyChanged(string value)
+    {
+        // Guarded, or the two handlers bounce off each other: this assignment re-enters
+        // OnSelectedCurrencyChanged, which assigns PreferredCurrency, which re-enters here.
+        if (string.Equals(SelectedCurrency?.Code, value, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        // Searched against Currencies rather than the full supported set, because Currencies is
+        // what the picker is bound to and it may carry an extra entry for a code the runtime does
+        // not recognise. Looking in the global list instead left such a profile selecting nothing.
+        SelectedCurrency = Currencies.FirstOrDefault(option =>
+            string.Equals(option.Code, value?.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
 
     [ObservableProperty]
     public partial int? DefaultAlertDaysAdvance { get; set; }
@@ -74,6 +118,10 @@ public partial class SettingsViewModel : ObservableObject
         try
         {
             var profile = await _usersApi.GetMeAsync();
+
+            // Options before the value, so the selection has something to land on. Assigning a
+            // currency the list does not contain leaves SelectedCurrency null and the picker blank.
+            Currencies = SupportedCurrencies.Including(profile.PreferredCurrency);
             PreferredCurrency = profile.PreferredCurrency;
             DefaultAlertDaysAdvance = profile.DefaultAlertDaysAdvance;
         }
