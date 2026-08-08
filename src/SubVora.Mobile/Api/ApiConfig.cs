@@ -11,6 +11,27 @@ public static class ApiConfig
     /// </summary>
     public static string BaseAddress { get; } = Normalize(ReadBuildTimeAddress());
 
+    /// <summary>
+    /// How long a request waits before giving up. HttpClient's default is 100 seconds, which is
+    /// what the app used to use everywhere: an unreachable host that refuses a connection fails
+    /// instantly, but one that simply swallows it - a dead adb tunnel, a sleeping free-tier
+    /// instance - left the user watching a spinner for over a minute and a half before the offline
+    /// message appeared. Most people force-quit long before that.
+    /// <para>
+    /// 30s because waking a sleeping Render container takes 40-60s only on a genuine cold start,
+    /// and a request that slow is better retried by the user than waited on. Once it fires,
+    /// ApiErrorMapper already maps the TaskCanceledException to "You appear to be offline."
+    /// </para>
+    /// </summary>
+    public static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Shorter than <see cref="RequestTimeout"/> on purpose: a refresh happens inside another
+    /// request's 401 retry, so its wait is added on top of the original request's. Sharing the
+    /// full timeout would let one user-visible action stall for both.
+    /// </summary>
+    public static readonly TimeSpan RefreshTimeout = TimeSpan.FromSeconds(15);
+
     private static string ReadBuildTimeAddress() =>
         typeof(ApiConfig).Assembly
             .GetCustomAttributes<AssemblyMetadataAttribute>()

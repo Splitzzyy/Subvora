@@ -11,7 +11,13 @@ services:
     dockerfilePath: ./src/SubVora.Api/Dockerfile
     dockerContext: .
 
-    healthCheckPath: /health
+    # Liveness only - deliberately not /health, which probes Postgres. Render polls this path
+    # continuously for the life of the service, and Neon's free tier bills compute and scales to
+    # zero when idle, so a database-touching check here holds that compute awake around the clock
+    # (the same reasoning DEPLOYMENT.md gives for pointing the keep-warm ping at / instead).
+    # It is also the right semantics: a failed check restarts the instance, and a database blip
+    # should not restart a healthy app. /health and /health/ready still include the probe.
+    healthCheckPath: /health/live
 
     # Deploys are triggered by .github/workflows/db-migrate.yml, after that workflow has applied
     # migrations - not by the push itself. With autoDeploy on, a push carrying a migration shipped

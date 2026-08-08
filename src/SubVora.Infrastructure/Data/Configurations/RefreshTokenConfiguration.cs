@@ -25,5 +25,15 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
             .IsRequired();
 
         builder.HasIndex(r => r.UserId).HasDatabaseName("idx_refresh_tokens_user_id");
+
+        // The column every refresh and logout looks a token up by, and until now the one column on
+        // the hottest query with no index at all - refresh tokens rotate on every use, so an active
+        // client ran a sequential scan of this table roughly every 15 minutes.
+        //
+        // Unique rather than a plain index: the value is a SHA-256 of 32 cryptographically random
+        // bytes, so uniqueness is the invariant AuthService already relies on - SingleOrDefaultAsync
+        // throws rather than picking one if two rows ever match. This makes the database enforce
+        // what the code assumes.
+        builder.HasIndex(r => r.TokenHash).IsUnique().HasDatabaseName("ux_refresh_tokens_token_hash");
     }
 }
