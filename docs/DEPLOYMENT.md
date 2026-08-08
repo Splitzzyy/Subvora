@@ -67,11 +67,18 @@ called `production`, then run the **Database Migration (Production)** workflow
 (`.github/workflows/db-migrate.yml`) from the Actions tab. It builds a self-contained EF migration
 bundle and applies it.
 
-Do this *first*. In the `Production` environment the API does not migrate on startup — that is
-deliberate, and migrations stay an explicit deploy step. `SubscriptionCatalogSyncService` runs at
-boot regardless, and against an unmigrated database it logs the failure and swallows it, with no
-retry until the next restart. The visible symptom is an empty provider catalog and no brand
-matching, which is confusing to diagnose after the fact.
+Do this *first*, by hand, for the **first** deploy only — there is no previous release to sequence
+against yet. From then on the same workflow runs automatically on every push to `main`; see
+[Per-release](#per-release) below.
+
+In the `Production` environment the API does not migrate on startup — that is deliberate, and
+migrations stay an explicit deploy step. Two reasons worth keeping: it keeps DDL rights out of the
+credential the API itself runs with, and it keeps a slow migration from colliding with Render's
+health-check timeout mid-DDL, which would leave a partially applied schema.
+
+`SubscriptionCatalogSyncService` runs at boot regardless, and against an unmigrated database it
+logs the failure and swallows it, with no retry until the next restart. The visible symptom is an
+empty provider catalog and no brand matching, which is confusing to diagnose after the fact.
 
 ### 3. Set up email
 
@@ -95,8 +102,13 @@ prompt for the five values marked `sync: false`:
 | `Smtp__Password` | Brevo SMTP key |
 | `Smtp__FromAddress` | the verified sender address |
 
-The first build is a cold Docker build and takes roughly ten minutes. Subsequent pushes to `main`
-auto-deploy.
+The first build is a cold Docker build and takes roughly ten minutes.
+
+`render.yaml` sets `autoDeploy: false`, so Render will *not* redeploy on push by itself — the
+migration workflow triggers it instead, after the schema is in place. Create a **Deploy Hook** for
+the service (Render dashboard → the service → Settings → Deploy Hook), and add the URL as a secret
+named `RENDER_DEPLOY_HOOK_URL` in the `production` GitHub environment. The URL embeds its own key,
+which is why it is a secret rather than a plain setting.
 
 If you deploy somewhere other than Render, the service name in `render.yaml` and the Release
 `ApiBaseAddress` in `SubVora.Mobile.csproj` both have to change — and the second one means cutting a
@@ -135,6 +147,32 @@ Then add four repo secrets:
 | `ANDROID_KEYSTORE_PASSWORD` | store password from `keytool` |
 | `ANDROID_KEY_ALIAS` | `subvora` |
 | `ANDROID_KEY_PASSWORD` | key password from `keytool` |
+
+## Per-release
+
+Pushing to `main` is the whole API release process. `.github/workflows/db-migrate.yml` runs on the
+push, applies any pending migrations, and only then calls Render's deploy hook.
+
+The ordering is the point. A migration that fails takes the workflow down with it, the hook never
+fires, and the previous release carries on against the schema it was built for — the cost of a bad
+migration is a red check mark rather than an outage. Nothing deploys ahead of its schema, and there
+is no step anyone has to remember.
+
+Two things this does *not* protect against:
+
+- **Code and schema still land seconds apart.** A migration that breaks the *currently running*
+  release — dropping or renaming a column it still reads — causes errors in that window. Use
+  expand-contract: add the new column, ship code that writes both, drop the old one a release
+  later.
+- **Nothing rolls the schema back.** Reverting a bad deploy reverts the code; the migration stays
+  applied. That is usually what you want, and it is another reason expand-contract matters.
+
+`MigrationDriftTests` fails CI if an entity configuration changed without a migration to match, so
+the pending-migration set is always what the model actually needs.
+
+To re-run a migration without a code change — or for the first deploy, before there is a release to
+sequence against — run the workflow by hand from the Actions tab. `workflow_dispatch` skips the
+deploy-hook step.
 
 ## Distribution
 

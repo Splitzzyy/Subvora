@@ -13,6 +13,13 @@ services:
 
     healthCheckPath: /health
 
+    # Deploys are triggered by .github/workflows/db-migrate.yml, after that workflow has applied
+    # migrations - not by the push itself. With autoDeploy on, a push carrying a migration shipped
+    # the code first and changed the schema only if someone remembered to run the workflow by hand.
+    # Now a failed migration simply never fires the deploy hook, and the previous release keeps
+    # serving on the schema it was built for.
+    autoDeploy: false
+
     envVars:
       # Not "Docker": that environment name makes Program.cs migrate on boot and publish Swagger.
       - key: ASPNETCORE_ENVIRONMENT
