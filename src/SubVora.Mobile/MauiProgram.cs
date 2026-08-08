@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Maui;
 using CommunityToolkit.Mvvm.Messaging;
@@ -60,7 +60,11 @@ public static class MauiProgram
 
 		// Plain HttpClient with no AuthDelegatingHandler attached, used only to call the
 		// refresh endpoint so a 401 during refresh can never recurse back into the handler.
-		builder.Services.AddHttpClient("AuthRefresh", client => client.BaseAddress = new Uri(ApiConfig.BaseAddress));
+		builder.Services.AddHttpClient("AuthRefresh", client =>
+		{
+			client.BaseAddress = new Uri(ApiConfig.BaseAddress);
+			client.Timeout = ApiConfig.RefreshTimeout;
+		});
 
 		// Singleton: one refresh lock and one SessionExpired event for the whole app.
 		builder.Services.AddSingleton(sp => new SessionRefresher(
@@ -77,26 +81,26 @@ public static class MauiProgram
 		// IAuthApi must not chain AuthDelegatingHandler - login/register/refresh calls
 		// themselves would otherwise loop back through the 401-refresh logic.
 		builder.Services.AddRefitClient<IAuthApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress));
+			.ConfigureHttpClient(ConfigureApiClient);
 
 		builder.Services.AddRefitClient<IUsersApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
+			.ConfigureHttpClient(ConfigureApiClient)
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddRefitClient<ISubscriptionsApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
+			.ConfigureHttpClient(ConfigureApiClient)
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddRefitClient<ICategoriesApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
+			.ConfigureHttpClient(ConfigureApiClient)
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddRefitClient<IPaymentSourcesApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
+			.ConfigureHttpClient(ConfigureApiClient)
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddRefitClient<IDashboardApi>(refitSettings)
-			.ConfigureHttpClient(client => client.BaseAddress = new Uri(ApiConfig.BaseAddress))
+			.ConfigureHttpClient(ConfigureApiClient)
 			.AddHttpMessageHandler(sp => sp.GetRequiredService<AuthDelegatingHandler>());
 
 		builder.Services.AddTransient<AppShell>();
@@ -121,5 +125,16 @@ public static class MauiProgram
 		builder.Services.AddTransient<SettingsPage>();
 
 		return builder.Build();
+	}
+
+	/// <summary>
+	/// What every Refit client's HttpClient looks like. One place, so a client added later cannot
+	/// quietly ship without the timeout - which is how all six ended up on HttpClient's 100-second
+	/// default to begin with.
+	/// </summary>
+	private static void ConfigureApiClient(HttpClient client)
+	{
+		client.BaseAddress = new Uri(ApiConfig.BaseAddress);
+		client.Timeout = ApiConfig.RequestTimeout;
 	}
 }
