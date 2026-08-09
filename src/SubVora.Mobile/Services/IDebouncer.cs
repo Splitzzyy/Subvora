@@ -8,4 +8,10 @@ namespace SubVora.Mobile.Services;
 public interface IDebouncer
 {
     void Debounce(Action action);
+
+    /// <summary>
+    /// Drops a scheduled action without running it. Needed wherever the reason to run has gone away
+    /// during the quiet period - simply not scheduling a new action leaves the previous one armed.
+    /// </summary>
+    void Cancel();
 }

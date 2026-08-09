@@ -50,7 +50,7 @@ Users can add subscriptions priced in any currency (USD, EUR, INR, etc.) — exa
 
 ## 4. User Experience Principles
 
-1. **Add a subscription in under 30 seconds.** Smart-match on typed name (e.g. "netflix") should auto-fill logo, category, and suggested price where possible.
+1. **Add a subscription in under 30 seconds.** Smart-match on typed name (e.g. "netflix") should offer logo, category, and suggested price where possible — as a one-tap suggestion, never as a silent edit. The name field belongs to the user; a match that rewrites it mid-word costs more time than it saves.
 2. **Dashboard-first.** The burn rate summary is the first thing a user sees on open — the app's core value has to be visible immediately, not buried in a menu.
 3. **No surprise charges.** Alerts must be reliable and timely; this is the app's primary trust promise.
 4. **Currency shouldn't require mental math.** Users should never have to manually convert a foreign subscription price to understand their total spend.

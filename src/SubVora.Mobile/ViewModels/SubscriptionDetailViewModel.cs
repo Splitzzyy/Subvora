@@ -227,6 +227,10 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
 
         if (value.Length < MinResolveInputLength)
         {
+            // Cancel, not just "don't schedule". Deleting the name faster than the debounce window
+            // used to leave the previous keystroke's resolve armed, and the result then put the name
+            // the user had just erased straight back into the box.
+            _debouncer.Cancel();
             return;
         }
 
@@ -250,25 +254,61 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         {
             // Any other resolve failure (including being offline) is still worth surfacing,
             // since the user may not realize their typing isn't being resolved at all.
+            if (IsStale(input))
+            {
+                return;
+            }
+
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
             return;
         }
 
-        switch (result.Tier)
+        // The name moved on while the request was in flight - the answer is about text that is no
+        // longer on screen, so it is dropped rather than applied over whatever the user typed next.
+        if (IsStale(input))
         {
-            case MatchConfidenceTier.AutoFill:
-                ApplySuggestion(result);
-                break;
-            case MatchConfidenceTier.SuggestConfirm:
-                _pendingSuggestion = result;
-                SuggestedTier = MatchConfidenceTier.SuggestConfirm;
-                SuggestedProviderName = result.ProviderName;
-                SuggestedLogoUrl = result.LogoUrl;
-                break;
-            case MatchConfidenceTier.Manual:
-            default:
-                break;
+            return;
         }
+
+        // Both matching tiers do the same thing here: offer, and wait. The confidence score decides
+        // how good the guess is, not whether the app is entitled to act on it - a 0.99 match is
+        // still a guess about a field the user is in the middle of filling in. The tier is carried
+        // through on SuggestedTier so the view can still say how sure it is.
+        if (result.Tier is MatchConfidenceTier.AutoFill or MatchConfidenceTier.SuggestConfirm)
+        {
+            OfferMatch(result);
+        }
+    }
+
+    /// <summary>
+    /// Whether a resolve result is answering text the field no longer holds.
+    /// </summary>
+    private bool IsStale(string input) => !string.Equals(CustomName, input, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Raises the "Looks like X" chip. Nothing on the form moves until the user takes it.
+    /// <para>
+    /// Skipped once the match has already been applied, or the chip would re-raise itself the moment
+    /// the resolve armed by <see cref="ApplySuggestion"/>'s own name assignment came back. Keyed on
+    /// the catalog id rather than the name so that adopting a suggestion and then typing a different
+    /// name still gets offered the new match.
+    /// </para>
+    /// </summary>
+    private void OfferMatch(ResolveSubscriptionResponse suggestion)
+    {
+        if (string.IsNullOrEmpty(suggestion.ProviderName))
+        {
+            return;
+        }
+
+        if (_appliedCatalogId is not null && _appliedCatalogId == suggestion.CatalogId)
+        {
+            return;
+        }
+
+        _pendingSuggestion = suggestion;
+        SuggestedTier = suggestion.Tier;
+        SuggestedProviderName = suggestion.ProviderName;
     }
 
     [RelayCommand]
@@ -282,6 +322,12 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         ApplySuggestion(_pendingSuggestion);
     }
 
+    /// <summary>
+    /// The only path that writes a match into the form, and it runs solely off the "Use" button.
+    /// Once the user has asked for the match they get all of it - name, catalog link, logo and
+    /// category - including over a category they had already picked, because taking the suggestion
+    /// is a statement about what the subscription is.
+    /// </summary>
     private void ApplySuggestion(ResolveSubscriptionResponse suggestion)
     {
         if (!string.IsNullOrEmpty(suggestion.ProviderName))
@@ -289,7 +335,9 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             CustomName = suggestion.ProviderName;
         }
 
-        // After the CustomName assignment above, whose change handler clears this.
+        // After the CustomName assignment above, whose change handler clears _appliedCatalogId. That
+        // assignment also re-arms the debouncer; the resolve it schedules comes back with the same
+        // catalog id, which is what OfferMatch checks to avoid re-raising the chip it just answered.
         _appliedCatalogId = suggestion.CatalogId;
         SuggestedLogoUrl = suggestion.LogoUrl;
 
