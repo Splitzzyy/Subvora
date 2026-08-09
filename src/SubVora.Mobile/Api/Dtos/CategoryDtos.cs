@@ -1,4 +1,4 @@
-namespace SubVora.Mobile.Api.Dtos;
+﻿namespace SubVora.Mobile.Api.Dtos;
 
 public class CategoryDto
 {
@@ -10,4 +10,10 @@ public class CategoryDto
 public class CreateCategoryRequest
 {
     public string Name { get; set; } = string.Empty;
+}
+
+/// <summary>What a category delete did. Subscriptions survive it - they just lose their grouping.</summary>
+public class DeleteCategoryResult
+{
+    public int SubscriptionsUncategorized { get; set; }
 }

@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -52,6 +52,29 @@ public class PaymentSourcesController : ControllerBase
 
         var paymentSource = await _paymentSourceRepository.AddAsync(GetUserId(), request, cancellationToken);
         return CreatedAtAction(nameof(GetAll), paymentSource);
+    }
+
+    /// <summary>Updates a payment source owned by the authenticated user.</summary>
+    /// <remarks>In place, deliberately: the subscriptions foreign key is ON DELETE SET NULL, so deleting and recreating would quietly detach every subscription that used it.</remarks>
+    /// <response code="200">Returns the updated payment source.</response>
+    /// <response code="400">The payload failed validation.</response>
+    /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="404">No such payment source owned by the caller.</response>
+    [HttpPut("{id:guid}")]
+    [ProducesResponseType(typeof(PaymentSourceDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Update(Guid id, [FromBody] CreatePaymentSourceRequest request, CancellationToken cancellationToken)
+    {
+        var validationResult = await _createValidator.ValidateAsync(request, cancellationToken);
+        if (!validationResult.IsValid)
+        {
+            return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        var updated = await _paymentSourceRepository.UpdateAsync(id, GetUserId(), request, cancellationToken);
+        return updated is null ? NotFound() : Ok(updated);
     }
 
     /// <summary>Deletes a payment source owned by the authenticated user.</summary>
