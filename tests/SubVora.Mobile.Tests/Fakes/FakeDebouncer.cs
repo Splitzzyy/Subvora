@@ -10,10 +10,18 @@ public class FakeDebouncer : IDebouncer
 
     public int DebounceCallCount { get; private set; }
 
+    public int CancelCallCount { get; private set; }
+
     public void Debounce(Action action)
     {
         DebounceCallCount++;
         _pending = action;
+    }
+
+    public void Cancel()
+    {
+        CancelCallCount++;
+        _pending = null;
     }
 
     public void Flush()

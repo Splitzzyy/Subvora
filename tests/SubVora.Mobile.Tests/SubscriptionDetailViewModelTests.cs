@@ -130,20 +130,65 @@ public class SubscriptionDetailViewModelTests
         Assert.Equal("Netflix", call.Input);
     }
 
+    private static FakeSubscriptionsApi AutoFillingApi(Guid? categoryId = null, Guid? catalogId = null) => new()
+    {
+        ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+        {
+            Tier = MatchConfidenceTier.AutoFill,
+            CatalogId = catalogId,
+            ProviderName = "Netflix",
+            LogoUrl = "https://example.com/netflix.png",
+            CategoryId = categoryId,
+        }),
+    };
+
     [Fact]
-    public void AutoFillResponse_PreFillsNameCategoryAndLogo()
+    public void AutoFillResponse_ChangesNothingOnTheFormUntilTheUserTakesIt()
     {
         var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
-        var subscriptionsApi = new FakeSubscriptionsApi
-        {
-            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
-            {
-                Tier = MatchConfidenceTier.AutoFill,
-                ProviderName = "Netflix",
-                LogoUrl = "https://example.com/netflix.png",
-                CategoryId = category.Id,
-            }),
-        };
+        var subscriptionsApi = AutoFillingApi(categoryId: category.Id, catalogId: Guid.NewGuid());
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+        viewModel.Categories.Add(category);
+
+        viewModel.CustomName = "Netflix Family";
+        debouncer.Flush();
+
+        // A match is a suggestion at every confidence level. The highest tier gets no more licence to
+        // write into the form than the middle one does.
+        Assert.Equal("Netflix Family", viewModel.CustomName);
+        Assert.Null(viewModel.SelectedCategory);
+        Assert.Null(viewModel.SuggestedLogoUrl);
+        Assert.Null(viewModel.ErrorMessage);
+
+        Assert.Equal(MatchConfidenceTier.AutoFill, viewModel.SuggestedTier);
+        Assert.Equal("Netflix", viewModel.SuggestedProviderName);
+    }
+
+    [Fact]
+    public void AcceptingAMatch_AppliesNameCategoryAndLogoTogether()
+    {
+        var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
+        var subscriptionsApi = AutoFillingApi(categoryId: category.Id);
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+        viewModel.Categories.Add(category);
+
+        viewModel.CustomName = "netflx";
+        debouncer.Flush();
+        viewModel.AcceptSuggestionCommand.Execute(null);
+
+        Assert.Equal("Netflix", viewModel.CustomName);
+        Assert.Equal(category, viewModel.SelectedCategory);
+        Assert.Equal("https://example.com/netflix.png", viewModel.SuggestedLogoUrl);
+        Assert.Null(viewModel.SuggestedTier);
+    }
+
+    [Fact]
+    public void ExactlyTypedProviderName_IsStillOnlyOffered()
+    {
+        var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
+        var subscriptionsApi = AutoFillingApi(categoryId: category.Id);
         var debouncer = new FakeDebouncer();
         var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
         viewModel.Categories.Add(category);
@@ -151,11 +196,100 @@ public class SubscriptionDetailViewModelTests
         viewModel.CustomName = "Netflix";
         debouncer.Flush();
 
-        Assert.Equal("Netflix", viewModel.CustomName);
-        Assert.Equal("https://example.com/netflix.png", viewModel.SuggestedLogoUrl);
-        Assert.Equal(category, viewModel.SelectedCategory);
+        // Typing the name exactly is not consent to the rest of the record either - the chip is how
+        // the category and the catalog link get offered, and it stays on offer until taken.
+        Assert.Equal(MatchConfidenceTier.AutoFill, viewModel.SuggestedTier);
+        Assert.Null(viewModel.SelectedCategory);
+    }
+
+    [Fact]
+    public void AMatchAlreadyTaken_IsNotOfferedAgain()
+    {
+        var catalogId = Guid.NewGuid();
+        var subscriptionsApi = AutoFillingApi(catalogId: catalogId);
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "netflx";
+        debouncer.Flush();
+        viewModel.AcceptSuggestionCommand.Execute(null);
+
+        // Accepting rewrites the name, which re-arms the debouncer; the resolve that follows must
+        // not re-raise the chip the user just answered.
+        debouncer.Flush();
+
         Assert.Null(viewModel.SuggestedTier);
-        Assert.Null(viewModel.ErrorMessage);
+        Assert.Equal("Netflix", viewModel.CustomName);
+    }
+
+    [Fact]
+    public void AMatchArrivingAfterTheUserPickedACategory_LeavesThatCategoryAlone()
+    {
+        var matched = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
+        var chosen = new CategoryDto { Id = Guid.NewGuid(), Name = "Household" };
+        var subscriptionsApi = AutoFillingApi(categoryId: matched.Id);
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+        viewModel.Categories.Add(matched);
+        viewModel.Categories.Add(chosen);
+        viewModel.SelectedCategory = chosen;
+
+        viewModel.CustomName = "netflx";
+        debouncer.Flush();
+
+        Assert.Equal(chosen, viewModel.SelectedCategory);
+
+        // Taking the suggestion is the user asking for the provider's own category, so it wins here.
+        viewModel.AcceptSuggestionCommand.Execute(null);
+
+        Assert.Equal(matched, viewModel.SelectedCategory);
+    }
+
+    [Fact]
+    public void ErasingTheNameBeforeTheDebounceFires_DropsThePendingResolve()
+    {
+        var subscriptionsApi = AutoFillingApi();
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "Netflix";
+        viewModel.CustomName = string.Empty;
+        debouncer.Flush();
+
+        // The resolve armed by the first assignment used to survive the erase and put "Netflix"
+        // straight back into an emptied field.
+        Assert.Equal(string.Empty, viewModel.CustomName);
+        Assert.Empty(subscriptionsApi.ResolveCalls);
+        Assert.Null(viewModel.SuggestedTier);
+    }
+
+    [Fact]
+    public void ResolveAnsweringTextTheFieldNoLongerHolds_IsDiscarded()
+    {
+        SubscriptionDetailViewModel? viewModel = null;
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ =>
+            {
+                // Stands in for the user carrying on typing while the request is in flight.
+                viewModel!.CustomName = "Nebula";
+                return Task.FromResult(new ResolveSubscriptionResponse
+                {
+                    Tier = MatchConfidenceTier.AutoFill,
+                    ProviderName = "Netflix",
+                    LogoUrl = "https://example.com/netflix.png",
+                });
+            },
+        };
+        var debouncer = new FakeDebouncer();
+        viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+
+        viewModel.CustomName = "Netflix";
+        debouncer.Flush();
+
+        Assert.Equal("Nebula", viewModel.CustomName);
+        Assert.Null(viewModel.SuggestedTier);
+        Assert.Null(viewModel.SuggestedLogoUrl);
     }
 
     [Fact]
@@ -289,19 +423,9 @@ public class SubscriptionDetailViewModelTests
     }
 
     [Fact]
-    public async Task SaveAsync_AfterAutoFill_SendsTheResolvedCatalogId()
+    public async Task SaveAsync_AfterAMatchTheUserIgnored_SendsTheirOwnNameAndNoCatalogId()
     {
-        var catalogId = Guid.NewGuid();
-        var subscriptionsApi = new FakeSubscriptionsApi
-        {
-            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
-            {
-                Tier = MatchConfidenceTier.AutoFill,
-                CatalogId = catalogId,
-                ProviderName = "Netflix",
-                LogoUrl = "https://example.com/netflix.svg",
-            }),
-        };
+        var subscriptionsApi = AutoFillingApi(catalogId: Guid.NewGuid());
         var debouncer = new FakeDebouncer();
         var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
 
@@ -311,8 +435,10 @@ public class SubscriptionDetailViewModelTests
 
         await viewModel.SaveCommand.ExecuteAsync(null);
 
+        // An offer left on the table links nothing. What gets saved is what the user typed.
         var request = Assert.Single(subscriptionsApi.CreateCalls);
-        Assert.Equal(catalogId, request.CatalogId);
+        Assert.Equal("nflx", request.CustomName);
+        Assert.Null(request.CatalogId);
     }
 
     [Fact]

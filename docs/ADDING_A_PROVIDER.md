@@ -96,9 +96,19 @@ curl -X POST http://localhost:5271/api/v1/subscriptions/resolve \
 
 | Tier | Score | What the app does |
 |---|---|---|
-| `AutoFill` | ≥ 0.70 | Fills the form in |
+| `AutoFill` | ≥ 0.70 | Offers it, user confirms |
 | `SuggestConfirm` | ≥ 0.50 | Offers it, user confirms |
 | `Manual` | < 0.50 | Nothing — user types it themselves |
+
+**No tier writes into the form on its own.** Despite its name, `AutoFill` is a confidence band, not a
+licence to act: both matching tiers raise the same "Looks like X" chip and wait. Tapping **Use** is
+what applies the match, and it applies all of it at once — name, category, logo and the catalog link
+that goes on the save payload, including over a category the user had already picked. Ignore the
+chip and the subscription saves exactly as typed, with no catalog link.
+
+The tier still reaches the client on `SuggestedTier`, so the chip can be worded by confidence; what
+it must not do is skip the confirmation. Anything the app fills in silently is something the user has
+to notice and undo mid-edit, and a 0.99 match is still a guess about a field being typed into.
 
 Run the tests too — they check the category name and the absence of duplicates:
 

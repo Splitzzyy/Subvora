@@ -12,13 +12,19 @@ public class Debouncer : IDebouncer
 
     public void Debounce(Action action)
     {
-        _cancellationTokenSource?.Cancel();
-        _cancellationTokenSource?.Dispose();
+        Cancel();
 
         var cts = new CancellationTokenSource();
         _cancellationTokenSource = cts;
 
         _ = RunAfterDelayAsync(action, cts.Token);
+    }
+
+    public void Cancel()
+    {
+        _cancellationTokenSource?.Cancel();
+        _cancellationTokenSource?.Dispose();
+        _cancellationTokenSource = null;
     }
 
     private async Task RunAfterDelayAsync(Action action, CancellationToken cancellationToken)
