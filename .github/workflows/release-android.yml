@@ -26,10 +26,49 @@ jobs:
         run: dotnet workload install maui-android --ignore-failed-sources
 
       # The keystore lives only as a base64 secret; it must never be committed (see .gitignore).
+      #
+      # base64 -d, not -di: without the strict decode a secret that picked up stray characters
+      # decodes to a *plausible but wrong* file and the failure surfaces 90 seconds later inside
+      # apksigner instead of here.
       - name: Restore signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/subvora-release.keystore"
+
+      # Fails in seconds, with a readable message, when a signing secret is wrong.
+      #
+      # Without this the only symptom is `MSB6006: "java" exited with code 2` about ninety seconds
+      # into the publish: the AndroidApkSigner MSBuild task swallows apksigner's stderr, so nothing
+      # says which of the four secrets was at fault. That cost three release runs to diagnose once
+      # already. keytool answers the same question - is this a keystore, does it open with this
+      # password, does it hold this alias - and prints why when it does not.
+      #
+      # The whitespace checks are separate because they are invisible in every other tool: a secret
+      # set by piping into `gh secret set` keeps the pipeline's trailing newline (an interactive
+      # prompt trims it), and `--ks-key-alias "subvora\n"` fails as a usage error rather than a
+      # wrong-alias error. Only the presence of whitespace is reported, never the values.
+      - name: Verify signing secrets
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          ks="$RUNNER_TEMP/subvora-release.keystore"
+          echo "Keystore size: $(stat -c%s "$ks") bytes"
+
+          fail=0
+          for name in KEYSTORE_PASSWORD KEY_ALIAS; do
+            value="${!name}"
+            if [ -z "$value" ]; then
+              echo "::error::ANDROID_$name is empty."
+              fail=1
+            elif [ "$value" != "$(printf '%s' "$value" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')" ]; then
+              echo "::error::ANDROID_$name contains whitespace - most likely a trailing newline from piping into 'gh secret set'. Re-set it using the interactive prompt, which trims."
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+
+          echo "$KEYSTORE_PASSWORD" | keytool -list -keystore "$ks" -alias "$KEY_ALIAS"
 
       # ApiBaseAddress is deliberately not passed here - the Release default in the .csproj is the
       # single source of truth for which backend a shipped build talks to.
@@ -44,6 +83,7 @@ jobs:
         run: |
           dotnet publish src/SubVora.Mobile/SubVora.Mobile.csproj \
             -f net10.0-android -c Release \
+            -bl:"$RUNNER_TEMP/publish.binlog" \
             -p:ApplicationDisplayVersion="${GITHUB_REF_NAME#v}" \
             -p:ApplicationVersion="${GITHUB_RUN_NUMBER}" \
             -p:AndroidKeyStore=true \
@@ -52,6 +92,18 @@ jobs:
             -p:AndroidSigningStorePass="$KEYSTORE_PASSWORD" \
             -p:AndroidSigningKeyAlias="$KEY_ALIAS" \
             -p:AndroidSigningKeyPass="$KEY_PASSWORD"
+
+      # The binary log records every task's full input and output, including the stderr that
+      # MSB6006 discards. Only on failure, and only for a day: it is a debugging aid, not an
+      # artifact anyone keeps. Open it with `dotnet tool install -g MSBuildStructuredLogViewer`
+      # or at https://live.msbuildlog.com.
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-binlog
+          path: ${{ runner.temp }}/publish.binlog
+          retention-days: 1
 
       - name: Locate APK
         id: apk
