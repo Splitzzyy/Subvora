@@ -29,7 +29,8 @@ public class OverdueAndMarkPaidTests
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
             messenger ?? new WeakReferenceMessenger(),
-            new FakeRenewalNotificationScheduler());
+            new FakeRenewalNotificationScheduler(),
+            new FakeConnectivityService());
 
     [Fact]
     public void APassedBillingDateIsOverdue()

@@ -9,6 +9,22 @@ namespace SubVora.Mobile.Tests;
 public class DashboardViewModelTests
 {
     [Fact]
+    public async Task LoadAsync_OnADefect_DoesNotLaunderItIntoTheCachedSnapshot()
+    {
+        // Same rule as the list: a bug of ours must not surface as yesterday's totals presented as
+        // an offline fallback.
+        var cache = new FakeLocalCacheService();
+        await cache.UpsertAsync(new CachedBurnRate { Monthly = 99m, HomeCurrency = "USD" });
+        var api = new FakeDashboardApi { Handler = () => throw new InvalidOperationException("defect") };
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => viewModel.LoadCommand.ExecuteAsync(null));
+
+        Assert.False(viewModel.IsShowingCachedData);
+        Assert.Equal(0m, viewModel.Monthly);
+    }
+
+    [Fact]
     public async Task LoadAsync_OnSuccess_MapsBurnRateResultOntoBindableProperties()
     {
         var burnRate = new BurnRateResult

@@ -10,8 +10,12 @@ public static class RelativeDate
     /// <summary>
     /// Near dates are described relative to <paramref name="today"/>; anything beyond a fortnight
     /// falls back to a calendar date, because "in 63 days" is harder to place than "9 Oct".
-    /// Dates already past are called out rather than shown as a negative count - the server's
-    /// billing-date job rolls them forward, so a past date means the app is looking at stale data.
+    /// <para>
+    /// Dates already past are called out rather than shown as a negative count. Nothing advances
+    /// <c>next_billing_date</c> on a timer, so a past date is not stale data - it is the app saying
+    /// the charge is genuinely outstanding, which is what <c>SubscriptionDto.IsOverdue</c> reads.
+    /// It moves only when the user marks the charge paid.
+    /// </para>
     /// </summary>
     public static string Describe(DateOnly date, DateOnly today)
     {

@@ -18,6 +18,7 @@ public partial class SubscriptionListViewModel : ObservableObject
     private readonly IUserPrompt _userPrompt;
     private readonly IMessenger _messenger;
     private readonly IRenewalNotificationScheduler _notificationScheduler;
+    private readonly IConnectivityService _connectivity;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -27,6 +28,37 @@ public partial class SubscriptionListViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsShowingCachedData { get; set; }
+
+    /// <summary>
+    /// Whether a write is in flight. Separate from <see cref="IsLoading"/>, which drives the pull-to-
+    /// refresh spinner: a second mark-paid landing on top of the first would advance the billing date
+    /// two cycles, so the write path needs its own gate.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial bool IsBusy { get; set; }
+
+    /// <summary>
+    /// Whether the device has no network. Refreshed when the screen loads and after a failed write
+    /// rather than by subscribing to the connectivity event: this view model is transient while
+    /// IConnectivityService is a singleton, so a subscription would outlive the screen.
+    /// <para>
+    /// Only covers "this phone has no network". A reachable phone talking to a server that is down
+    /// still reads as online - that case is caught by the write failing, with a message saying the
+    /// change was not saved.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSubmit))]
+    public partial bool IsOffline { get; set; }
+
+    /// <summary>
+    /// Gates swipe-to-delete and mark-as-paid, so a write that cannot possibly succeed is not
+    /// offered. This list is the screen most likely to be looked at offline - it serves itself from
+    /// the SQLite mirror - which is exactly why the two writes on it have to be closed rather than
+    /// left to fail.
+    /// </summary>
+    public bool CanSubmit => !IsOffline && !IsBusy;
 
     /// <summary>
     /// Flat, in server order. Stays the authoritative set - the notification scheduler, the cache
@@ -52,13 +84,17 @@ public partial class SubscriptionListViewModel : ObservableObject
         ILocalCacheService localCacheService,
         IUserPrompt userPrompt,
         IMessenger messenger,
-        IRenewalNotificationScheduler notificationScheduler)
+        IRenewalNotificationScheduler notificationScheduler,
+        IConnectivityService connectivity)
     {
         _subscriptionsApi = subscriptionsApi;
         _localCacheService = localCacheService;
         _userPrompt = userPrompt;
         _messenger = messenger;
         _notificationScheduler = notificationScheduler;
+        _connectivity = connectivity;
+
+        IsOffline = !connectivity.IsConnected;
     }
 
     [RelayCommand]
@@ -66,6 +102,7 @@ public partial class SubscriptionListViewModel : ObservableObject
     {
         IsLoading = true;
         ErrorMessage = null;
+        IsOffline = !_connectivity.IsConnected;
         try
         {
             var result = await _subscriptionsApi.GetAllAsync();
@@ -84,7 +121,10 @@ public partial class SubscriptionListViewModel : ObservableObject
                 await _localCacheService.UpsertAsync(CachedSubscription.FromDto(subscription));
             }
         }
-        catch (Exception ex)
+        // Filtered, not a bare catch: this branch falls back to the SQLite mirror, so swallowing a
+        // defect here would show stale rows under "showing last synced data" while the phone is on
+        // wifi - the one failure nobody ever reports, because it looks like it is working.
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             var cached = await _localCacheService.GetAllAsync<CachedSubscription>();
             if (cached.Count > 0)
@@ -149,6 +189,8 @@ public partial class SubscriptionListViewModel : ObservableObject
     [RelayCommand]
     private async Task MarkPaidAsync(Guid id)
     {
+        ErrorMessage = null;
+        IsBusy = true;
         try
         {
             var updated = await _subscriptionsApi.MarkPaidAsync(id);
@@ -167,9 +209,17 @@ public partial class SubscriptionListViewModel : ObservableObject
             _messenger.Send(new SubscriptionsChangedMessage());
             await _notificationScheduler.SyncAsync(Subscriptions);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            // Write wording, not read wording. Nothing is queued for later - the mirror is refreshed
+            // from successful GETs only - so a charge that failed to settle has to say so, or the
+            // row keeps its OVERDUE chip while the user believes they have cleared it.
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -192,6 +242,8 @@ public partial class SubscriptionListViewModel : ObservableObject
             return;
         }
 
+        ErrorMessage = null;
+        IsBusy = true;
         try
         {
             await _subscriptionsApi.DeleteAsync(id);
@@ -212,9 +264,14 @@ public partial class SubscriptionListViewModel : ObservableObject
             _messenger.Send(new SubscriptionsChangedMessage());
             await _notificationScheduler.SyncAsync(Subscriptions);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            IsOffline = !_connectivity.IsConnected;
+            ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 }

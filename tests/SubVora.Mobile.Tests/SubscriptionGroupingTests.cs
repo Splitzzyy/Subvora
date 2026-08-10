@@ -31,7 +31,8 @@ public class SubscriptionGroupingTests
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
             new CommunityToolkit.Mvvm.Messaging.WeakReferenceMessenger(),
-            new FakeRenewalNotificationScheduler());
+            new FakeRenewalNotificationScheduler(),
+            new FakeConnectivityService());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
         return viewModel;

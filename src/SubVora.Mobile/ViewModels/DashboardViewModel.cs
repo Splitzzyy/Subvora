@@ -120,7 +120,10 @@ public partial class DashboardViewModel : ObservableObject
 
             await _localCacheService.UpsertAsync(snapshot);
         }
-        catch (Exception ex)
+        // Filtered, not a bare catch: the branch below falls back to the cached snapshot, so a
+        // defect swallowed here would quietly show yesterday's totals as though the network were
+        // the problem. ApiErrorMapper.IsApiFailure is what separates the two.
+        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             var cached = (await _localCacheService.GetAllAsync<CachedBurnRate>()).FirstOrDefault();
             if (cached is not null)

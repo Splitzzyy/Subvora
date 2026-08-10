@@ -28,13 +28,15 @@ public class SubscriptionListViewModelTests
         FakeLocalCacheService? cache = null,
         FakeUserPrompt? userPrompt = null,
         IMessenger? messenger = null,
-        FakeRenewalNotificationScheduler? notificationScheduler = null) =>
+        FakeRenewalNotificationScheduler? notificationScheduler = null,
+        FakeConnectivityService? connectivity = null) =>
         new(
             api ?? new FakeSubscriptionsApi(),
             cache ?? new FakeLocalCacheService(),
             userPrompt ?? new FakeUserPrompt(),
             messenger ?? new WeakReferenceMessenger(),
-            notificationScheduler ?? new FakeRenewalNotificationScheduler());
+            notificationScheduler ?? new FakeRenewalNotificationScheduler(),
+            connectivity ?? new FakeConnectivityService());
 
     [Fact]
     public async Task LoadAsync_PreservesLogoUrlAndFreeTrialFlagForTheItemTemplate()
@@ -128,6 +130,45 @@ public class SubscriptionListViewModelTests
         Assert.Empty(viewModel.Subscriptions);
         Assert.False(viewModel.IsShowingCachedData);
         Assert.NotNull(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task LoadAsync_OnADefect_DoesNotLaunderItIntoTheOfflineFallback()
+    {
+        // A bug in our own code must not come out looking like a dropped connection. The cache
+        // fallback is what makes this dangerous: swallowing here would show stale rows under
+        // "showing last synced data" on a phone that is perfectly online.
+        var cache = new FakeLocalCacheService();
+        await cache.UpsertAsync(CachedSubscription.FromDto(SampleSubscription("Spotify")));
+        var api = new FakeSubscriptionsApi { GetAllHandler = () => throw new InvalidOperationException("defect") };
+        var viewModel = CreateViewModel(api, cache);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => viewModel.LoadCommand.ExecuteAsync(null));
+
+        Assert.False(viewModel.IsShowingCachedData);
+    }
+
+    [Fact]
+    public async Task MarkPaidAsync_OnADefect_Surfaces()
+    {
+        var api = new FakeSubscriptionsApi { MarkPaidHandler = _ => throw new InvalidOperationException("defect") };
+        var viewModel = CreateViewModel(api);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => viewModel.MarkPaidCommand.ExecuteAsync(Guid.NewGuid()));
+
+        Assert.Null(viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public void ASecondWriteCannotLandWhileTheFirstIsRunning()
+    {
+        // Mark-paid is not idempotent - it advances the billing date one cycle per call - so a
+        // double tap would settle two periods off one payment.
+        var viewModel = CreateViewModel();
+
+        Assert.True(viewModel.CanSubmit);
+        viewModel.IsBusy = true;
+        Assert.False(viewModel.CanSubmit);
     }
 
     [Fact]
