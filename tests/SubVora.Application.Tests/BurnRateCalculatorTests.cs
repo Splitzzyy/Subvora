@@ -265,8 +265,8 @@ public class BurnRateCalculatorTests
 
         await _calculator.CalculateAsync(subscriptions, "INR");
 
+        // One call, not twenty. There is no per-subscription path left to fall back to.
         Assert.Equal(1, _fxRateService.BatchCalls);
-        Assert.Equal(0, _fxRateService.SinglePairCalls);
     }
 
     [Fact]
@@ -351,17 +351,8 @@ public class BurnRateCalculatorTests
         public Task UpsertRatesAsync(IReadOnlyCollection<ExchangeRate> rates, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
 
-        public Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default)
-        {
-            SinglePairCalls++;
-            return Task.FromResult(_rates.GetValueOrDefault((baseCurrency, targetCurrency)));
-        }
-
         /// <summary>How many times the batch was asked. The calculator should need exactly one call, whatever the subscription count.</summary>
         public int BatchCalls { get; private set; }
-
-        /// <summary>Should stay zero: the per-subscription path is what this change removed.</summary>
-        public int SinglePairCalls { get; private set; }
 
         /// <summary>The base currencies of the most recent batch, so a test can assert duplicates were collapsed.</summary>
         public IReadOnlyCollection<string> LastRequestedBaseCurrencies { get; private set; } = [];

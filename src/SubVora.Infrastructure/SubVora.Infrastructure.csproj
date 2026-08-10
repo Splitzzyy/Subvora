@@ -24,7 +24,6 @@
          moved to pg_trgm in ReplaceCatalogEmbeddingWithTrigram - but the migrations that created
          and carried the vector(1536) column still name the Vector type, and rewriting applied
          migration history to delete a reference is worse than keeping one unused package. -->
-    <PackageReference Include="Pgvector" Version="0.3.2" />
     <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.19.1" />
   </ItemGroup>
 

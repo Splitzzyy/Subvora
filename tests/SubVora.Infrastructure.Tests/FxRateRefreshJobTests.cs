@@ -85,7 +85,9 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
     private async Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency)
     {
         using var scope = _serviceProvider.CreateScope();
-        return await scope.ServiceProvider.GetRequiredService<IFxRateService>().GetRateAsync(baseCurrency, targetCurrency);
+        var rates = await scope.ServiceProvider.GetRequiredService<IFxRateService>()
+            .GetRatesAsync([baseCurrency], targetCurrency);
+        return rates.GetValueOrDefault(baseCurrency);
     }
 
     [Fact]

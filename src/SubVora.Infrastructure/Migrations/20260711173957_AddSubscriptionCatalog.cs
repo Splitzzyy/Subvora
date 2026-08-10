@@ -1,6 +1,5 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Pgvector;
 
 #nullable disable
 
@@ -25,7 +24,7 @@ namespace SubVora.Infrastructure.Migrations
                     provider_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
                     category_id = table.Column<Guid>(type: "uuid", nullable: true),
                     logo_url = table.Column<string>(type: "character varying(512)", maxLength: 512, nullable: true),
-                    semantic_embedding = table.Column<Vector>(type: "vector(1536)", nullable: true),
+                    semantic_embedding = table.Column<string>(type: "vector(1536)", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "now()")
                 },
                 constraints: table =>

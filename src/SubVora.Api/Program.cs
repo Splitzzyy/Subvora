@@ -34,6 +34,10 @@ var builder = WebApplication.CreateBuilder(args);
 // Structured JSON logs to console, provider-agnostic (no APM vendor chosen yet - just makes
 // logs parseable by whatever log aggregator ends up watching stdout). Levels mirror the
 // previous default Logging:LogLevel values (Default: Information, Microsoft.AspNetCore: Warning).
+//
+// Set here rather than read from configuration - the IConfiguration argument is discarded on
+// purpose. appsettings.json no longer carries a Logging:LogLevel block for that reason: it was
+// left behind by the default provider and nothing read it, so it only misled.
 builder.Host.UseSerilog((_, cfg) => cfg
     .MinimumLevel.Information()
     .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
@@ -76,11 +80,11 @@ builder.Services.AddScoped<IPaymentSourceRepository, PaymentSourceRepository>();
 builder.Services.AddScoped<IValidator<CreatePaymentSourceRequest>, CreatePaymentSourceRequestValidator>();
 
 builder.Services.AddScoped<ISubscriptionCatalogSearchRepository, SubscriptionCatalogSearchRepository>();
-builder.Services.AddScoped<ISubscriptionMatchService, SubscriptionMatchService>();
+builder.Services.AddScoped<SubscriptionMatchService>();
 builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscriptionRequestValidator>();
 
 // Scoped, not singleton - depends on IFxRateService, which holds a scoped DbContext.
-builder.Services.AddScoped<IBurnRateCalculator, BurnRateCalculator>();
+builder.Services.AddScoped<BurnRateCalculator>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IValidator<UpdateUserProfileRequest>, UpdateUserProfileRequestValidator>();
 

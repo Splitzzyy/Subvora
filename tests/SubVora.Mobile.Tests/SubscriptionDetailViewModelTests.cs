@@ -158,7 +158,6 @@ public class SubscriptionDetailViewModelTests
         // write into the form than the middle one does.
         Assert.Equal("Netflix Family", viewModel.CustomName);
         Assert.Null(viewModel.SelectedCategory);
-        Assert.Null(viewModel.SuggestedLogoUrl);
         Assert.Null(viewModel.ErrorMessage);
 
         Assert.Equal(MatchConfidenceTier.AutoFill, viewModel.SuggestedTier);
@@ -166,7 +165,7 @@ public class SubscriptionDetailViewModelTests
     }
 
     [Fact]
-    public void AcceptingAMatch_AppliesNameCategoryAndLogoTogether()
+    public void AcceptingAMatch_AppliesNameAndCategoryTogether()
     {
         var category = new CategoryDto { Id = Guid.NewGuid(), Name = "Streaming" };
         var subscriptionsApi = AutoFillingApi(categoryId: category.Id);
@@ -180,7 +179,10 @@ public class SubscriptionDetailViewModelTests
 
         Assert.Equal("Netflix", viewModel.CustomName);
         Assert.Equal(category, viewModel.SelectedCategory);
-        Assert.Equal("https://example.com/netflix.png", viewModel.SuggestedLogoUrl);
+        // The chip clears, which is what says the offer was answered rather than still pending.
+        // That the catalog link came with it is pinned on the save payload instead - see
+        // SaveAsync_AfterAcceptingASuggestion_SendsTheResolvedCatalogId, which asserts the thing
+        // that actually leaves the device.
         Assert.Null(viewModel.SuggestedTier);
     }
 
@@ -289,7 +291,6 @@ public class SubscriptionDetailViewModelTests
 
         Assert.Equal("Nebula", viewModel.CustomName);
         Assert.Null(viewModel.SuggestedTier);
-        Assert.Null(viewModel.SuggestedLogoUrl);
     }
 
     [Fact]

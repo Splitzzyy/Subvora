@@ -1,4 +1,4 @@
-using SubVora.Application.Currency;
+﻿using SubVora.Application.Currency;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
 
@@ -15,7 +15,7 @@ namespace SubVora.Application.Dashboard;
 /// named in UnresolvedSubscriptionIds.
 /// </para>
 /// </summary>
-public class BurnRateCalculator : IBurnRateCalculator
+public class BurnRateCalculator
 {
     private const int WeeklyDays = 7;
     private const int MonthlyDays = 30;
