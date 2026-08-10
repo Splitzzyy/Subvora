@@ -41,7 +41,9 @@ public static class RenewalNotificationPlanner
             .Take(MaxPendingNotifications)
             .Select((item, index) => new PlannedRenewalNotification(
                 Id: index + 1,
-                Title: "Subscription renewing soon",
+                Title: item.Subscription.CycleCadence == BillingCycleType.OneTime
+                    ? "Payment due soon"
+                    : "Subscription renewing soon",
                 Body: BuildBody(item.Subscription),
                 NotifyAt: item.NotifyAt))
             .ToList();
@@ -50,11 +52,14 @@ public static class RenewalNotificationPlanner
     private static string BuildBody(SubscriptionDto subscription)
     {
         var days = subscription.AlertDaysAdvance;
+        var action = subscription.CycleCadence == BillingCycleType.OneTime
+            ? "is due"
+            : "renews";
         var when = days switch
         {
-            <= 0 => "renews today",
-            1 => "renews tomorrow",
-            _ => $"renews in {days} days",
+            <= 0 => $"{action} today",
+            1 => $"{action} tomorrow",
+            _ => $"{action} in {days} days",
         };
 
         // The amount is the point of the reminder - "Netflix renews in 3 days" is a fact,
