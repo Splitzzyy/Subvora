@@ -12,13 +12,14 @@ public class RenewalNotificationPlannerTests
         int daysUntilBilling,
         int alertDaysAdvance = 3,
         bool isActive = true,
-        decimal cost = 15.99m) => new()
+        decimal cost = 15.99m,
+        BillingCycleType cadence = BillingCycleType.Monthly) => new()
         {
             Id = Guid.NewGuid(),
             CustomName = name,
             CostAmount = cost,
             Currency = "USD",
-            CycleCadence = BillingCycleType.Monthly,
+            CycleCadence = cadence,
             NextBillingDate = DateOnly.FromDateTime(Now).AddDays(daysUntilBilling),
             AlertDaysAdvance = alertDaysAdvance,
             IsActive = isActive,
@@ -34,6 +35,18 @@ public class RenewalNotificationPlannerTests
         Assert.Equal(new DateTime(2026, 8, 14, 9, 0, 0), notification.NotifyAt);
         Assert.Equal("Subscription renewing soon", notification.Title);
         Assert.Equal("Netflix renews in 3 days - $15.99", notification.Body);
+    }
+
+    [Fact]
+    public void Plan_UsesPaymentCopyForOneTimePurchases()
+    {
+        var plan = RenewalNotificationPlanner.Plan(
+            [Subscription("Domain renewal", daysUntilBilling: 10, cadence: BillingCycleType.OneTime)],
+            Now);
+
+        var notification = Assert.Single(plan);
+        Assert.Equal("Payment due soon", notification.Title);
+        Assert.StartsWith("Domain renewal is due in 3 days - ", notification.Body);
     }
 
     [Fact]
