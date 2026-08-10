@@ -116,13 +116,21 @@ new APK (see [Distribution](#distribution)).
 
 ### 5. Keep it warm
 
-Add a cron-job.org job that GETs `https://subvora-api.onrender.com/` every 5 minutes. Free Render
-services sleep after 15 minutes of no inbound traffic, and waking a .NET container takes ~40–60s —
-long enough that the app looks broken.
+Add a cron-job.org job that GETs `https://subvora-api.onrender.com/health/live` every 5 minutes.
+Free Render services sleep after 15 minutes of no inbound traffic, and waking a .NET container takes
+~40–60s — long enough that the app looks broken.
 
-Ping the **root path**, which 404s, not `/health`. That endpoint probes Postgres, so pinging it
-every five minutes would hold Neon's compute awake around the clock and burn the free compute-hour
-allowance. A 404 still counts as inbound traffic for Render's purposes.
+**`/health/live`, not `/health`.** The latter probes Postgres, so pinging it every five minutes
+would hold Neon's compute awake around the clock and burn the free compute-hour allowance.
+`/health/live` is registered with `Predicate = _ => false`, meaning no check runs at all — it proves
+the process is serving and touches nothing.
+
+**And not the root path either**, which is what this doc used to recommend. Root 404s, and while a
+404 does count as inbound traffic for Render's purposes, cron-job.org counts it as a *failed*
+execution: it emails a failure alert every five minutes and disables jobs that keep failing. A
+keep-warm ping that quietly switches itself off is worse than none — the app returns to 40–60s cold
+starts with nothing to say so. `/health/live` answers 200, so failure notifications become a real
+uptime signal instead of noise worth muting.
 
 The same reasoning is why `render.yaml` sets `healthCheckPath: /health/live` rather than `/health`.
 Render polls that path continuously for the life of the service — far more often than this cron job
@@ -130,7 +138,7 @@ Render polls that path continuously for the life of the service — far more oft
 
 | Path | Probes the database | Use |
 |---|---|---|
-| `/health/live` | no | Render's health check; anything polling on a schedule |
+| `/health/live` | no | Render's health check; the keep-warm ping; anything polling on a schedule |
 | `/health/ready` | yes | deploy verification, manual checks |
 | `/health` | yes | unchanged alias for `/health/ready`, kept so existing checks keep working |
 
@@ -212,13 +220,18 @@ subdomain certificate provides for free.
 
 ```
 curl -i https://subvora-api.onrender.com/health     # 200 Healthy -> DB reachable over TLS
-curl -i http://subvora-api.onrender.com/health      # 307 to https, exactly one hop
+curl -i http://subvora-api.onrender.com/health      # one redirect hop to https (301 from the edge)
 curl -i https://subvora-api.onrender.com/swagger    # 404 -> dev surface is not public
 ```
 
-The second one matters. Render terminates TLS and forwards plain HTTP; `UseForwardedHeaders` in
-`Program.cs` is what stops `UseHttpsRedirection` from redirecting to a URL that arrives as `http`
-again, forever. If you see a redirect loop, that middleware is missing or ordered after the
+The second one matters, and what it checks is **exactly one hop, no loop** — not a particular status
+code. On Render the redirect is a `301` issued by Cloudflare at the edge, which never reaches the
+app: the response carries neither `x-render-origin-server: Kestrel` nor `rndr-id`, unlike a real
+answer from the container. `UseHttpsRedirection`'s own `307` therefore only shows up outside Render.
+
+A redirect *loop* is the failure this catches. Render terminates TLS and forwards plain HTTP, so
+without `UseForwardedHeaders` in `Program.cs` the app sees scheme `http` and redirects to a URL that
+arrives as `http` again, forever. If you see that, the middleware is missing or ordered after the
 redirect.
 
 Then, against the deployed instance: register, log in, add a subscription, and load

@@ -268,7 +268,9 @@ app.UseSerilogRequestLogging(options =>
 app.UseExceptionHandler();
 
 // Liveness: is this process up and serving? No dependency checks at all, which is what makes it
-// safe for a platform to poll continuously. Render's healthCheckPath points here.
+// safe for a platform to poll continuously. Render's healthCheckPath points here, and so does the
+// keep-warm cron - a 200 that touches nothing beats the root path's 404, which cron-job.org counts
+// as a failed execution and eventually disables the job over.
 //
 // This split exists because the database probe is expensive in a way that is easy to miss. Neon's
 // free tier bills compute and scales to zero when idle, so an endpoint that opens a connection,
