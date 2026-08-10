@@ -9,9 +9,9 @@ public interface IAuthService
     /// </summary>
     Task RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default);
 
-    Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
+    Task<AuthResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default);
 
-    Task<RefreshResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default);
+    Task<AuthResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default);
 
     Task LogoutAsync(Guid userId, string presentedRefreshToken, CancellationToken cancellationToken = default);
 
@@ -25,5 +25,5 @@ public interface IAuthService
     /// one. Revokes every refresh token the account has - the same eviction a reset performs, for
     /// the same reason - and returns a fresh pair so the caller's own device stays signed in.
     /// </summary>
-    Task<ChangePasswordResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default);
+    Task<AuthResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default);
 }
