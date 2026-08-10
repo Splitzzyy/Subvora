@@ -4,6 +4,23 @@
 
 SubVora is a cross-platform mobile app that tracks all your subscriptions, warns you before renewals hit, and shows your real spend — across currencies — in one dashboard.
 
+## Download
+
+**[⬇ Get the Android APK — latest release](https://github.com/Splitzzyy/Subvora/releases/latest)**
+
+Android 8.0 (API 26) or newer. Download the `.apk` on your phone and tap it.
+
+Android blocks the first attempt and offers **Settings → Allow from this source** — that permission
+is granted per app, to whatever opened the file (Chrome, Files, …). Tap Install again afterwards.
+Play Protect will also warn that the app is unrecognised: that is what it says about any APK not
+distributed through the Play Store, not a finding about this one.
+
+No account is needed to download. Register inside the app.
+
+> iOS is not distributed. The Apple Developer Program is $99/yr and free provisioning only
+> sideloads to a device you own, seven days at a time. Nothing in the codebase blocks it later —
+> see [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md).
+
 ## Features
 
 - 🏷️ Auto-matched brand logos and categories
@@ -31,15 +48,30 @@ See [docs/Design.md](./docs/Design.md) for the full architecture and database sc
 | [docs/NON_TECHNICAL_REQUIREMENTS.md](./docs/NON_TECHNICAL_REQUIREMENTS.md) | Feature/product requirements |
 | [docs/Design.md](./docs/Design.md) | Architecture diagram, DB schema, matching flow |
 | [docs/ADDING_A_PROVIDER.md](./docs/ADDING_A_PROVIDER.md) | How to add, rename, or remove a subscription provider |
-| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Hosting the API and shipping the Android APK |
-| [docs/GO_LIVE_CHECKLIST.md](./docs/GO_LIVE_CHECKLIST.md) | Step-by-step checklist for the first deploy |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Hosting the API, cutting a release, shipping the Android APK |
+| [docs/debug/ANDROID_DEVICE.md](./docs/debug/ANDROID_DEVICE.md) | Running the app on a physical phone against a local API |
 | [CLAUDE.md](./CLAUDE.md) | Guidance for Claude Code working in this repo |
 
 API docs (Swagger UI) are served at `/swagger` when the API runs in the `Development` environment.
 
 ## Status
 
-Backend and mobile client are both implemented and under active development. Backend: full DB schema (users, categories, payment sources, subscription catalog with trigram matching, user subscriptions, FX rates, refresh tokens, notifications log, device tokens), auth (register/login/refresh/logout/password reset with JWT + rotating refresh tokens), subscription CRUD, trigram catalog matching, burn-rate dashboard, and the nightly billing-date advance job. Mobile: .NET MAUI client covering auth, subscription list/detail, dashboard, categories, payment sources, and settings, with an offline SQLite mirror and on-device renewal reminders.
+**Live.** The API runs on Render against Neon Postgres, and v1.0.0 of the Android app is published
+under [Releases](https://github.com/Splitzzyy/Subvora/releases/latest). Both sides remain under
+active development.
+
+**Backend:** users, categories, payment sources, subscription catalog, user subscriptions, FX rates,
+refresh tokens and password-reset codes; auth (register / login / refresh / logout / password reset /
+change password) on JWT plus rotating refresh tokens; subscription CRUD with optimistic concurrency;
+trigram catalog matching; and the burn-rate dashboard.
+
+Nothing advances a billing date on a timer — a date left in the past is how the app says a charge is
+outstanding, and it moves only when the user marks the charge paid.
+
+**Mobile:** .NET MAUI client covering auth, subscription list and detail, dashboard, categories,
+payment sources and settings, with a read-only offline SQLite mirror and on-device renewal
+reminders. There is no push service: reminders are derived from the subscription list and scheduled
+with the OS, which delivers them with the app closed.
 
 ## Getting Started
 

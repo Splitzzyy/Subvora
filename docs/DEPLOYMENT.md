@@ -3,9 +3,7 @@
 How to put SubVora in front of real users on free infrastructure. This is a one-time provisioning
 runbook plus the per-release loop; the ordering in [First deploy](#first-deploy) is load-bearing.
 
-Doing the first deploy right now? Work through [GO_LIVE_CHECKLIST.md](./GO_LIVE_CHECKLIST.md)
-instead — same steps as tick-boxes, without the reasoning. Come back here when you want to know why
-something is the way it is.
+Already live and just shipping a new version? Skip to [Cutting a release](#cutting-a-release).
 
 Scope: **Android only.** iOS has no free distribution path — the Apple Developer Program is $99/yr
 and free provisioning only sideloads to a device you own, for seven days at a time. Nothing in the
@@ -192,18 +190,65 @@ To re-run a migration without a code change — or for the first deploy, before 
 sequence against — run the workflow by hand from the Actions tab. `workflow_dispatch` skips the
 deploy-hook step.
 
-## Distribution
+## Cutting a release
 
-Tag a release and CI does the rest:
+**Always tag from `main`, after pulling.**
 
 ```
+git checkout main
+git pull
+git tag v1.1.0
+git push origin v1.1.0
+```
+
+`.github/workflows/release-android.yml` builds a signed APK and attaches it to a GitHub Release.
+Users download it and sideload; `adb install -r <apk>` for a device on your desk.
+
+### Tag from `main` or you will have to start over
+
+A tag-triggered run uses **the workflow file from the tagged commit**, not from `main`. Tag a
+feature branch and you bake in that branch's copy of `release-android.yml` — and no amount of
+merging afterwards changes it. `gh run rerun` re-runs the same old file, so a workflow fix made
+after tagging cannot reach the run that needs it.
+
+The only way out is to delete the tag and re-create it on the right commit:
+
+```
+gh release delete v1.0.0 --yes --cleanup-tag   # omit if no release was created
+git push origin :refs/tags/v1.0.0              # if the tag outlived the release
+git tag -d v1.0.0
+git checkout main && git pull
 git tag v1.0.0 && git push origin v1.0.0
 ```
 
-`.github/workflows/release-android.yml` builds a signed APK and attaches it to the GitHub Release.
-Users download it and sideload; `adb install -r <apk>` for a device on your desk.
+Cheap while nothing has been downloaded, and permanent once it has: re-pointing a tag people
+already fetched rewrites history under them. Retag early or ship the fix as the next version.
 
-Two things the workflow controls deliberately:
+A tag on an unmerged commit is also an orphan — squash-merging the branch does not put that commit
+into `main`, so the tag ends up referencing something outside the repo's history, and
+`--generate-notes` has nothing sensible to diff against.
+
+### If the build fails
+
+`Verify signing secrets` runs before the ~90-second publish and names the offending secret. It is
+there because `AndroidApkSigner` swallows apksigner's stderr, so the raw symptom is
+`MSB6006: "java" exited with code 2` and nothing else.
+
+| Message | Cause |
+|---|---|
+| `Alias <***> does not exist` | `ANDROID_KEY_ALIAS` is not the alias in the keystore |
+| `keystore password was incorrect` | `ANDROID_KEYSTORE_PASSWORD` is wrong |
+| `contains whitespace` | a secret set by piping into `gh secret set` kept the pipeline's trailing newline — re-set it through the interactive prompt, which trims |
+| `is empty` | the secret was never set, or set on the repo instead of the `production` environment |
+
+The keystore is PKCS12 (keytool's default since JDK 9), which has **no separate key password** —
+`ANDROID_KEY_PASSWORD` must equal `ANDROID_KEYSTORE_PASSWORD`.
+
+If the publish itself fails, the job uploads `publish-binlog` as an artifact for one day. It holds
+every task's real stdout and stderr, including what `MSB6006` discards. Open it at
+<https://live.msbuildlog.com>.
+
+### What the workflow controls deliberately
 
 - **It does not pass `ApiBaseAddress`.** The Release default in `SubVora.Mobile.csproj` is the single
   source of truth for which backend a shipped build talks to. That address is read from assembly
@@ -234,10 +279,28 @@ without `UseForwardedHeaders` in `Program.cs` the app sees scheme `http` and red
 arrives as `http` again, forever. If you see that, the middleware is missing or ordered after the
 redirect.
 
-Then, against the deployed instance: register, log in, add a subscription, and load
-`/api/v1/dashboard/burn-rate`. A populated category breakdown proves the catalog sync inserted
-providers and trigram matching is working — i.e. that step 2 ran before step 4. Request a password
-reset and confirm delivery in Brevo's activity log.
+Then, against the deployed instance: register, log in, and resolve a known provider. One call
+proves the ordering held:
+
+```
+POST /api/v1/subscriptions/resolve   { "input": "netflix" }
+
+tier         : AutoFill        <- pg_trgm is live and scoring
+providerName : Netflix         <- the catalog sync inserted providers
+categoryId   : <non-null>      <- system categories seeded, and the sync resolved one by name
+```
+
+`tier: Manual` means the catalog is empty, which means the container booted **before** step 2
+finished. `SubscriptionCatalogSyncService` runs only at start and swallows its own failure, so
+there is no retry and `/health` stays green throughout — the symptom is silent. Redeploy from the
+Render dashboard (*Manual Deploy → Deploy latest commit*) and check again.
+
+Then add a subscription and load `/api/v1/dashboard/burn-rate` for the same proof end to end.
+
+For email, registering a *second* time with an address that already exists is enough: that path
+mails the existing owner while returning an identical 202, so it exercises Brevo and the
+anti-enumeration behaviour at once. Otherwise request a password reset and check Brevo's activity
+log.
 
 On a device, with **no** `adb reverse` mapping active (unlike the local loop in
 [debug/ANDROID_DEVICE.md](./debug/ANDROID_DEVICE.md)): log in, confirm the list populates, then kill
