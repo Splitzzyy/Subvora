@@ -80,6 +80,23 @@ Nothing to write — `.github/workflows/db-migrate.yml` already exists and needs
       was taken — you must edit the Release `ApiBaseAddress` in
       `src/SubVora.Mobile/SubVora.Mobile.csproj` to match before step 8, or the app will call a
       host that does not exist.
+- [ ] Render dashboard → the service → *Settings* → **Deploy Hook** → copy the URL, and add it as
+      secret `RENDER_DEPLOY_HOOK_URL` in the same `production` environment as step 4:
+
+```
+gh secret set RENDER_DEPLOY_HOOK_URL --env production --repo <owner>/<repo>
+```
+
+**Do not skip this.** `render.yaml` sets `autoDeploy: false`, so that hook is the only thing that
+deploys anything. Without it every push to `main` migrates the database and then fails on an empty
+URL — a red check mark, and code that never ships while the schema moves ahead of it. The URL
+embeds its own key, which is why it is a secret rather than a plain setting.
+
+- [ ] Redeploy once, by hand, if the service first booted *before* step 4 finished — Render
+      dashboard → **Manual Deploy** → *Deploy latest commit*. `SubscriptionCatalogSyncService` runs
+      only at boot: against an unmigrated database it logs the failure, swallows it, and never
+      retries. The symptom is an empty provider catalog behind a perfectly healthy `/health`, which
+      step 6 is written to catch.
 
 ## 6. Check it works (~5 min)
 
@@ -88,30 +105,56 @@ Nothing to write — `.github/workflows/db-migrate.yml` already exists and needs
 ```
 curl -i https://subvora-api.onrender.com/health       # expect 200, body "Healthy" - includes the DB probe
 curl -i https://subvora-api.onrender.com/health/live  # expect 200 - no DB, what Render polls
-curl -i http://subvora-api.onrender.com/health        # expect 307 to https, exactly one hop
+curl -i http://subvora-api.onrender.com/health        # expect one redirect hop to https
 curl -i https://subvora-api.onrender.com/swagger      # expect 404 - dev surface must not be public
 ```
 
 If `/health/live` returns 200 but `/health` does not, the app is running and the database is not
 reachable — check the connection string before anything else.
 
-- [ ] Register a user and log in via `/api/v1/auth/register` and `/api/v1/auth/login`
-- [ ] Add a subscription, then GET `/api/v1/dashboard/burn-rate` — a populated category breakdown is
-      the proof that step 4 ran before step 5
-- [ ] POST to `/api/v1/auth/forgot-password` and confirm the mail in Brevo's *Statistics → Log*
+The third checks **one hop and no loop**, not a particular code: on Render it is a `301` from the
+Cloudflare edge, which never reaches the app (no `x-render-origin-server: Kestrel` header on the
+response). `UseHttpsRedirection`'s `307` only appears off-Render. A redirect *loop* is the real
+failure, and means `UseForwardedHeaders` is missing or mis-ordered.
 
-A redirect loop on the second curl means the deployed image predates the `UseForwardedHeaders`
+- [ ] Register a user and log in via `/api/v1/auth/register` and `/api/v1/auth/login`
+- [ ] POST `{ "input": "netflix" }` to `/api/v1/subscriptions/resolve` with that token. This is the
+      fastest proof that step 4 ran before step 5:
+
+```
+tier         : AutoFill        <- pg_trgm is live and scoring
+providerName : Netflix         <- the catalog sync inserted providers
+categoryId   : <non-null>      <- system categories seeded, and the sync resolved one by name
+```
+
+`tier: Manual` means the catalog is empty — the sync ran against an unmigrated database. Redeploy
+(step 5's last box) and try again.
+
+- [ ] Add a subscription, then GET `/api/v1/dashboard/burn-rate` — a populated category breakdown
+      confirms the same thing end to end
+- [ ] Confirm SMTP. Registering a *second* time with the same address is enough: that path emails
+      the existing owner ("Someone tried to create a SubVora account with your email") while
+      returning the identical 202, so it doubles as an anti-enumeration check. Otherwise POST to
+      `/api/v1/auth/forgot-password` and look in Brevo's *Statistics → Log*.
+
+A redirect loop on the third curl means the deployed image predates the `UseForwardedHeaders`
 change; redeploy from latest `main`.
 
 ## 7. Stop it falling asleep (~3 min)
 
-- [ ] cron-job.org → create a job → URL `https://subvora-api.onrender.com/` (**the root path**),
-      every 5 minutes
+- [ ] cron-job.org → create a job → URL `https://subvora-api.onrender.com/health/live`, every
+      5 minutes. Leave failure notifications on — with a 200 expected they become a real uptime
+      alert.
 
-Not `/health`. That endpoint probes Postgres, so pinging it every five minutes keeps Neon's compute
-awake around the clock and eats the free compute-hour allowance. The root path 404s, which still
-counts as traffic to Render. (`/health/live` would also be safe — it does not touch the database —
-but the root path is one less thing to get wrong.)
+Not `/health`: it probes Postgres, so pinging it every five minutes keeps Neon's compute awake
+around the clock and eats the free compute-hour allowance. `/health/live` is registered with
+`Predicate = _ => false`, so no check runs at all — it proves the process is serving and touches
+nothing.
+
+Not the root path either, which this checklist used to recommend. Root 404s, and cron-job.org counts
+any non-2xx as a *failed* execution: it alerts every five minutes and disables jobs that keep
+failing. A keep-warm ping that switches itself off is worse than none, because the app silently
+returns to cold starts.
 
 A free Render service sleeps after 15 minutes idle and takes 40–60s to wake, which reads as a broken
 app. At 5-minute pings it never sleeps, using ~730 of the 750 free instance-hours a month — enough
