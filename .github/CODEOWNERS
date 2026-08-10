@@ -1,0 +1,6 @@
+# Every path needs @rghvgrv's approval before it can merge to main.
+# Paired with branch protection on main: require_code_owner_reviews = true,
+# and merges to main restricted to @rghvgrv. Deleting or renaming this file
+# does not relax that - the protection rule is the thing with teeth; this
+# file is what names who the reviewer has to be.
+*   @rghvgrv
