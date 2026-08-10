@@ -70,8 +70,13 @@
                         <SwipeView Margin="16,0,16,10">
                             <SwipeView.RightItems>
                                 <SwipeItems>
+                                    <!-- Closed while the device has no network, and while another
+                                         write is in flight. There is no outbox, so a delete that
+                                         cannot reach the server is simply lost - see
+                                         SubscriptionListViewModel.CanSubmit. -->
                                     <SwipeItem Text="Delete"
                                                BackgroundColor="#C62828"
+                                               IsEnabled="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=CanSubmit}"
                                                Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=DeleteSubscriptionCommand}"
                                                CommandParameter="{Binding Id}" />
                                 </SwipeItems>
@@ -177,6 +182,7 @@
                                             HorizontalOptions="Start"
                                             Margin="0,8,0,0"
                                             IsVisible="{Binding IsOverdue}"
+                                            IsEnabled="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=CanSubmit}"
                                             Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionListViewModel}}, Path=MarkPaidCommand}"
                                             CommandParameter="{Binding Id}" />
                                 </Grid>

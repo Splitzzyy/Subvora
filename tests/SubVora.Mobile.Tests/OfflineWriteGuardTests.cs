@@ -34,6 +34,15 @@ public class OfflineWriteGuardTests
             new FakeUserPrompt(),
             connectivity);
 
+    private static SubscriptionListViewModel List(FakeConnectivityService connectivity, FakeSubscriptionsApi? subscriptionsApi = null) =>
+        new(
+            subscriptionsApi ?? new FakeSubscriptionsApi(),
+            new FakeLocalCacheService(),
+            new FakeUserPrompt { ConfirmResult = true },
+            new WeakReferenceMessenger(),
+            new FakeRenewalNotificationScheduler(),
+            connectivity);
+
     [Fact]
     public void WithNoNetwork_TheWriteButtonIsNotOffered()
     {
@@ -41,6 +50,9 @@ public class OfflineWriteGuardTests
 
         Assert.False(Settings(offline).CanSubmit);
         Assert.False(Detail(offline).CanSubmit);
+        // The list serves itself from the SQLite mirror, so it is the screen most likely to be open
+        // with no network - and it carries two writes, swipe-to-delete and mark-as-paid.
+        Assert.False(List(offline).CanSubmit);
         Assert.False(new CategoriesViewModel(new FakeCategoriesApi(), offline, new FakeUserPrompt()).CanSubmit);
         Assert.False(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), offline).CanSubmit);
     }
@@ -52,8 +64,59 @@ public class OfflineWriteGuardTests
 
         Assert.True(Settings(online).CanSubmit);
         Assert.True(Detail(online).CanSubmit);
+        Assert.True(List(online).CanSubmit);
         Assert.True(new CategoriesViewModel(new FakeCategoriesApi(), online, new FakeUserPrompt()).CanSubmit);
         Assert.True(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), online).CanSubmit);
+    }
+
+    [Fact]
+    public async Task AFailedMarkPaid_SaysTheChargeWasNotSettled()
+    {
+        // The worst of the offline writes to get wrong: the row keeps its OVERDUE chip either way,
+        // so "you appear to be offline" reads as "we'll sync it" while the charge stays unsettled.
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            MarkPaidHandler = _ => throw new HttpRequestException("Connection refused"),
+        };
+        var viewModel = List(new FakeConnectivityService { IsConnected = false }, subscriptionsApi);
+
+        await viewModel.MarkPaidCommand.ExecuteAsync(Guid.NewGuid());
+
+        Assert.Equal(OfflineWriteMessage, viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AFailedSwipeDelete_AlsoSaysTheChangeDidNotLand()
+    {
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            DeleteHandler = _ => throw new HttpRequestException("Connection refused"),
+        };
+        var viewModel = List(new FakeConnectivityService { IsConnected = false }, subscriptionsApi);
+
+        await viewModel.DeleteSubscriptionCommand.ExecuteAsync(Guid.NewGuid());
+
+        Assert.Equal(OfflineWriteMessage, viewModel.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TheListClosesItsWriteButtonsWhenAWriteRevealsTheConnectionIsGone()
+    {
+        // Same re-read-on-failure rule the other screens follow: the connection can drop while the
+        // list is already on screen, and only a failed write finds out.
+        var connectivity = new FakeConnectivityService { IsConnected = true };
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            MarkPaidHandler = _ => throw new HttpRequestException("Connection refused"),
+        };
+        var viewModel = List(connectivity, subscriptionsApi);
+        Assert.True(viewModel.CanSubmit);
+
+        connectivity.IsConnected = false;
+        await viewModel.MarkPaidCommand.ExecuteAsync(Guid.NewGuid());
+
+        Assert.True(viewModel.IsOffline);
+        Assert.False(viewModel.CanSubmit);
     }
 
     [Fact]

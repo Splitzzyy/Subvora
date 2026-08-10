@@ -27,8 +27,9 @@ public static class RenewalNotificationPlanner
             .Select(subscription => new
             {
                 Subscription = subscription,
-                // alert_days_advance is the user's lead time - the same number the server used to
-                // scan with, applied here instead.
+                // alert_days_advance is the user's lead time. It is applied here, on the device:
+                // reminders are derived from the subscription list and handed to the OS, and there
+                // is no server-side scan and no push service behind them.
                 NotifyAt = subscription.NextBillingDate
                     .AddDays(-subscription.AlertDaysAdvance)
                     .ToDateTime(NotifyAtTimeOfDay),
