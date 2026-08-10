@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SubVora.Application.Dashboard;
@@ -15,10 +15,10 @@ namespace SubVora.Api.Controllers;
 public class DashboardController : ControllerBase
 {
     private readonly ISubscriptionRepository _subscriptionRepository;
-    private readonly IBurnRateCalculator _burnRateCalculator;
+    private readonly BurnRateCalculator _burnRateCalculator;
     private readonly IUserRepository _userRepository;
 
-    public DashboardController(ISubscriptionRepository subscriptionRepository, IBurnRateCalculator burnRateCalculator, IUserRepository userRepository)
+    public DashboardController(ISubscriptionRepository subscriptionRepository, BurnRateCalculator burnRateCalculator, IUserRepository userRepository)
     {
         _subscriptionRepository = subscriptionRepository;
         _burnRateCalculator = burnRateCalculator;

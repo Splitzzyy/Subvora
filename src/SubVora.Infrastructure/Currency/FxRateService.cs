@@ -42,20 +42,6 @@ public class FxRateService : IFxRateService
         }
     }
 
-    public async Task<CachedFxRate?> GetRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken = default)
-    {
-        var cached = await ReadCachedAsync(baseCurrency, targetCurrency, cancellationToken);
-        if (cached is not null)
-        {
-            return cached;
-        }
-
-        // A user adding their first subscription in a new currency would otherwise be excluded from
-        // their own totals until the next scheduled refresh - up to a day, with nothing to show for
-        // it. Fetch the pair once, here, and it is cached for everyone from then on.
-        return await FetchMissingRateAsync(baseCurrency, targetCurrency, cancellationToken);
-    }
-
     public async Task<IReadOnlyDictionary<string, CachedFxRate>> GetRatesAsync(
         IReadOnlyCollection<string> baseCurrencies,
         string targetCurrency,
@@ -84,10 +70,10 @@ public class FxRateService : IFxRateService
             resolved[row.BaseCurrency] = new CachedFxRate(row.Rate, row.FetchedAt);
         }
 
-        // Only pairs the batch missed, one call each. This is the same on-demand path the
-        // single-pair read uses, and it is what lets a user's first subscription in a new currency
-        // count toward their totals before the next scheduled refresh - so it stays, cooldown and
-        // all, rather than being sacrificed to make the batch a single statement.
+        // Only pairs the batch missed, one call each. This is what lets a user's first subscription
+        // in a new currency count toward their totals before the next scheduled refresh - so it
+        // stays, cooldown and all, rather than being sacrificed to make the batch a single
+        // statement.
         foreach (var missing in wanted.Where(currency => !resolved.ContainsKey(currency)))
         {
             if (await FetchMissingRateAsync(missing, targetCurrency, cancellationToken) is { } fetched)
@@ -98,12 +84,6 @@ public class FxRateService : IFxRateService
 
         return resolved;
     }
-
-    private Task<CachedFxRate?> ReadCachedAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken) =>
-        _dbContext.FxRates.AsNoTracking()
-            .Where(r => r.BaseCurrency == baseCurrency && r.TargetCurrency == targetCurrency)
-            .Select(r => new CachedFxRate(r.Rate, r.FetchedAt))
-            .SingleOrDefaultAsync(cancellationToken);
 
     private async Task<CachedFxRate?> FetchMissingRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken)
     {

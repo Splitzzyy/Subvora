@@ -1,4 +1,4 @@
-namespace SubVora.Application.Matching;
+﻿namespace SubVora.Application.Matching;
 
 /// <summary>
 /// In-memory 3-tier confidence decision over an already-fetched best catalog candidate - same
@@ -6,7 +6,7 @@ namespace SubVora.Application.Matching;
 /// pg_trgm similarity query lives behind <see cref="ISubscriptionCatalogSearchRepository"/> in
 /// SubVora.Infrastructure.
 /// </summary>
-public class SubscriptionMatchService : ISubscriptionMatchService
+public class SubscriptionMatchService
 {
     /// <remarks>
     /// Both thresholds were measured against the seeded 54-provider catalog rather than guessed.

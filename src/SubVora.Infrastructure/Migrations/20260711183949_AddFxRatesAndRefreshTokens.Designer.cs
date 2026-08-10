@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
-using Pgvector;
 using SubVora.Domain.Enums;
 using SubVora.Infrastructure.Data;
 
@@ -212,7 +211,7 @@ namespace SubVora.Infrastructure.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("provider_name");
 
-                    b.Property<Vector>("SemanticEmbedding")
+                    b.Property<string>("SemanticEmbedding")
                         .HasColumnType("vector(1536)")
                         .HasColumnName("semantic_embedding");
 

@@ -1,5 +1,4 @@
 ﻿using Microsoft.EntityFrameworkCore.Migrations;
-using Pgvector;
 
 #nullable disable
 
@@ -35,7 +34,7 @@ namespace SubVora.Infrastructure.Migrations
                 .OldAnnotation("Npgsql:Enum:payment_source_type", "bank_account,card,other,wallet")
                 .OldAnnotation("Npgsql:PostgresExtension:pg_trgm", ",,");
 
-            migrationBuilder.AddColumn<Vector>(
+            migrationBuilder.AddColumn<string>(
                 name: "semantic_embedding",
                 table: "subscription_catalog",
                 type: "vector(1536)",

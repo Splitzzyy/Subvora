@@ -23,7 +23,7 @@ public class SubscriptionsController : ControllerBase
 
     private readonly ISubscriptionRepository _subscriptionRepository;
     private readonly IValidator<CreateSubscriptionRequest> _createValidator;
-    private readonly ISubscriptionMatchService _subscriptionMatchService;
+    private readonly SubscriptionMatchService _subscriptionMatchService;
     private readonly IValidator<ResolveSubscriptionRequest> _resolveValidator;
     private readonly ISubscriptionCatalogSearchRepository _catalogSearchRepository;
     private readonly ICategoryRepository _categoryRepository;
@@ -33,7 +33,7 @@ public class SubscriptionsController : ControllerBase
     public SubscriptionsController(
         ISubscriptionRepository subscriptionRepository,
         IValidator<CreateSubscriptionRequest> createValidator,
-        ISubscriptionMatchService subscriptionMatchService,
+        SubscriptionMatchService subscriptionMatchService,
         IValidator<ResolveSubscriptionRequest> resolveValidator,
         ISubscriptionCatalogSearchRepository catalogSearchRepository,
         ICategoryRepository categoryRepository,

@@ -135,9 +135,6 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     public partial string? SuggestedProviderName { get; set; }
 
     [ObservableProperty]
-    public partial string? SuggestedLogoUrl { get; set; }
-
-    [ObservableProperty]
     public partial Guid? SubscriptionId { get; set; }
 
     [ObservableProperty]
@@ -324,9 +321,14 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
 
     /// <summary>
     /// The only path that writes a match into the form, and it runs solely off the "Use" button.
-    /// Once the user has asked for the match they get all of it - name, catalog link, logo and
-    /// category - including over a category they had already picked, because taking the suggestion
-    /// is a statement about what the subscription is.
+    /// Once the user has asked for the match they get all of it - name, catalog link and category -
+    /// including over a category they had already picked, because taking the suggestion is a
+    /// statement about what the subscription is.
+    /// <para>
+    /// The match's logo is not carried: the catalog stores Simple Icons SVG URLs, which Android's
+    /// bitmap decoder cannot read, so nothing renders one - see #145 and <c>InitialConverter</c>,
+    /// which draws a letter tile on the device instead.
+    /// </para>
     /// </summary>
     private void ApplySuggestion(ResolveSubscriptionResponse suggestion)
     {
@@ -339,7 +341,6 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         // assignment also re-arms the debouncer; the resolve it schedules comes back with the same
         // catalog id, which is what OfferMatch checks to avoid re-raising the chip it just answered.
         _appliedCatalogId = suggestion.CatalogId;
-        SuggestedLogoUrl = suggestion.LogoUrl;
 
         if (suggestion.CategoryId is Guid categoryId)
         {

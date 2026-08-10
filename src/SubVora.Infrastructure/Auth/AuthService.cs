@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -108,7 +108,7 @@ public class AuthService : IAuthService
         }
     }
 
-    public async Task<LoginResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
+    public async Task<AuthResult> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
@@ -117,23 +117,23 @@ public class AuthService : IAuthService
         {
             // Deliberately does the work anyway - see DummyPasswordHash.
             _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
-            return LoginResult.Failed();
+            return AuthResult.Failed();
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
-            return LoginResult.Failed();
+            return AuthResult.Failed();
         }
 
         var tokens = await IssueTokenPairAsync(user, cancellationToken);
-        return LoginResult.Success(tokens);
+        return AuthResult.Success(tokens);
     }
 
-    public async Task<RefreshResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default)
+    public async Task<AuthResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(presentedRefreshToken))
         {
-            return RefreshResult.Failed();
+            return AuthResult.Failed();
         }
 
         var presentedHash = _jwtTokenService.HashRefreshToken(presentedRefreshToken);
@@ -141,14 +141,14 @@ public class AuthService : IAuthService
             .SingleOrDefaultAsync(t => t.TokenHash == presentedHash, cancellationToken);
         if (existingToken is null)
         {
-            return RefreshResult.Failed();
+            return AuthResult.Failed();
         }
 
         var now = DateTimeOffset.UtcNow;
         if (existingToken.ExpiresAt <= now)
         {
             // Simply too old. Not a theft signal, so the rest of the chain stays usable.
-            return RefreshResult.Failed();
+            return AuthResult.Failed();
         }
 
         // Compare-and-swap, not read-then-write: reading RevokedAt and setting it in two steps
@@ -180,12 +180,12 @@ public class AuthService : IAuthService
                 existingToken.UserId);
 
             await RevokeAllActiveTokensForUserAsync(existingToken.UserId, cancellationToken);
-            return RefreshResult.Failed();
+            return AuthResult.Failed();
         }
 
         var user = await _dbContext.Users.SingleAsync(u => u.Id == existingToken.UserId, cancellationToken);
         var tokens = await IssueTokenPairAsync(user, cancellationToken);
-        return RefreshResult.Success(tokens);
+        return AuthResult.Success(tokens);
     }
 
     public async Task LogoutAsync(Guid userId, string presentedRefreshToken, CancellationToken cancellationToken = default)
@@ -294,12 +294,12 @@ public class AuthService : IAuthService
         return ResetPasswordResult.Success();
     }
 
-    public async Task<ChangePasswordResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default)
+    public async Task<AuthResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default)
     {
         var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
         {
-            return ChangePasswordResult.Failed();
+            return AuthResult.Failed();
         }
 
         // The access token proves the session; this proves the person. Skipping it would let a
@@ -308,7 +308,7 @@ public class AuthService : IAuthService
         if (!_passwordHasher.Verify(request.CurrentPassword, user.PasswordHash))
         {
             _logger.LogWarning("Change-password rejected for user {UserId}: current password did not match.", userId);
-            return ChangePasswordResult.Failed();
+            return AuthResult.Failed();
         }
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
@@ -322,7 +322,7 @@ public class AuthService : IAuthService
         // password; signing them out of the device they are holding would read as a bug, while
         // every other device is now evicted.
         var tokens = await IssueTokenPairAsync(user, cancellationToken);
-        return ChangePasswordResult.Success(tokens);
+        return AuthResult.Success(tokens);
     }
 
     /// <summary>
