@@ -1,4 +1,4 @@
-using Microsoft.Maui.Controls.Shapes;
+﻿using Microsoft.Maui.Controls.Shapes;
 
 namespace SubVora.Mobile.Views;
 
@@ -50,7 +50,7 @@ public partial class ActionSheetView : ContentView
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
             ColumnSpacing = 12,
-            Padding = new Thickness(12, 11),
+            Padding = new Thickness(10, 9),
         };
 
         if (IconKeyByAction.TryGetValue(action, out var iconKey)
@@ -63,8 +63,8 @@ public partial class ActionSheetView : ContentView
             {
                 Data = icon,
                 Aspect = Stretch.Uniform,
-                WidthRequest = 19,
-                HeightRequest = 19,
+                WidthRequest = 17,
+                HeightRequest = 17,
                 Fill = foreground,
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
@@ -77,7 +77,7 @@ public partial class ActionSheetView : ContentView
         var label = new Label
         {
             Text = action,
-            FontSize = 15,
+            FontSize = 14.5,
             VerticalOptions = LayoutOptions.Center,
             TextColor = foreground,
         };
@@ -90,7 +90,7 @@ public partial class ActionSheetView : ContentView
             StrokeThickness = 0,
             Padding = 0,
             BackgroundColor = Colors.Transparent,
-            StrokeShape = new RoundRectangle { CornerRadius = 12 },
+            StrokeShape = new RoundRectangle { CornerRadius = 10 },
             Content = row,
         };
 

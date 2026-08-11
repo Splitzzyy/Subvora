@@ -23,7 +23,11 @@ public class ActionSheetPopup : Popup<string?>
         VerticalOptions = LayoutOptions.Start;
         HorizontalOptions = LayoutOptions.End;
         Padding = 0;
-        Margin = new Thickness(0, 12, 12, 0);
+
+        // The popup overlay covers the whole window, status bar and navigation bar included, so a
+        // small top margin put the menu on top of the purple app bar. This clears both: 24 for the
+        // status bar plus 56 for the app bar, then a gap.
+        Margin = new Thickness(0, 88, 10, 0);
 
         var view = new ActionSheetView(title, actions);
         view.ActionChosen += async (_, action) => await CloseAsync(action, CancellationToken.None);

@@ -12,35 +12,41 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
 
-    <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}"
-            Stroke="{AppThemeBinding Light={StaticResource HairlineLight}, Dark={StaticResource HairlineDark}}"
-            StrokeThickness="1"
-            WidthRequest="232"
-            Padding="6">
-        <Border.StrokeShape>
-            <RoundRectangle CornerRadius="18" />
-        </Border.StrokeShape>
-
-        <!-- A real shadow, because the menu floats over content rather than sitting on the page.
-             The toolkit's own popup shadow is switched off - it wrapped the whole container and
-             rounded it a second time. -->
+    <!-- Two nested Borders on purpose. The outer one carries the shadow; the inner one carries the
+         rounded shape and clips to it. Put on one Border, the shadow is drawn against the square
+         bounds and the corners stop reading as rounded at all. -->
+    <Border BackgroundColor="Transparent"
+            Stroke="Transparent"
+            StrokeThickness="0"
+            Padding="0"
+            HorizontalOptions="End">
         <Border.Shadow>
-            <Shadow Brush="#000000" Opacity="0.22" Radius="18" Offset="0,6" />
+            <Shadow Brush="#000000" Opacity="0.25" Radius="16" Offset="0,4" />
         </Border.Shadow>
 
-        <VerticalStackLayout Spacing="0">
+        <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}"
+                Stroke="{AppThemeBinding Light={StaticResource HairlineLight}, Dark={StaticResource HairlineDark}}"
+                StrokeThickness="1"
+                WidthRequest="212"
+                Padding="6"
+                StrokeShape="RoundRectangle 16">
 
-            <!-- Which row this menu belongs to. The toolkit cannot anchor a popup to the control
-                 that opened it, so without the name there is nothing tying the menu to its row. -->
-            <Label x:Name="TitleLabel"
-                   Style="{StaticResource Caption}"
-                   FontSize="12"
-                   FontAttributes="Bold"
-                   Margin="12,8,12,6"
-                   LineBreakMode="TailTruncation" />
+            <VerticalStackLayout Spacing="1">
 
-            <VerticalStackLayout x:Name="ActionsLayout" Spacing="2" />
+                <!-- Which row this menu belongs to. The toolkit cannot anchor a popup to the control
+                     that opened it, so without the name there is nothing tying the menu to its
+                     row. -->
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Caption}"
+                       FontSize="11"
+                       FontAttributes="Bold"
+                       CharacterSpacing="0.5"
+                       Margin="12,7,12,5"
+                       LineBreakMode="TailTruncation" />
 
-        </VerticalStackLayout>
+                <VerticalStackLayout x:Name="ActionsLayout" Spacing="1" />
+
+            </VerticalStackLayout>
+        </Border>
     </Border>
 </ContentView>
