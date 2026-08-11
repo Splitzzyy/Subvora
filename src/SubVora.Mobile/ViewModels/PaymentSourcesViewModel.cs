@@ -30,24 +30,12 @@ public partial class PaymentSourcesViewModel : ObservableObject
 
     public ObservableCollection<PaymentSourceDto> PaymentSources { get; } = [];
 
-    /// <summary>
-    /// Whether there is any row to act on. Gates the manage hint under the list - it used to live
-    /// in the CollectionView's EmptyView, which renders only when the list is empty, so it was on
-    /// screen exactly when it did not apply.
-    /// </summary>
-    public bool HasPaymentSources => PaymentSources.Count > 0;
-
     public PaymentSourcesViewModel(IPaymentSourcesApi paymentSourcesApi, IUserPrompt userPrompt, IConnectivityService connectivity)
     {
         _connectivity = connectivity;
         IsOffline = !connectivity.IsConnected;
         _paymentSourcesApi = paymentSourcesApi;
         _userPrompt = userPrompt;
-
-        // HasPaymentSources is derived from the collection, and a collection change raises nothing
-        // for it on its own. Hooked once here rather than remembered at each of the four call sites
-        // that mutate the list.
-        PaymentSources.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPaymentSources));
     }
     /// <summary>
     /// Whether the device has no network. Refreshed when the screen loads and after a failed write

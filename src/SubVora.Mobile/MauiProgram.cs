@@ -28,6 +28,13 @@ public static class MauiProgram
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
 			});
 
+#if ANDROID
+		// Android tints every tab icon from Shell's TabBar colours, which flattens the five
+		// coloured tab SVGs into one hue. See ColorfulTabsShellRenderer.
+		builder.ConfigureMauiHandlers(handlers =>
+			handlers.AddHandler<Shell, Platforms.Android.ColorfulTabsShellRenderer>());
+#endif
+
 #if DEBUG
 		builder.Logging.AddDebug();
 #endif
