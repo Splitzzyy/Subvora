@@ -13,11 +13,17 @@ public class ActionSheetPopup : Popup<string?>
 {
     public ActionSheetPopup(string title, IReadOnlyList<string> actions)
     {
-        // Bottom-anchored and full width: a sheet, not a floating dialog.
-        VerticalOptions = LayoutOptions.End;
-        HorizontalOptions = LayoutOptions.Fill;
+        // Sized to the menu card itself, right-aligned, near the top - where a row-level "..."
+        // button sits and where a dropdown from one is expected to appear.
+        //
+        // Not anchored to the button that opened it: CommunityToolkit's Popup exposes only Margin
+        // and the two alignment properties, with no anchor, so tying it to a specific row would
+        // mean plumbing that row's screen position through IUserPrompt - and that interface is the
+        // seam every view model is tested against. The menu carries the row's name instead.
+        VerticalOptions = LayoutOptions.Start;
+        HorizontalOptions = LayoutOptions.End;
         Padding = 0;
-        Margin = 0;
+        Margin = new Thickness(0, 12, 12, 0);
 
         var view = new ActionSheetView(title, actions);
         view.ActionChosen += async (_, action) => await CloseAsync(action, CancellationToken.None);

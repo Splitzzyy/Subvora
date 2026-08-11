@@ -3,16 +3,16 @@ using Microsoft.Maui.Controls.Shapes;
 namespace SubVora.Mobile.Views;
 
 /// <summary>
-/// The contents of the bottom sheet. Rows are built in code rather than bound to a collection
+/// The contents of the dropdown menu. Rows are built in code rather than bound to a collection
 /// because the caller passes plain strings - <c>IUserPrompt.ActionSheetAsync</c> keeps the platform
 /// action sheet's signature so view models and their tests are unaffected by this being a custom
-/// sheet rather than the system one.
+/// menu rather than the system one.
 /// </summary>
 public partial class ActionSheetView : ContentView
 {
     /// <summary>
-    /// Icons for the actions this app actually offers. An action without an entry simply gets no
-    /// glyph and a text-only row - better than picking a wrong icon for a word we did not expect.
+    /// Icons for the actions this app actually offers. An action without an entry gets a text-only
+    /// row - better than picking a wrong icon for a word we did not expect.
     /// </summary>
     private static readonly Dictionary<string, string> IconKeyByAction = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -20,7 +20,7 @@ public partial class ActionSheetView : ContentView
         ["Delete"] = "IconTrash",
     };
 
-    /// <summary>Actions that destroy something, drawn in the danger colour rather than the brand one.</summary>
+    /// <summary>Actions that destroy something, drawn in the danger colour rather than the normal text colour.</summary>
     private static readonly HashSet<string> DestructiveActions = new(StringComparer.OrdinalIgnoreCase) { "Delete" };
 
     /// <summary>Raised with the chosen action. Never raised on dismissal - the popup handles that.</summary>
@@ -42,54 +42,44 @@ public partial class ActionSheetView : ContentView
     {
         var isDestructive = DestructiveActions.Contains(action);
 
-        var accent = isDestructive
+        var foreground = isDestructive
             ? ThemeColor("DangerLight", "DangerDark")
-            : ThemeColor("BrandPurple", "BrandPurpleLight");
+            : ThemeColor("TextStrongLight", "TextStrongDark");
 
         var row = new Grid
         {
             ColumnDefinitions = [new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Star)],
-            ColumnSpacing = 16,
-            Padding = new Thickness(14, 12),
+            ColumnSpacing = 12,
+            Padding = new Thickness(12, 11),
         };
 
         if (IconKeyByAction.TryGetValue(action, out var iconKey)
             && Application.Current?.Resources.TryGetValue(iconKey, out var geometry) == true
             && geometry is Geometry icon)
         {
-            var tile = new Border
+            // Bare glyph, no tinted circle behind it. The circles belonged to the bottom sheet this
+            // replaced; at menu scale they were most of the row's height.
+            var glyph = new Microsoft.Maui.Controls.Shapes.Path
             {
-                WidthRequest = 40,
-                HeightRequest = 40,
-                Padding = 0,
-                Stroke = Colors.Transparent,
-                StrokeThickness = 0,
+                Data = icon,
+                Aspect = Stretch.Uniform,
+                WidthRequest = 19,
+                HeightRequest = 19,
+                Fill = foreground,
+                HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
-                BackgroundColor = accent.WithAlpha(0.14f),
-                StrokeShape = new RoundRectangle { CornerRadius = 20 },
-                Content = new Microsoft.Maui.Controls.Shapes.Path
-                {
-                    Data = icon,
-                    Aspect = Stretch.Uniform,
-                    WidthRequest = 20,
-                    HeightRequest = 20,
-                    Fill = accent,
-                    HorizontalOptions = LayoutOptions.Center,
-                    VerticalOptions = LayoutOptions.Center,
-                },
             };
 
-            row.Add(tile);
-            Grid.SetColumn(tile, 0);
+            row.Add(glyph);
+            Grid.SetColumn(glyph, 0);
         }
 
         var label = new Label
         {
             Text = action,
-            FontSize = 16,
-            FontAttributes = FontAttributes.Bold,
+            FontSize = 15,
             VerticalOptions = LayoutOptions.Center,
-            TextColor = isDestructive ? accent : ThemeColor("TextStrongLight", "TextStrongDark"),
+            TextColor = foreground,
         };
         row.Add(label);
         Grid.SetColumn(label, 1);
@@ -99,15 +89,13 @@ public partial class ActionSheetView : ContentView
             Stroke = Colors.Transparent,
             StrokeThickness = 0,
             Padding = 0,
-            BackgroundColor = isDestructive
-                ? accent.WithAlpha(0.08f)
-                : ThemeColor("SurfaceMutedLight", "SurfaceMutedDark"),
-            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            BackgroundColor = Colors.Transparent,
+            StrokeShape = new RoundRectangle { CornerRadius = 12 },
             Content = row,
         };
 
-        // The whole row is the target, not just the label - a 40px icon beside text people aim at
-        // is a tap that does nothing if only the text is wired up.
+        // The whole row is the target, not just the label - an icon beside text people aim at is a
+        // tap that does nothing if only the text is wired up.
         container.GestureRecognizers.Add(new TapGestureRecognizer
         {
             Command = new Command(() => ActionChosen?.Invoke(this, action)),

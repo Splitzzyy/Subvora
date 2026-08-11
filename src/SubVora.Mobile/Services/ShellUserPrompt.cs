@@ -30,7 +30,21 @@ public class ShellUserPrompt : IUserPrompt
     {
         var result = await Shell.Current.ShowPopupAsync<string?>(
             new ActionSheetPopup(title, actions),
-            new PopupOptions { CanBeDismissedByTappingOutsideOfPopup = true });
+            new PopupOptions
+            {
+                CanBeDismissedByTappingOutsideOfPopup = true,
+
+                // The toolkit draws its own rounded card and drop shadow around the content. Left
+                // on, they rounded all four corners and floated the sheet clear of the screen edge
+                // - the sheet supplies its own top-only corners, so both are cleared here.
+                Shape = null,
+                Shadow = null,
+
+                // Light scrim only. A menu is not modal in the way a sheet is - it should dim the
+                // page enough to read as "on top of" without hiding the row it belongs to, which is
+                // the only thing tying the two together.
+                PageOverlayColor = Colors.Black.WithAlpha(0.2f),
+            });
 
         // Dismissed without choosing. Null is the caller's cue to do nothing at all - never to fall
         // through to a default action.
