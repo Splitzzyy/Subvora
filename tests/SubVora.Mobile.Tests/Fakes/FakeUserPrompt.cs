@@ -35,6 +35,9 @@ public class FakeUserPrompt : IUserPrompt
     /// <summary>Which action the sheet returns. Null - the default - is a dismissal.</summary>
     public string? ActionSheetResult { get; set; }
 
+    /// <summary>Set by the page, never read by a view model. Present only to satisfy the interface.</summary>
+    public Rect? NextActionSheetAnchor { get; set; }
+
     public List<(string Title, string[] Actions)> ActionSheetCalls { get; } = [];
 
     public Task<string?> ActionSheetAsync(string title, string cancel, params string[] actions)

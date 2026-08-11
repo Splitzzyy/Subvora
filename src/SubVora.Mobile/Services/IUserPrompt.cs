@@ -28,4 +28,17 @@ public interface IUserPrompt
     /// </para>
     /// </summary>
     Task<string?> ActionSheetAsync(string title, string cancel, params string[] actions);
+
+    /// <summary>
+    /// Screen bounds of the control the next action sheet belongs to, so the menu can open against
+    /// it instead of in a corner. Null anchors nothing and the menu falls back to the top right.
+    /// <para>
+    /// Set by the view immediately before invoking the command, and cleared as soon as it is used.
+    /// It lives here rather than as a parameter because the view models call
+    /// <see cref="ActionSheetAsync"/> and must not know about views - the position is a fact only
+    /// the page has, and threading a VisualElement through a view model to reach this is worse than
+    /// one write-then-consume property on the dialog service.
+    /// </para>
+    /// </summary>
+    Rect? NextActionSheetAnchor { get; set; }
 }

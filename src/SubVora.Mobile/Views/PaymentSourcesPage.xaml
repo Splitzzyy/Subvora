@@ -97,8 +97,8 @@
                                             MinimumHeightRequest="34"
                                             MinimumWidthRequest="44"
                                             SemanticProperties.Description="Rename or delete this payment source"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=ManageCommand}"
-                                            CommandParameter="{Binding .}" />
+                                            CommandParameter="{Binding .}"
+                                            Clicked="OnManageClicked" />
                                 </Grid>
                             </SwipeView>
                         </DataTemplate>

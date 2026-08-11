@@ -26,10 +26,18 @@ public class ShellUserPrompt : IUserPrompt
     /// changing it would churn every caller for no behavioural gain.
     /// </para>
     /// </summary>
+    /// <inheritdoc />
+    public Rect? NextActionSheetAnchor { get; set; }
+
     public async Task<string?> ActionSheetAsync(string title, string cancel, params string[] actions)
     {
+        // Consumed once. Left set, a later menu opened from somewhere with no anchor would position
+        // itself against whatever was tapped last.
+        var anchor = NextActionSheetAnchor;
+        NextActionSheetAnchor = null;
+
         var result = await Shell.Current.ShowPopupAsync<string?>(
-            new ActionSheetPopup(title, actions),
+            new ActionSheetPopup(title, actions, anchor),
             new PopupOptions
             {
                 CanBeDismissedByTappingOutsideOfPopup = true,

@@ -98,10 +98,11 @@
                                         Style="{StaticResource M3TonalIconButton}"
                                         IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
                                         SemanticProperties.Description="Rename or delete this category">
+                                    <!-- Handled in code-behind rather than bound straight to the
+                                         command: the menu is anchored to this button, and where it
+                                         is on screen is a fact only the page can supply. -->
                                     <Border.GestureRecognizers>
-                                        <TapGestureRecognizer
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=ManageCommand}"
-                                            CommandParameter="{Binding .}" />
+                                        <TapGestureRecognizer Tapped="OnManageTapped" CommandParameter="{Binding .}" />
                                     </Border.GestureRecognizers>
                                     <Path Style="{StaticResource M3TonalIconButtonGlyph}" Data="{StaticResource IconMoreVert}" />
                                 </Border>
