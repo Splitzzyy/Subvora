@@ -45,6 +45,13 @@ public class CategoryColorConverter : IValueConverter
     /// </summary>
     private const float SoftAlpha = 0.20f;
 
+    /// <summary>
+    /// The same wash needs more of the hue on a dark surface. At 0.20 over #1C1C21 the tinted tiles
+    /// came out muddy - navy for blue, brown for orange - because most of what showed through was
+    /// the near-black behind them rather than the colour.
+    /// </summary>
+    private const float SoftAlphaDark = 0.32f;
+
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var isDark = Application.Current?.RequestedTheme == AppTheme.Dark;
@@ -53,7 +60,7 @@ public class CategoryColorConverter : IValueConverter
             ? Color.FromArgb(isDark ? pair.Dark : pair.Light)
             : Color.FromArgb(isDark ? NeutralDark : NeutralLight);
 
-        return parameter as string == "soft" ? color.WithAlpha(SoftAlpha) : color;
+        return parameter as string == "soft" ? color.WithAlpha(isDark ? SoftAlphaDark : SoftAlpha) : color;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>

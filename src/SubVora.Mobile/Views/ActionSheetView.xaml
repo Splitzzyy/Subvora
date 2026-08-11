@@ -19,9 +19,13 @@
             Stroke="Transparent"
             StrokeThickness="0"
             Padding="0"
-            HorizontalOptions="End">
+            HorizontalOptions="End"
+            StrokeShape="RoundRectangle 16">
+        <!-- The shadow follows this Border's shape, so it has to be the same rounded rectangle as
+             the card inside it. Left square, the shadow was cast as a rectangle around the rounded
+             card - invisible against a light page, but a pale halo in dark mode. -->
         <Border.Shadow>
-            <Shadow Brush="#000000" Opacity="0.25" Radius="16" Offset="0,4" />
+            <Shadow Brush="#000000" Opacity="0.35" Radius="14" Offset="0,4" />
         </Border.Shadow>
 
         <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}"

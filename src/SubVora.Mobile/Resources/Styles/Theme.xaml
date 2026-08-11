@@ -526,7 +526,10 @@
     <!-- One row of a list. Its own container, so rows read as separate objects rather than as
          entries in a table - the M3E list treatment. -->
     <Style x:Key="M3ListItem" TargetType="Border">
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}" />
+        <!-- SurfaceMutedDark in dark, not SurfaceDark: at #1C1C21 on a #111114 page the rows barely
+             separated from the background and the list read as vague blobs. Light needs no
+             equivalent - white on #F4F5F9 already lifts. -->
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceMutedDark}}" />
         <Setter Property="Stroke" Value="Transparent" />
         <Setter Property="StrokeThickness" Value="0" />
         <Setter Property="Padding" Value="14,12" />
@@ -598,7 +601,9 @@
         <Setter Property="Stroke" Value="Transparent" />
         <Setter Property="StrokeThickness" Value="0" />
         <Setter Property="VerticalOptions" Value="Center" />
-        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BrandPurpleSoft}, Dark={StaticResource SurfaceMutedDark}}" />
+        <!-- HairlineDark in dark, not SurfaceMutedDark: the row itself is now SurfaceMutedDark, so
+             the button had no edge against the row it sits on. -->
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BrandPurpleSoft}, Dark={StaticResource HairlineDark}}" />
         <Setter Property="StrokeShape">
             <Setter.Value>
                 <RoundRectangle CornerRadius="22" />

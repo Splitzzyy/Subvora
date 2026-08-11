@@ -1,4 +1,5 @@
-using CommunityToolkit.Maui;
+﻿using CommunityToolkit.Maui;
+using Microsoft.Maui.Controls.Shapes;
 using CommunityToolkit.Maui.Extensions;
 using SubVora.Mobile.Views;
 
@@ -42,10 +43,16 @@ public class ShellUserPrompt : IUserPrompt
             {
                 CanBeDismissedByTappingOutsideOfPopup = true,
 
-                // The toolkit draws its own rounded card and drop shadow around the content. Left
-                // on, they rounded all four corners and floated the sheet clear of the screen edge
-                // - the sheet supplies its own top-only corners, so both are cleared here.
-                Shape = null,
+                // An explicitly transparent shape, not null: null falls back to the toolkit's own
+                // default card, which draws a pale rounded rectangle behind the content. Invisible
+                // against a light page, it showed up in dark mode as a halo framing the menu.
+                Shape = new RoundRectangle
+                {
+                    CornerRadius = 16,
+                    Fill = Colors.Transparent,
+                    Stroke = Colors.Transparent,
+                    StrokeThickness = 0,
+                },
                 Shadow = null,
 
                 // Light scrim only. A menu is not modal in the way a sheet is - it should dim the
