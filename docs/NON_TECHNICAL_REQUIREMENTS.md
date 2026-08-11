@@ -18,6 +18,7 @@ Every subscription belongs to a category (Entertainment, Productivity, Fitness, 
 Users specify the billing cadence when adding a subscription:
 - Weekly
 - Monthly
+- Quarterly
 - Yearly
 - One-time
 

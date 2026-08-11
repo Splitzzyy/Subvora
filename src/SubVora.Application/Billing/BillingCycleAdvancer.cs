@@ -23,6 +23,9 @@ public static class BillingCycleAdvancer
         // billing provider charges on.
         BillingCycleType.Weekly => current.AddDays(7),
         BillingCycleType.Monthly => current.AddMonths(1),
+        // Three calendar months, not 91 days: a quarterly charge falls on the same day of the
+        // month each time, and adding days would drift it forward across the short months.
+        BillingCycleType.Quarterly => current.AddMonths(3),
         BillingCycleType.Yearly => current.AddYears(1),
         BillingCycleType.OneTime => current,
         _ => throw new ArgumentOutOfRangeException(nameof(cadence), cadence, "Unhandled billing cycle cadence."),

@@ -152,7 +152,19 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     [ObservableProperty]
     public partial string SaveButtonText { get; set; } = "Save";
 
-    public IReadOnlyList<BillingCycleType> BillingCycleTypes { get; } = Enum.GetValues<BillingCycleType>();
+    /// <summary>
+    /// Spelled out rather than <c>Enum.GetValues</c>: the enum is ordered for storage compatibility,
+    /// not for reading, so shortest-cycle-first has to be stated here. A value added to the enum and
+    /// not added here simply will not appear in the picker.
+    /// </summary>
+    public IReadOnlyList<BillingCycleType> BillingCycleTypes { get; } =
+    [
+        BillingCycleType.Weekly,
+        BillingCycleType.Monthly,
+        BillingCycleType.Quarterly,
+        BillingCycleType.Yearly,
+        BillingCycleType.OneTime,
+    ];
 
     public ObservableCollection<CategoryDto> Categories { get; } = [];
 

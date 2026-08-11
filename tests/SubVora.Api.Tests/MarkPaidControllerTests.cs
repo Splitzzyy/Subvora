@@ -80,6 +80,24 @@ public class MarkPaidControllerTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task MarkPaid_OnAQuarterlySubscription_AdvancesThreeCalendarMonths()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        // 30 Nov, so the clamp is exercised on the way through: three months lands on 28 Feb, and
+        // a day-count cycle would have put it on 1 March.
+        var due = new DateOnly(2025, 11, 30);
+        var created = await CreateAsync(client, BillingCycleType.Quarterly, new DateOnly(2025, 8, 30), due);
+
+        var response = await client.PostAsync($"/api/v1/subscriptions/{created.Id}/mark-paid", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var settled = await response.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(due, settled!.LastPaidDate);
+        Assert.Equal(new DateOnly(2026, 2, 28), settled.NextBillingDate);
+        Assert.True(settled.IsActive);
+    }
+
+    [Fact]
     public async Task MarkPaid_OnAOneTimeSubscription_EndsItRatherThanBillingAgain()
     {
         var client = await CreateAuthenticatedClientAsync();

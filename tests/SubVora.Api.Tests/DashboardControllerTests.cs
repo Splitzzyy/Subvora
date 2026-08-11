@@ -69,6 +69,35 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task GetBurnRate_WithAQuarterlySubscription_RoundTripsTheEnumAndProjectsFourChargesAYear()
+    {
+        // Also the only test that proves the native billing_cycle_type enum actually carries the
+        // new label: a missing ALTER TYPE fails here at insert, not at compile time.
+        var client = await CreateAuthenticatedClientAsync($"dash-quarterly-{Guid.NewGuid()}@example.com");
+        var request = new CreateSubscriptionRequest
+        {
+            CustomName = "Notion",
+            CostAmount = 400m,
+            Currency = "INR",
+            CycleCadence = BillingCycleType.Quarterly,
+            PurchaseDate = new DateOnly(2026, 1, 1),
+            NextBillingDate = new DateOnly(2026, 4, 1),
+            AlertDaysAdvance = 3,
+        };
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(BillingCycleType.Quarterly, created?.CycleCadence);
+
+        var response = await client.GetAsync("/api/v1/dashboard/burn-rate");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<BurnRateResult>(JsonOptions);
+        Assert.NotNull(result);
+        Assert.Equal(1604.40m, result!.Yearly);
+    }
+
+    [Fact]
     public async Task GetBurnRate_GroupsSpendByThePaymentSourceItIsChargedTo()
     {
         var client = await CreateAuthenticatedClientAsync($"dash-source-{Guid.NewGuid()}@example.com");

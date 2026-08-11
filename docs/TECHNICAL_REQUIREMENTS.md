@@ -69,7 +69,7 @@ The schema itself is defined by the EF Core entity configurations and migrations
 - `categories` — system categories seeded with `user_id IS NULL` (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Food`, `Travel`, `Other`), plus per-user ones.
 - `users` — account, `preferred_currency`.
 - `subscription_catalog` — canonical provider list with `logo_url`, `standard_category`. Matched on `provider_name` via `pg_trgm`.
-- `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `last_paid_date` (null until first marked paid), `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
+- `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Quarterly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `last_paid_date` (null until first marked paid), `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
 - `fx_rates` (to be added) — `base_currency`, `target_currency`, `rate`, `fetched_at` — cached exchange rates for burn-rate conversion.
 
 Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigram index — the catalog is ~54 rows, where a sequential scan is microseconds; add a GiST `gist_trgm_ops` index past a few thousand.
@@ -78,7 +78,7 @@ Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigra
 
 1. **Logo Feature** — logo resolved server-side at catalog-match time (`logo_url` on `subscription_catalog`); client renders from CDN URL with local placeholder/fallback icon.
 2. **Category** — derived from `subscription_catalog.standard_category` when matched; user can override per-subscription.
-3. **Billing type** — `billing_cycle_type` enum (`Weekly`, `Monthly`, `Yearly`, `OneTime`) drives both burn-rate math and next-billing-date calculation.
+3. **Billing type** — `billing_cycle_type` enum (`Weekly`, `Monthly`, `Quarterly`, `Yearly`, `OneTime`) drives both burn-rate math and next-billing-date calculation. It is a native Postgres enum, so adding a member needs a migration (`ALTER TYPE ... ADD VALUE`) applied before the code that can emit it. Burn-rate divisors are 7 / 30 / 91 / 365 days; date advancement uses calendar months (`AddMonths(3)` for quarterly) so a charge keeps its day of the month.
 4. **Purchase / expiry dates** — `purchase_date` + `cycle_cadence` give the client its default `next_billing_date` (one cycle after purchase). Afterwards the date moves only when the user marks the charge paid, which records `last_paid_date` and steps on one cycle from the date settled. No background job advances it: a date left in the past is what tells the client the charge is overdue, and a nightly roll-forward would erase that signal.
 5. **Alert preferences** — `alert_days_advance` (int, user-configurable per subscription or global default). The mobile client schedules one local notification per active subscription at `next_billing_date - alert_days_advance`, re-derived whenever the subscription list loads. The OS delivers it with the app closed, so no server-side send path exists. iOS holds at most 64 pending notifications, so the nearest dates win. The server's only job here is rolling passed billing dates forward (`BillingDateAdvanceBackgroundService`), which the client cannot do.
 6. **Deduction source** — free-text field (`deduction_source`) initially; optionally normalized into a `payment_sources` lookup table later.

@@ -34,6 +34,7 @@ public static class BillingCycleAdvancer
         {
             BillingCycleType.Weekly => start.AddDays(7),
             BillingCycleType.Monthly => start.AddMonths(1),
+            BillingCycleType.Quarterly => start.AddMonths(3),
             BillingCycleType.Yearly => start.AddYears(1),
             BillingCycleType.OneTime => start,
             _ => throw new ArgumentOutOfRangeException(nameof(cadence), cadence, "Unhandled billing cycle cadence."),

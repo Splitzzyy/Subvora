@@ -58,15 +58,28 @@ public class BurnRateCalculatorTests
         {
             RecurringSubscription(7m, BillingCycleType.Weekly),
             RecurringSubscription(30m, BillingCycleType.Monthly),
+            RecurringSubscription(91m, BillingCycleType.Quarterly),
             RecurringSubscription(365m, BillingCycleType.Yearly),
         };
 
         var result = await _calculator.CalculateAsync(subscriptions, "USD");
 
-        // dailyRateSum = 1 + 1 + 1 = 3
-        Assert.Equal(21m, result.Weekly);
-        Assert.Equal(90m, result.Monthly);
-        Assert.Equal(1095m, result.Yearly);
+        // dailyRateSum = 1 + 1 + 1 + 1 = 4
+        Assert.Equal(28m, result.Weekly);
+        Assert.Equal(120m, result.Monthly);
+        Assert.Equal(1460m, result.Yearly);
+    }
+
+    [Fact]
+    public async Task QuarterlySubscription_ProjectsToRoughlyFourChargesAYear()
+    {
+        // The reason the divisor is 365/4 and not 3 x 30: at 90 days a 400/quarter subscription
+        // reports 1622/year, which is 4.06 charges. The user pays four.
+        var subscriptions = new[] { RecurringSubscription(400m, BillingCycleType.Quarterly) };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Equal(1604.40m, result.Yearly);
     }
 
     [Fact]

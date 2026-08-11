@@ -97,6 +97,48 @@ public class SubscriptionDetailViewModelTests
     }
 
     [Fact]
+    public void BillingCycleTypes_OffersEveryCadence_ShortestFirst()
+    {
+        var viewModel = CreateViewModel();
+
+        Assert.Equal(
+            [
+                BillingCycleType.Weekly,
+                BillingCycleType.Monthly,
+                BillingCycleType.Quarterly,
+                BillingCycleType.Yearly,
+                BillingCycleType.OneTime,
+            ],
+            viewModel.BillingCycleTypes);
+    }
+
+    [Fact]
+    public void BillingCycleType_OrdinalsAreFrozen()
+    {
+        // CachedSubscription is a sqlite-net table and stores this enum as its ordinal, so the
+        // numbering is on-disk data on every installed device, not an implementation detail.
+        // Reordering the enum - even to put Quarterly where it reads better - would make every
+        // cached row decode as the wrong cadence until the next successful sync. Quarterly is last
+        // for exactly this reason; anything new goes after it.
+        Assert.Equal(0, (int)BillingCycleType.Weekly);
+        Assert.Equal(1, (int)BillingCycleType.Monthly);
+        Assert.Equal(2, (int)BillingCycleType.Yearly);
+        Assert.Equal(3, (int)BillingCycleType.OneTime);
+        Assert.Equal(4, (int)BillingCycleType.Quarterly);
+    }
+
+    [Fact]
+    public void ChoosingQuarterly_DerivesANextBillingDateThreeMonthsOut()
+    {
+        var viewModel = CreateViewModel();
+
+        viewModel.PurchaseDate = new DateTime(2026, 8, 7);
+        viewModel.CycleCadence = BillingCycleType.Quarterly;
+
+        Assert.Equal(new DateTime(2026, 11, 7), viewModel.NextBillingDate);
+    }
+
+    [Fact]
     public void TypingFewerThanThreeCharacters_NeverCallsResolve()
     {
         var subscriptionsApi = new FakeSubscriptionsApi();

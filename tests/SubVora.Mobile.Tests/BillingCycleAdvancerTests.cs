@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Billing;
 
@@ -18,6 +18,7 @@ public class BillingCycleAdvancerTests
     [Theory]
     [InlineData("2026-08-07", BillingCycleType.Weekly, "2026-08-14")]
     [InlineData("2026-08-07", BillingCycleType.Monthly, "2026-09-07")]
+    [InlineData("2026-08-07", BillingCycleType.Quarterly, "2026-11-07")]
     [InlineData("2026-08-07", BillingCycleType.Yearly, "2027-08-07")]
     public void OneCycleAfterThePurchaseDate(string purchase, BillingCycleType cadence, string expected)
     {

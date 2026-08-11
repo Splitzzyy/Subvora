@@ -6,6 +6,13 @@ public enum BillingCycleType
     Monthly,
     Yearly,
     OneTime,
+
+    /// <summary>
+    /// Last, matching the API enum. The order is load-bearing here rather than cosmetic:
+    /// <c>CachedSubscription</c> is a sqlite-net table and stores this as its ordinal, so renumbering
+    /// would misread every already-cached row after an app upgrade. The picker orders itself.
+    /// </summary>
+    Quarterly,
 }
 
 public class SubscriptionDto
