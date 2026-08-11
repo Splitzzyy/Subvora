@@ -18,120 +18,107 @@
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
-        <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16,16,16,0" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*" Padding="16,16,16,0" RowSpacing="14">
 
             <Label Grid.Row="0"
                    Style="{StaticResource ErrorText}"
                    Text="{Binding ErrorMessage}"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
+            <!-- Filled field and pill button, both fully round, so the two controls read as one
+                 composed action rather than a box next to a box. -->
             <Grid Grid.Row="1" ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                <Border Grid.Column="0" Style="{StaticResource FieldBorder}">
+                <Border Grid.Column="0" Style="{StaticResource M3FilledField}">
                     <Entry Placeholder="New category" Text="{Binding NewCategoryName}" />
                 </Border>
-                <Button Grid.Column="1" Text="Add" Command="{Binding AddCommand}" IsEnabled="{Binding CanSubmit}" Padding="20,14" />
+                <Button Grid.Column="1"
+                        Style="{StaticResource M3PillButton}"
+                        Text="Add"
+                        Command="{Binding AddCommand}"
+                        IsEnabled="{Binding CanSubmit}" />
             </Grid>
 
-            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18,4" Margin="0,0,0,16">
-                <CollectionView ItemsSource="{Binding Groups}" IsGrouped="True">
+            <!-- No outer card. Each row is its own container on the page background, which is what
+                 gives the list its shape rhythm - one card with hairline separators inside it is
+                 the treatment this replaced. -->
+            <CollectionView Grid.Row="2"
+                            ItemsSource="{Binding Groups}"
+                            IsGrouped="True"
+                            Margin="0,0,0,16">
 
-                    <!-- Two sections, because these are two kinds of thing: the seeded defaults
-                         every account shares, and this user's own - which are the only ones that
-                         can be renamed or deleted. The heading carries that distinction, so the
-                         rows no longer need a per-row SYSTEM chip. -->
-                    <CollectionView.GroupHeaderTemplate>
-                        <DataTemplate x:DataType="viewModels:CategoryGroup">
-                            <Grid Padding="2,16,2,8" ColumnDefinitions="*,Auto">
-                                <Label Grid.Column="0"
-                                       Style="{StaticResource SectionHeading}"
-                                       Text="{Binding Title}"
-                                       VerticalOptions="Center" />
-                                <Label Grid.Column="1"
-                                       Style="{StaticResource Caption}"
-                                       Text="{Binding Summary}"
-                                       FontSize="12"
-                                       VerticalOptions="Center" />
-                            </Grid>
-                        </DataTemplate>
-                    </CollectionView.GroupHeaderTemplate>
+                <CollectionView.ItemsLayout>
+                    <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
+                </CollectionView.ItemsLayout>
 
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="dtos:CategoryDto">
-                            <!-- Swipe is kept as the fast path, but it advertises itself to nobody,
-                                 so each editable row also carries a visible manage button. Both
-                                 routes are hidden for system defaults - shared by every account,
-                                 and the server answers 404 for them anyway. -->
-                            <SwipeView>
-                                <SwipeView.RightItems>
-                                    <SwipeItems>
-                                        <SwipeItem Text="Rename"
-                                                   BackgroundColor="#512BD4"
-                                                   IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
-                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=RenameCommand}"
-                                                   CommandParameter="{Binding .}" />
-                                        <SwipeItem Text="Delete"
-                                                   BackgroundColor="#C62828"
-                                                   IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
-                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=DeleteCommand}"
-                                                   CommandParameter="{Binding .}" />
-                                    </SwipeItems>
-                                </SwipeView.RightItems>
+                <!-- Two sections, because these are two kinds of thing: the seeded defaults every
+                     account shares, and this user's own - the only ones that can be renamed or
+                     deleted. The heading carries that distinction, so rows need no SYSTEM chip. -->
+                <CollectionView.GroupHeaderTemplate>
+                    <DataTemplate x:DataType="viewModels:CategoryGroup">
+                        <Grid Padding="6,20,6,10" ColumnDefinitions="*,Auto">
+                            <Label Grid.Column="0"
+                                   Style="{StaticResource M3SectionTitle}"
+                                   Text="{Binding Title}"
+                                   VerticalOptions="Center" />
+                            <Border Grid.Column="1" Style="{StaticResource M3CountPill}">
+                                <Label Style="{StaticResource M3CountPillText}" Text="{Binding Summary}" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.GroupHeaderTemplate>
 
-                            <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto">
-                                <!-- Tile rather than the old 10px dot: at that size the colour was
-                                     the only thing distinguishing one row from the next, and a hue
-                                     alone cannot say "Fitness". -->
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="dtos:CategoryDto">
+                        <Border Style="{StaticResource M3ListItem}">
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+
+                                <!-- Circular, and tinted per category. The tile, its glyph and the
+                                     name all agree; none of them carries identity alone, because
+                                     beyond a few categories on screen no palette keeps every pair
+                                     distinguishable - the label is the cue. -->
                                 <Border Grid.Column="0"
-                                        Style="{StaticResource IconTile}"
-                                        Margin="0,0,12,0"
+                                        Style="{StaticResource M3IconCircle}"
                                         BackgroundColor="{Binding Name, Converter={StaticResource CategoryColorConverter}, ConverterParameter=soft}">
-                                    <Path Style="{StaticResource IconTileGlyph}"
+                                    <Path Style="{StaticResource M3IconCircleGlyph}"
                                           Data="{Binding Name, Converter={StaticResource CategoryIconConverter}}"
                                           Fill="{Binding Name, Converter={StaticResource CategoryColorConverter}}" />
                                 </Border>
+
                                 <Label Grid.Column="1"
                                        Style="{StaticResource BodyStrong}"
                                        Text="{Binding Name}"
                                        VerticalOptions="Center" />
 
-                                <!-- The discoverable half of rename/delete. A button rather than an
-                                     icon-only tap target so it reads as pressable, and only on rows
-                                     that actually have actions. -->
-                                <Button Grid.Column="2"
-                                        Style="{StaticResource SecondaryButton}"
-                                        Text="•••"
-                                        FontSize="14"
-                                        Padding="12,4"
-                                        MinimumHeightRequest="34"
-                                        MinimumWidthRequest="44"
-                                        SemanticProperties.Description="Rename or delete this category"
+                                <!-- The only route to rename/delete. Swipe used to sit alongside
+                                     this and is gone: it advertised itself to nobody, and two ways
+                                     into the same menu is one more than this screen needs. Drawn
+                                     only on rows that have actions - the server answers 404 for a
+                                     system default regardless. -->
+                                <Border Grid.Column="2"
+                                        Style="{StaticResource M3TonalIconButton}"
                                         IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
-                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=ManageCommand}"
-                                        CommandParameter="{Binding .}" />
+                                        SemanticProperties.Description="Rename or delete this category">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=ManageCommand}"
+                                            CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Path Style="{StaticResource M3TonalIconButtonGlyph}" Data="{StaticResource IconMoreVert}" />
+                                </Border>
                             </Grid>
-                            </SwipeView>
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
 
-                    <CollectionView.EmptyView>
-                        <VerticalStackLayout Padding="0,40" Spacing="10">
-                            <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconTag}" />
-                            <Label Style="{StaticResource EmptyTitle}" Text="No categories" />
-                            <Label Style="{StaticResource EmptyBody}"
-                                   Text="Add one above to group your subscriptions." />
-                        </VerticalStackLayout>
-                    </CollectionView.EmptyView>
-                </CollectionView>
-            </Border>
-
-            <!-- Outside the CollectionView on purpose. This hint used to live in EmptyView, which
-                 renders only when the list is empty - so the one thing that explained the gesture
-                 was on screen exactly when there was no row to try it on. -->
-            <Label Grid.Row="3"
-                   Style="{StaticResource Caption}"
-                   Text="Tap ••• on one of your categories to rename or delete it, or swipe the row left."
-                   Margin="4,0,4,16"
-                   IsVisible="{Binding HasManageableCategories}" />
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout Padding="0,48" Spacing="12">
+                        <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconTag}" />
+                        <Label Style="{StaticResource EmptyTitle}" Text="No categories" />
+                        <Label Style="{StaticResource EmptyBody}"
+                               Text="Add one above to group your subscriptions." />
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
+            </CollectionView>
 
         </Grid>
     </RefreshView>

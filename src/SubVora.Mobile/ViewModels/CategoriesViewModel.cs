@@ -37,13 +37,6 @@ public partial class CategoriesViewModel : ObservableObject
     /// </summary>
     public ObservableCollection<CategoryGroup> Groups { get; } = [];
 
-    /// <summary>
-    /// Whether any row offers rename/delete. Gates the hint under the list - the hint used to live
-    /// in the CollectionView's EmptyView, which renders only when there is nothing to act on, so
-    /// it was invisible exactly when it applied.
-    /// </summary>
-    public bool HasManageableCategories => Categories.Any(category => !category.IsSystemDefault);
-
     public CategoriesViewModel(ICategoriesApi categoriesApi, IConnectivityService connectivity, IUserPrompt userPrompt)
     {
         _categoriesApi = categoriesApi;
@@ -155,8 +148,6 @@ public partial class CategoriesViewModel : ObservableObject
         {
             Groups.Add(new CategoryGroup(CategoryGroup.SystemTitle, isSystem: true, system));
         }
-
-        OnPropertyChanged(nameof(HasManageableCategories));
     }
 
     /// <summary>

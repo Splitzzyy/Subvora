@@ -1,4 +1,4 @@
-using SubVora.Mobile.Api.Dtos;
+﻿using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
 
@@ -56,7 +56,6 @@ public class CategoryGroupingTests
 
         var group = Assert.Single(viewModel.Groups);
         Assert.Equal(CategoryGroup.SystemTitle, group.Title);
-        Assert.False(viewModel.HasManageableCategories);
     }
 
     [Fact]
@@ -87,7 +86,6 @@ public class CategoryGroupingTests
         Assert.Equal(2, viewModel.Groups.Count);
         Assert.Equal(CategoryGroup.UserTitle, viewModel.Groups[0].Title);
         Assert.Equal("Music", Assert.Single(viewModel.Groups[0]).Name);
-        Assert.True(viewModel.HasManageableCategories);
     }
 
     [Fact]
@@ -115,7 +113,6 @@ public class CategoryGroupingTests
 
         var group = Assert.Single(viewModel.Groups);
         Assert.Equal(CategoryGroup.SystemTitle, group.Title);
-        Assert.False(viewModel.HasManageableCategories);
     }
 
     [Fact]
