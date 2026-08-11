@@ -26,4 +26,18 @@ public static class TestApiExceptions
             response,
             new RefitSettings()).GetAwaiter().GetResult();
     }
+
+    /// <summary>
+    /// What Refit 13 actually throws when the server cannot be reached at all: the underlying
+    /// HttpRequestException wrapped, with no response and no status code. Built as the real type
+    /// rather than a stand-in, because the bug it guards was precisely that this type is not an
+    /// <see cref="ApiException"/> and so slipped through the catch filters.
+    /// </summary>
+    public static ApiRequestException ConnectionFailure() =>
+        new(
+            "Connection failure",
+            new HttpRequestMessage(HttpMethod.Get, "https://test.local/"),
+            HttpMethod.Get,
+            new RefitSettings(),
+            new HttpRequestException("No route to host"));
 }
