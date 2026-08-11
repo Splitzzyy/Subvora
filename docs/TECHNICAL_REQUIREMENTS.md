@@ -56,8 +56,8 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 - Stateless REST API, versioned (`/api/v1/...`).
 - JWT bearer authentication on all endpoints except `/auth/*`.
 - Standard CRUD endpoints for subscriptions, categories, currencies, alert preferences.
-- `POST /api/v1/subscriptions/resolve` — accepts free-text subscription name, returns matched catalog entry (logo, category) via trigram similarity search.
-- `GET /api/v1/dashboard/burn-rate` — returns aggregated weekly/monthly/yearly totals in user's home currency.
+- `POST /api/v1/subscriptions/resolve` — accepts free-text subscription name, returns every catalog entry above the similarity floor (logo, category), best first, for the client to offer as a pick list.
+- `GET /api/v1/dashboard/burn-rate` — returns aggregated weekly/monthly/yearly totals in user's home currency, plus monthly spend broken down by category and by the payment source it is charged to.
 - Rate limiting on `/resolve` to bound CPU on an endpoint the client calls on every debounced keystroke pause.
 - Input validation via FluentValidation or DataAnnotations; reject malformed currency codes, negative amounts, invalid dates.
 - Centralized error handling middleware returning consistent problem-details responses.
@@ -69,7 +69,7 @@ The schema itself is defined by the EF Core entity configurations and migrations
 - `categories` — system categories seeded with `user_id IS NULL` (`Entertainment`, `Productivity`, `Fitness`, `Utilities`, `Finance`, `Food`, `Travel`, `Other`), plus per-user ones.
 - `users` — account, `preferred_currency`.
 - `subscription_catalog` — canonical provider list with `logo_url`, `standard_category`. Matched on `provider_name` via `pg_trgm`.
-- `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `last_paid_date` (null until first marked paid), `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
+- `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Quarterly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `last_paid_date` (null until first marked paid), `alert_days_advance`, `deduction_source`, `is_free_trial`, `is_active`.
 - `fx_rates` (to be added) — `base_currency`, `target_currency`, `rate`, `fetched_at` — cached exchange rates for burn-rate conversion.
 
 Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigram index — the catalog is ~54 rows, where a sequential scan is microseconds; add a GiST `gist_trgm_ops` index past a few thousand.
@@ -78,7 +78,7 @@ Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigra
 
 1. **Logo Feature** — logo resolved server-side at catalog-match time (`logo_url` on `subscription_catalog`); client renders from CDN URL with local placeholder/fallback icon.
 2. **Category** — derived from `subscription_catalog.standard_category` when matched; user can override per-subscription.
-3. **Billing type** — `billing_cycle_type` enum (`Weekly`, `Monthly`, `Yearly`, `OneTime`) drives both burn-rate math and next-billing-date calculation.
+3. **Billing type** — `billing_cycle_type` enum (`Weekly`, `Monthly`, `Quarterly`, `Yearly`, `OneTime`) drives both burn-rate math and next-billing-date calculation. It is a native Postgres enum, so adding a member needs a migration (`ALTER TYPE ... ADD VALUE`) applied before the code that can emit it. Burn-rate divisors are 7 / 30 / 91 / 365 days; date advancement uses calendar months (`AddMonths(3)` for quarterly) so a charge keeps its day of the month.
 4. **Purchase / expiry dates** — `purchase_date` + `cycle_cadence` give the client its default `next_billing_date` (one cycle after purchase). Afterwards the date moves only when the user marks the charge paid, which records `last_paid_date` and steps on one cycle from the date settled. No background job advances it: a date left in the past is what tells the client the charge is overdue, and a nightly roll-forward would erase that signal.
 5. **Alert preferences** — `alert_days_advance` (int, user-configurable per subscription or global default). The mobile client schedules one local notification per active subscription at `next_billing_date - alert_days_advance`, re-derived whenever the subscription list loads. The OS delivers it with the app closed, so no server-side send path exists. iOS holds at most 64 pending notifications, so the nearest dates win. The server's only job here is rolling passed billing dates forward (`BillingDateAdvanceBackgroundService`), which the client cannot do.
 6. **Deduction source** — free-text field (`deduction_source`) initially; optionally normalized into a `payment_sources` lookup table later.
@@ -94,9 +94,10 @@ Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigra
 ## 8. Provider Matching Requirements
 
 - Matching runs entirely inside PostgreSQL. There is no AI provider on any request path, no API key to configure, and no per-request third-party cost.
-- Match flow: user free-text → one `pg_trgm` query against `subscription_catalog.provider_name` → best match with a similarity score; below-threshold matches fall back to manual entry.
+- Match flow: user free-text → one `pg_trgm` query against `subscription_catalog.provider_name` → the top rows with their similarity scores; anything below the floor is dropped, and an empty list means manual entry.
 - Scoring uses `greatest(word_similarity(input, name), word_similarity(name, input))`. Both directions are needed: the first catches input that is a fragment of the provider name (`adobe` → Adobe Creative Cloud), the second catches input that contains it (`Netflix Premium` → Netflix). Plain `similarity()` scores the former at 0.300, down among the wrong answers.
 - Three-tier confidence, measured against the seeded 54-provider catalog rather than guessed: `AutoFill` ≥ 0.70, `SuggestConfirm` ≥ 0.50, otherwise `Manual`. Correct matches scored 0.545 and up; wrong answers topped out at 0.429. `SubscriptionCatalogTrigramMatchTests` pins both bands so a regression is visible.
+- The tier describes the best candidate; it does not decide anything. Every row above the floor is returned (capped at `SubscriptionMatchService.MaxSuggestions`) and the client shows them as a list — `AutoFill` never writes into the form on its own, because one input can match several real products (`youtube` → YouTube Music, YouTube Premium) and only the user knows which they pay for.
 - The provider list lives in `src/SubVora.Infrastructure/Catalog/subscription-catalog.json`, embedded in the assembly, and `SubscriptionCatalogSyncService` inserts anything missing on start (`ON CONFLICT (provider_name) DO NOTHING`). Adding a brand is one JSON entry — no migration, no hand-assigned id, and it is matchable immediately because the row is the index. Existing rows are never overwritten.
 - Nothing the user types is written to `subscription_catalog` — it is global and unowned, so a `Manual` result means no catalog link, not a new row.
 - **Known gap:** trigrams do not resolve rebrands or purely semantic input (`G Suite` → Google Workspace, `MS Office` → Microsoft 365, `the mouse streaming service` → Disney+). These score below the floor and land in `Manual`. Closing that gap needs an LLM fallback on the sub-threshold path; it is deliberately not in this design.

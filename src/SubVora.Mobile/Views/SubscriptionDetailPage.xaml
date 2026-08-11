@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:viewModels="clr-namespace:SubVora.Mobile.ViewModels"
+    xmlns:dtos="clr-namespace:SubVora.Mobile.Api.Dtos"
     xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
     x:DataType="viewModels:SubscriptionDetailViewModel"
     Title="{Binding PageTitle}">
@@ -35,24 +36,47 @@
                         <Entry Text="{Binding CustomName}" Placeholder="e.g. Netflix" />
                     </Border>
 
-                    <!-- Trigram match against the provider catalog. Shown inline under the name
-                         rather than as a dialog so it never blocks typing. -->
+                    <!-- Trigram matches against the provider catalog, every one that cleared the
+                         server's floor. Shown inline under the name as a pick list rather than as a
+                         dialog so it never blocks typing, and as a list rather than a single "Use"
+                         button because the top score is a ranking, not a decision - the user says
+                         which provider this is. Tapping a row fills the form; ignoring the list
+                         leaves whatever was typed. -->
                     <Border IsVisible="{Binding SuggestedTier, Converter={StaticResource IsNotNullConverter}}"
                             Style="{StaticResource Chip}"
-                            Padding="12">
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                            <Label Grid.Column="0"
-                                   Style="{StaticResource BodyText}"
-                                   Text="{Binding SuggestedProviderName, StringFormat='Looks like {0}'}"
-                                   VerticalOptions="Center" />
-                            <Button Grid.Column="2"
-                                    Style="{StaticResource SecondaryButton}"
-                                    Text="Use"
-                                    FontSize="14"
-                                    Padding="14,8"
-                                    MinimumHeightRequest="36"
-                                    Command="{Binding AcceptSuggestionCommand}" />
-                        </Grid>
+                            Padding="12,10">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Style="{StaticResource Caption}" Text="{Binding SuggestionsHeading}" />
+
+                            <!-- Bound to the collection, not to a fixed number of rows: the server
+                                 caps the list, so there is nothing here to scroll and no height to
+                                 guess at. -->
+                            <VerticalStackLayout BindableLayout.ItemsSource="{Binding Suggestions}" Spacing="0">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="dtos:CatalogMatchCandidate">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="0,9">
+                                            <Grid.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:SubscriptionDetailViewModel}}, Path=UseSuggestionCommand}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Grid.GestureRecognizers>
+
+                                            <Label Grid.Column="0"
+                                                   Style="{StaticResource BodyStrong}"
+                                                   Text="{Binding ProviderName}"
+                                                   VerticalOptions="Center" />
+
+                                            <Path Grid.Column="1"
+                                                  Data="{StaticResource IconChevronRight}"
+                                                  Aspect="Uniform"
+                                                  WidthRequest="14" HeightRequest="14"
+                                                  Fill="{AppThemeBinding Light={StaticResource TextMutedLight}, Dark={StaticResource TextMutedDark}}"
+                                                  VerticalOptions="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
                     </Border>
 
                     <Label Style="{StaticResource FieldLabel}" Text="Category" />

@@ -6,6 +6,13 @@ public enum BillingCycleType
     Monthly,
     Yearly,
     OneTime,
+
+    /// <summary>
+    /// Last, matching the API enum. The order is load-bearing here rather than cosmetic:
+    /// <c>CachedSubscription</c> is a sqlite-net table and stores this as its ordinal, so renumbering
+    /// would misread every already-cached row after an app upgrade. The picker orders itself.
+    /// </summary>
+    Quarterly,
 }
 
 public class SubscriptionDto
@@ -86,9 +93,19 @@ public class ResolveSubscriptionRequest
 
 public class ResolveSubscriptionResponse
 {
+    /// <summary>How good the best candidate is. Wording only - the user picks from the list either way.</summary>
     public MatchConfidenceTier Tier { get; set; }
-    public Guid? CatalogId { get; set; }
-    public string? ProviderName { get; set; }
-    public string? LogoUrl { get; set; }
+
+    /// <summary>Catalog rows that cleared the server's similarity floor, best first. Empty on Manual.</summary>
+    public IReadOnlyList<CatalogMatchCandidate> Suggestions { get; set; } = [];
+}
+
+/// <summary>One row of the provider pick list. Mirrors the API's CatalogMatchCandidate.</summary>
+public class CatalogMatchCandidate
+{
+    public Guid CatalogId { get; set; }
+    public string ProviderName { get; set; } = string.Empty;
     public Guid? CategoryId { get; set; }
+    public string? LogoUrl { get; set; }
+    public double Score { get; set; }
 }

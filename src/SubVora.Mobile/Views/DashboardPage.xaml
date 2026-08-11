@@ -140,6 +140,51 @@
                     </Border>
                 </Grid>
 
+                <!-- Where the money leaves from, above the category split: "what am I buying" is
+                     the second question, "which card is this landing on" is the one that decides
+                     whether a statement makes sense. Hidden entirely when there is one payment
+                     source or none - a breakdown of one row is a list with nothing to compare. -->
+                <HorizontalStackLayout Spacing="8" Margin="4,6,0,0"
+                                       IsVisible="{Binding TopSpendSourceSummary, Converter={StaticResource StringToBoolConverter}}">
+                    <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconCreditCard}" />
+                    <Label Style="{StaticResource SectionHeading}" Text="Where it's charged" VerticalOptions="Center" />
+                </HorizontalStackLayout>
+
+                <Border Style="{StaticResource Card}" Padding="14,10"
+                        IsVisible="{Binding TopSpendSourceSummary, Converter={StaticResource StringToBoolConverter}}">
+                    <VerticalStackLayout Spacing="4">
+                        <Label Style="{StaticResource BodyStrong}" Text="{Binding TopSpendSourceSummary}" />
+
+                        <!-- BindableLayout, not a CollectionView: this list is short and already
+                             inside the page's ScrollView, and nesting a scrolling control collapses
+                             its height on Android. -->
+                        <VerticalStackLayout BindableLayout.ItemsSource="{Binding ByPaymentSource}" Spacing="0">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="dtos:PaymentSourceBreakdownItem">
+                                    <Grid Style="{StaticResource CardRow}"
+                                          ColumnDefinitions="*,Auto"
+                                          RowDefinitions="Auto,Auto"
+                                          RowSpacing="8">
+
+                                        <Label Grid.Row="0" Grid.Column="0"
+                                               Style="{StaticResource BodyText}"
+                                               Text="{Binding PaymentSourceLabel}"
+                                               VerticalOptions="Center" />
+
+                                        <Label Grid.Row="0" Grid.Column="1"
+                                               Style="{StaticResource BodyStrong}"
+                                               Text="{Binding MonthlyAmount, StringFormat='{0:N2}'}"
+                                               VerticalOptions="Center" />
+
+                                        <ProgressBar Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                                                     Progress="{Binding Share}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </Border>
+
                 <HorizontalStackLayout Spacing="8" Margin="4,6,0,0">
                     <Path Style="{StaticResource SectionIcon}" Data="{StaticResource IconTag}" />
                     <Label Style="{StaticResource SectionHeading}" Text="By category" VerticalOptions="Center" />

@@ -12,6 +12,7 @@ public class BurnRateResult
     public IReadOnlyList<Guid> UnresolvedSubscriptionIds { get; set; } = [];
     public DateTimeOffset? OldestRateFetchedAt { get; set; }
     public IReadOnlyList<CategoryBreakdownItem> ByCategory { get; set; } = [];
+    public IReadOnlyList<PaymentSourceBreakdownItem> ByPaymentSource { get; set; } = [];
 }
 
 public class CategoryBreakdownItem
@@ -25,6 +26,18 @@ public class CategoryBreakdownItem
     /// JsonIgnored so it never reaches the server's contract and never survives into the SQLite
     /// cache, where it would go stale the moment another category's amount moved.
     /// </summary>
+    [JsonIgnore]
+    public double Share { get; set; }
+}
+
+/// <summary>Monthly recurring spend charged to one card/account, in the user's home currency.</summary>
+public class PaymentSourceBreakdownItem
+{
+    public Guid? PaymentSourceId { get; set; }
+    public string PaymentSourceLabel { get; set; } = string.Empty;
+    public decimal MonthlyAmount { get; set; }
+
+    /// <summary>Bar length, computed client-side exactly as CategoryBreakdownItem.Share is.</summary>
     [JsonIgnore]
     public double Share { get; set; }
 }

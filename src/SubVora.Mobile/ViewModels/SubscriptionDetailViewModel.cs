@@ -24,7 +24,6 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     private readonly IMessenger _messenger;
     private readonly IUserPrompt _userPrompt;
     private readonly IConnectivityService _connectivity;
-    private ResolveSubscriptionResponse? _pendingSuggestion;
 
     // The catalog row this subscription is linked to, carried from a resolve result (or from the
     // record being edited) through to the save payload. Not an [ObservableProperty] - nothing in
@@ -128,11 +127,18 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     [ObservableProperty]
     public partial string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// How sure the server is about the best entry in <see cref="Suggestions"/>, so the list can be
+    /// headed "Looks like" rather than "Did you mean". Null when there is nothing to offer, which
+    /// is also what hides the list.
+    /// </summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SuggestionsHeading))]
     public partial MatchConfidenceTier? SuggestedTier { get; set; }
 
-    [ObservableProperty]
-    public partial string? SuggestedProviderName { get; set; }
+    public string SuggestionsHeading => SuggestedTier == MatchConfidenceTier.AutoFill
+        ? "Looks like one of these"
+        : "Did you mean";
 
     [ObservableProperty]
     public partial Guid? SubscriptionId { get; set; }
@@ -146,11 +152,29 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     [ObservableProperty]
     public partial string SaveButtonText { get; set; } = "Save";
 
-    public IReadOnlyList<BillingCycleType> BillingCycleTypes { get; } = Enum.GetValues<BillingCycleType>();
+    /// <summary>
+    /// Spelled out rather than <c>Enum.GetValues</c>: the enum is ordered for storage compatibility,
+    /// not for reading, so shortest-cycle-first has to be stated here. A value added to the enum and
+    /// not added here simply will not appear in the picker.
+    /// </summary>
+    public IReadOnlyList<BillingCycleType> BillingCycleTypes { get; } =
+    [
+        BillingCycleType.Weekly,
+        BillingCycleType.Monthly,
+        BillingCycleType.Quarterly,
+        BillingCycleType.Yearly,
+        BillingCycleType.OneTime,
+    ];
 
     public ObservableCollection<CategoryDto> Categories { get; } = [];
 
     public ObservableCollection<PaymentSourceDto> PaymentSources { get; } = [];
+
+    /// <summary>
+    /// The provider matches on offer for what has been typed so far. Nothing on the form moves
+    /// until one of them is tapped - see <see cref="UseSuggestionCommand"/>.
+    /// </summary>
+    public ObservableCollection<CatalogMatchCandidate> Suggestions { get; } = [];
 
     /// <summary>Raised after a successful save so the view can navigate back.</summary>
     public event EventHandler? SaveSucceeded;
@@ -214,8 +238,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
 
     partial void OnCustomNameChanged(string value)
     {
-        SuggestedTier = null;
-        _pendingSuggestion = null;
+        ClearSuggestions();
 
         // Editing the name away from an applied suggestion invalidates the match - a stale catalog
         // reference must never be saved. ApplySuggestion re-sets this *after* assigning CustomName,
@@ -271,10 +294,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         // how good the guess is, not whether the app is entitled to act on it - a 0.99 match is
         // still a guess about a field the user is in the middle of filling in. The tier is carried
         // through on SuggestedTier so the view can still say how sure it is.
-        if (result.Tier is MatchConfidenceTier.AutoFill or MatchConfidenceTier.SuggestConfirm)
-        {
-            OfferMatch(result);
-        }
+        OfferMatches(result);
     }
 
     /// <summary>
@@ -283,46 +303,46 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     private bool IsStale(string input) => !string.Equals(CustomName, input, StringComparison.Ordinal);
 
     /// <summary>
-    /// Raises the "Looks like X" chip. Nothing on the form moves until the user takes it.
+    /// Raises the pick list under the name field. Nothing on the form moves until the user taps an
+    /// entry - the server ranks the candidates, but which one this subscription actually is stays
+    /// the user's answer, which is why even a top-scoring match is only ever offered.
     /// <para>
-    /// Skipped once the match has already been applied, or the chip would re-raise itself the moment
-    /// the resolve armed by <see cref="ApplySuggestion"/>'s own name assignment came back. Keyed on
+    /// Skipped once the match has already been applied, or the list would re-raise itself the moment
+    /// the resolve armed by <see cref="UseSuggestion"/>'s own name assignment came back. Keyed on
     /// the catalog id rather than the name so that adopting a suggestion and then typing a different
-    /// name still gets offered the new match.
+    /// name still gets offered the new matches.
     /// </para>
     /// </summary>
-    private void OfferMatch(ResolveSubscriptionResponse suggestion)
+    private void OfferMatches(ResolveSubscriptionResponse result)
     {
-        if (string.IsNullOrEmpty(suggestion.ProviderName))
+        var offered = result.Suggestions
+            .Where(suggestion => !string.IsNullOrEmpty(suggestion.ProviderName))
+            .ToList();
+
+        if (offered.Count == 0 || (_appliedCatalogId is not null && _appliedCatalogId == offered[0].CatalogId))
         {
             return;
         }
 
-        if (_appliedCatalogId is not null && _appliedCatalogId == suggestion.CatalogId)
+        Suggestions.Clear();
+        foreach (var suggestion in offered)
         {
-            return;
+            Suggestions.Add(suggestion);
         }
 
-        _pendingSuggestion = suggestion;
-        SuggestedTier = suggestion.Tier;
-        SuggestedProviderName = suggestion.ProviderName;
+        SuggestedTier = result.Tier;
     }
 
-    [RelayCommand]
-    private void AcceptSuggestion()
+    private void ClearSuggestions()
     {
-        if (_pendingSuggestion is null)
-        {
-            return;
-        }
-
-        ApplySuggestion(_pendingSuggestion);
+        Suggestions.Clear();
+        SuggestedTier = null;
     }
 
     /// <summary>
-    /// The only path that writes a match into the form, and it runs solely off the "Use" button.
-    /// Once the user has asked for the match they get all of it - name, catalog link and category -
-    /// including over a category they had already picked, because taking the suggestion is a
+    /// The only path that writes a match into the form, and it runs solely off tapping an entry in
+    /// the list. Once the user has picked one they get all of it - name, catalog link and category -
+    /// including over a category they had already chosen, because picking the provider is a
     /// statement about what the subscription is.
     /// <para>
     /// The match's logo is not carried: the catalog stores Simple Icons SVG URLs, which Android's
@@ -330,16 +350,22 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     /// which draws a letter tile on the device instead.
     /// </para>
     /// </summary>
-    private void ApplySuggestion(ResolveSubscriptionResponse suggestion)
+    [RelayCommand]
+    private void UseSuggestion(CatalogMatchCandidate? suggestion)
     {
-        if (!string.IsNullOrEmpty(suggestion.ProviderName))
+        // Null-tolerant because the command parameter comes from a tapped list row, and a tap that
+        // lands as the list is being cleared arrives with nothing attached.
+        if (suggestion is null || string.IsNullOrEmpty(suggestion.ProviderName))
         {
-            CustomName = suggestion.ProviderName;
+            return;
         }
+
+        CustomName = suggestion.ProviderName;
 
         // After the CustomName assignment above, whose change handler clears _appliedCatalogId. That
         // assignment also re-arms the debouncer; the resolve it schedules comes back with the same
-        // catalog id, which is what OfferMatch checks to avoid re-raising the chip it just answered.
+        // catalog id at the top, which is what OfferMatches checks to avoid re-raising the list it
+        // just answered.
         _appliedCatalogId = suggestion.CatalogId;
 
         if (suggestion.CategoryId is Guid categoryId)
@@ -351,8 +377,7 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
             }
         }
 
-        SuggestedTier = null;
-        _pendingSuggestion = null;
+        ClearSuggestions();
     }
 
     [RelayCommand]

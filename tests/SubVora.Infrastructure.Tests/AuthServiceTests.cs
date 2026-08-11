@@ -61,13 +61,14 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     }
 
     [Fact]
-    public async Task RegisterAsync_WithANewEmail_SendsNoEmail()
+    public async Task RegisterAsync_WithANewEmail_WelcomesTheNewAccount()
     {
         var email = $"fresh-{Guid.NewGuid()}@example.com";
 
         await _authService.RegisterAsync(new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
 
-        Assert.DoesNotContain(_emailSender.Sent, e => e.To == email);
+        var sent = Assert.Single(_emailSender.Sent, e => e.To == email);
+        Assert.Contains("Welcome", sent.Subject);
         Assert.True(await _dbContext.Users.AnyAsync(u => u.Email == email));
     }
 
@@ -80,9 +81,27 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
         await _authService.RegisterAsync(new RegisterRequest { Email = email, Password = "attacker-chosen-password" });
 
-        Assert.Single(_emailSender.Sent, e => e.To == email);
+        var notice = Assert.Single(_emailSender.Sent, e => e.Subject.Contains("Someone tried"));
+        Assert.Equal(email, notice.To);
         Assert.Equal(1, await _dbContext.Users.CountAsync(u => u.Email == email));
         Assert.Equal(originalHash, (await _dbContext.Users.AsNoTracking().SingleAsync(u => u.Email == email)).PasswordHash);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_SendsExactlyOneEmail_WhicheverBranchRan()
+    {
+        // The anti-enumeration property extended to the mailbox: a new account and a duplicate both
+        // produce one message, so an observer counting mail cannot tell which happened either.
+        var newEmail = $"count-new-{Guid.NewGuid()}@example.com";
+        var takenEmail = $"count-dupe-{Guid.NewGuid()}@example.com";
+        await _authService.RegisterAsync(new RegisterRequest { Email = takenEmail, Password = "correct-horse-battery-staple" });
+        _emailSender.Sent.Clear();
+
+        await _authService.RegisterAsync(new RegisterRequest { Email = newEmail, Password = "correct-horse-battery-staple" });
+        await _authService.RegisterAsync(new RegisterRequest { Email = takenEmail, Password = "attacker-chosen-password" });
+
+        Assert.Single(_emailSender.Sent, e => e.To == newEmail);
+        Assert.Single(_emailSender.Sent, e => e.To == takenEmail);
     }
 
     [Fact]
@@ -95,6 +114,19 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         _emailSender.ThrowOnSend = true;
 
         await _authService.RegisterAsync(new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenTheWelcomeEmailFails_StillCreatesTheAccount()
+    {
+        // The mailer is best-effort on both branches. Losing the welcome note is a nuisance; losing
+        // the account the user just signed up for is not.
+        var email = $"welcome-down-{Guid.NewGuid()}@example.com";
+        _emailSender.ThrowOnSend = true;
+
+        await _authService.RegisterAsync(new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+
+        Assert.True(await _dbContext.Users.AnyAsync(u => u.Email == email));
     }
 
     private sealed class CountingPasswordHasher : IPasswordHasher

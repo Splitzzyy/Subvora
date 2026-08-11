@@ -19,6 +19,13 @@ public class BurnRateCalculator
 {
     private const int WeeklyDays = 7;
     private const int MonthlyDays = 30;
+
+    /// <summary>
+    /// 365/4 rounded, not 3 x MonthlyDays. The daily rate exists to be projected back out to a
+    /// year, and 90 would report a quarterly subscription as costing 4.06 charges a year.
+    /// </summary>
+    private const int QuarterlyDays = 91;
+
     private const int YearlyDays = 365;
 
     private readonly IFxRateService _fxRateService;
@@ -31,12 +38,14 @@ public class BurnRateCalculator
     public async Task<BurnRateResult> CalculateAsync(IEnumerable<SubscriptionDto> subscriptions, string homeCurrency, CancellationToken cancellationToken = default)
     {
         const string uncategorizedName = "Uncategorized";
+        const string unassignedPaymentSourceLabel = "Unassigned";
 
         var currentYear = DateTime.UtcNow.Year;
         var dailyRateSum = 0m;
         var oneTimeThisYear = 0m;
         var unresolvedSubscriptionIds = new List<Guid>();
         var categoryDailyRates = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
+        var paymentSourceDailyRates = new Dictionary<(Guid? PaymentSourceId, string Label), decimal>();
         DateTimeOffset? oldestRateFetchedAt = null;
 
         // Materialized because the currencies are collected in one pass and the amounts summed in
@@ -100,6 +109,7 @@ public class BurnRateCalculator
             {
                 BillingCycleType.Weekly => WeeklyDays,
                 BillingCycleType.Monthly => MonthlyDays,
+                BillingCycleType.Quarterly => QuarterlyDays,
                 BillingCycleType.Yearly => YearlyDays,
                 _ => throw new ArgumentOutOfRangeException(nameof(subscriptions), subscription.CycleCadence, "Unexpected billing cycle for a recurring subscription."),
             };
@@ -109,6 +119,9 @@ public class BurnRateCalculator
 
             var categoryKey = (subscription.CategoryId, subscription.CategoryName ?? uncategorizedName);
             categoryDailyRates[categoryKey] = categoryDailyRates.GetValueOrDefault(categoryKey) + subscriptionDailyRate;
+
+            var paymentSourceKey = (subscription.PaymentSourceId, subscription.PaymentSourceLabel ?? unassignedPaymentSourceLabel);
+            paymentSourceDailyRates[paymentSourceKey] = paymentSourceDailyRates.GetValueOrDefault(paymentSourceKey) + subscriptionDailyRate;
         }
 
         var byCategory = categoryDailyRates
@@ -116,6 +129,16 @@ public class BurnRateCalculator
             {
                 CategoryId = kvp.Key.CategoryId,
                 CategoryName = kvp.Key.CategoryName,
+                MonthlyAmount = Math.Round(kvp.Value * MonthlyDays, 2),
+            })
+            .OrderByDescending(item => item.MonthlyAmount)
+            .ToList();
+
+        var byPaymentSource = paymentSourceDailyRates
+            .Select(kvp => new PaymentSourceBreakdownItem
+            {
+                PaymentSourceId = kvp.Key.PaymentSourceId,
+                PaymentSourceLabel = kvp.Key.Label,
                 MonthlyAmount = Math.Round(kvp.Value * MonthlyDays, 2),
             })
             .OrderByDescending(item => item.MonthlyAmount)
@@ -131,6 +154,7 @@ public class BurnRateCalculator
             UnresolvedSubscriptionIds = unresolvedSubscriptionIds,
             OldestRateFetchedAt = oldestRateFetchedAt,
             ByCategory = byCategory,
+            ByPaymentSource = byPaymentSource,
         };
     }
 }

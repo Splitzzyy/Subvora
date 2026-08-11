@@ -53,6 +53,23 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Register_WithANewEmail_SendsAWelcomeEmail()
+    {
+        // End to end through the controller, because the wiring is where this has actually failed:
+        // the service enqueues, a hosted service delivers, and nothing in the response says either
+        // happened - so only a test that looks at the mailer can tell the difference.
+        var client = _factory.CreateClient();
+        var email = $"welcome-{Guid.NewGuid()}@example.com";
+        var emailSender = _factory.Services.GetRequiredService<FakeEmailSender>();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+
+        Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        var sent = Assert.Single(emailSender.SentEmails, e => e.ToEmail == email);
+        Assert.Contains("Welcome", sent.Subject);
+    }
+
+    [Fact]
     public async Task Register_WithADuplicateEmail_EmailsTheExistingOwnerInstead()
     {
         // Silence towards the caller is only acceptable because the address's real owner is told.

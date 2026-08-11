@@ -27,6 +27,16 @@ public class EmailDispatchBackgroundService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Said once, at boot, rather than left to be inferred from the absence of mail. Nothing
+        // here throws: email is not required to run the API, and refusing to start over it would
+        // take down subscription tracking to protect password resets.
+        if (_smtpEmailSender.MissingRequiredSettings is { Count: > 0 } missing)
+        {
+            _logger.LogWarning(
+                "SMTP is not configured ({MissingSettings} unset) - no email will be delivered. See docs/DEPLOYMENT.md.",
+                string.Join(", ", missing));
+        }
+
         await foreach (var email in _queue.Reader.ReadAllAsync(stoppingToken))
         {
             try

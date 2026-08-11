@@ -1,4 +1,4 @@
-using SubVora.Application.Billing;
+﻿using SubVora.Application.Billing;
 using SubVora.Domain.Enums;
 
 namespace SubVora.Application.Tests;
@@ -12,6 +12,8 @@ public class BillingCycleAdvancerTests
     [Theory]
     [InlineData(BillingCycleType.Weekly, 2026, 8, 14)]
     [InlineData(BillingCycleType.Monthly, 2026, 9, 7)]
+    // Three calendar months, so a quarterly charge keeps its day of the month instead of drifting.
+    [InlineData(BillingCycleType.Quarterly, 2026, 11, 7)]
     [InlineData(BillingCycleType.Yearly, 2027, 8, 7)]
     public void AdvancesExactlyOneCycle(BillingCycleType cadence, int year, int month, int day)
     {
@@ -36,6 +38,16 @@ public class BillingCycleAdvancerTests
         var current = new DateOnly(2026, 5, 1);
 
         Assert.Equal(current, BillingCycleAdvancer.AdvanceOneCycle(current, BillingCycleType.OneTime));
+    }
+
+    [Fact]
+    public void QuarterlyClampsAtMonthEndToo()
+    {
+        // 30 Nov + 3 months is 28 Feb, not 2 Mar. Adding 91 days would give 1 Mar and slide the
+        // charge a day further every year.
+        var result = BillingCycleAdvancer.AdvanceOneCycle(new DateOnly(2025, 11, 30), BillingCycleType.Quarterly);
+
+        Assert.Equal(new DateOnly(2026, 2, 28), result);
     }
 
     [Fact]

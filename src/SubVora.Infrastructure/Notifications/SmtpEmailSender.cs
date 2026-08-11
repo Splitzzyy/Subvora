@@ -15,6 +15,17 @@ public class SmtpEmailSender : IEmailSender
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// The settings that must be present for any send to succeed, and are not, or an empty list.
+    /// Read at startup by <see cref="EmailDispatchBackgroundService"/> so an unconfigured mailer
+    /// says so once on boot instead of only when the first user waits for an email that is never
+    /// coming - the failure is otherwise invisible, since every send is fire-and-forget by design.
+    /// </summary>
+    public IReadOnlyList<string> MissingRequiredSettings =>
+        new[] { "Smtp:Host", "Smtp:FromAddress" }
+            .Where(key => string.IsNullOrWhiteSpace(_configuration[key]))
+            .ToList();
+
     // Config is validated here, not in the constructor - AuthService (and therefore
     // AuthController, for every one of its actions) depends on IEmailSender, so throwing at
     // construction time would break login/register/etc too whenever SMTP isn't configured yet,

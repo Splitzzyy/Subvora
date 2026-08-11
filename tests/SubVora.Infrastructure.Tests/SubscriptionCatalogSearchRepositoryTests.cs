@@ -118,4 +118,44 @@ public class SubscriptionCatalogSearchRepositoryTests : IClassFixture<PostgresCo
 
         Assert.Null(result);
     }
+
+    [Fact]
+    public async Task FindTopAsync_ReturnsUpToTheLimit_RankedBestFirst()
+    {
+        // The pick list case: several plausible answers to one input, and the user chooses. Ranking
+        // is what the client leans on to order them, so it has to survive the trip.
+        _dbContext.SubscriptionCatalog.AddRange(
+            new SubscriptionCatalogItem { ProviderName = "YouTube Premium", CreatedAt = DateTimeOffset.UtcNow },
+            new SubscriptionCatalogItem { ProviderName = "YouTube Music", CreatedAt = DateTimeOffset.UtcNow },
+            new SubscriptionCatalogItem { ProviderName = "YouTube TV", CreatedAt = DateTimeOffset.UtcNow },
+            new SubscriptionCatalogItem { ProviderName = "Dropbox", CreatedAt = DateTimeOffset.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var results = await _repository.FindTopAsync("youtube", 3);
+
+        Assert.Equal(3, results.Count);
+        Assert.All(results, result => Assert.StartsWith("YouTube", result.ProviderName));
+        // Non-increasing, so "best first" is a promise the client can rely on rather than an
+        // accident of insert order.
+        Assert.Equal(results.OrderByDescending(result => result.Score).Select(result => result.Score), results.Select(result => result.Score));
+    }
+
+    [Fact]
+    public async Task FindTopAsync_FewerRowsThanTheLimit_ReturnsWhatThereIs()
+    {
+        _dbContext.SubscriptionCatalog.Add(new SubscriptionCatalogItem { ProviderName = "Netflix", CreatedAt = DateTimeOffset.UtcNow });
+        await _dbContext.SaveChangesAsync();
+
+        var results = await _repository.FindTopAsync("netflix", 5);
+
+        Assert.Single(results);
+    }
+
+    [Fact]
+    public async Task FindTopAsync_EmptyCatalog_ReturnsEmpty()
+    {
+        var results = await _repository.FindTopAsync("netflix", 5);
+
+        Assert.Empty(results);
+    }
 }
