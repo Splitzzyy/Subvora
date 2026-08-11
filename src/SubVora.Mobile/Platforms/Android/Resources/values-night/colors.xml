@@ -1,0 +1,14 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dark-theme overrides for the Android-level colours in values/colors.xml.
+
+    colorPrimaryDark paints the status bar, and it is an Android resource rather than a MAUI one, so
+    Shell's AppThemeBinding never touched it: in dark mode a bright purple status bar sat directly
+    above a near-black app bar. Matching it to SurfaceDark - the same colour Shell paints the app bar
+    in dark - makes the top of the screen one surface again.
+-->
+<resources>
+    <color name="colorPrimary">#512BD4</color>
+    <color name="colorPrimaryDark">#1C1C21</color>
+    <color name="colorAccent">#7C5CE0</color>
+</resources>

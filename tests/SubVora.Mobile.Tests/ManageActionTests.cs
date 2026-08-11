@@ -1,4 +1,4 @@
-using SubVora.Mobile.Api.Dtos;
+﻿using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
 
@@ -106,22 +106,5 @@ public class ManageActionTests
         Assert.Equal("HDFC Card", Assert.Single(prompt.ActionSheetCalls).Title);
         Assert.Equal(source.Id, Assert.Single(deleted));
         Assert.Empty(viewModel.PaymentSources);
-        Assert.False(viewModel.HasPaymentSources);
-    }
-
-    [Fact]
-    public async Task PaymentSource_HasPaymentSources_TracksTheList()
-    {
-        // Gates the manage hint. Derived from the collection, so it has to be raised on change -
-        // nothing does that automatically.
-        var api = new FakePaymentSourcesApi();
-        var viewModel = new PaymentSourcesViewModel(api, new FakeUserPrompt(), new FakeConnectivityService());
-
-        Assert.False(viewModel.HasPaymentSources);
-
-        viewModel.NewLabel = "UPI";
-        await viewModel.AddCommand.ExecuteAsync(null);
-
-        Assert.True(viewModel.HasPaymentSources);
     }
 }

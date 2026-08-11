@@ -17,7 +17,7 @@
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
-        <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16,16,16,0" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*" Padding="16,16,16,0" RowSpacing="12">
 
             <Label Grid.Row="0"
                    Style="{StaticResource ErrorText}"
@@ -97,8 +97,8 @@
                                             MinimumHeightRequest="34"
                                             MinimumWidthRequest="44"
                                             SemanticProperties.Description="Rename or delete this payment source"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=ManageCommand}"
-                                            CommandParameter="{Binding .}" />
+                                            CommandParameter="{Binding .}"
+                                            Clicked="OnManageClicked" />
                                 </Grid>
                             </SwipeView>
                         </DataTemplate>
@@ -114,14 +114,6 @@
                     </CollectionView.EmptyView>
                 </CollectionView>
             </Border>
-
-            <!-- Outside the CollectionView on purpose: this hint used to sit in EmptyView, which
-                 renders only when there is no row to act on. -->
-            <Label Grid.Row="3"
-                   Style="{StaticResource Caption}"
-                   Text="Tap &#8226;&#8226;&#8226; on a row to rename or delete it, or swipe the row left."
-                   Margin="4,0,4,16"
-                   IsVisible="{Binding HasPaymentSources}" />
 
         </Grid>
     </RefreshView>

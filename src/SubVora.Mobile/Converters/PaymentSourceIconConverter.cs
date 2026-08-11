@@ -51,6 +51,9 @@ public class PaymentSourceColorConverter : IValueConverter
     /// <summary>Matches CategoryColorConverter's soft wash, so tiles look the same weight across screens.</summary>
     private const float SoftAlpha = 0.20f;
 
+    /// <summary>Same reasoning as CategoryColorConverter: 0.20 over a near-black surface reads muddy.</summary>
+    private const float SoftAlphaDark = 0.32f;
+
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var isDark = Application.Current?.RequestedTheme == AppTheme.Dark;
@@ -61,7 +64,7 @@ public class PaymentSourceColorConverter : IValueConverter
 
         var color = Color.FromArgb(isDark ? pair.Dark : pair.Light);
 
-        return parameter as string == "soft" ? color.WithAlpha(SoftAlpha) : color;
+        return parameter as string == "soft" ? color.WithAlpha(isDark ? SoftAlphaDark : SoftAlpha) : color;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>

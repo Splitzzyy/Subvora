@@ -1,0 +1,56 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Compact dropdown menu, standing in for DisplayActionSheetAsync.
+
+    The platform action sheet is an unstyled list of strings in a system alert - it cannot take the
+    app's shape, colour or type scale. This was first built as a full-width bottom sheet, which was
+    far too heavy for two choices; it is now a small menu card, the shape a row-level "..." button
+    is expected to open.
+-->
+<ContentView
+    x:Class="SubVora.Mobile.Views.ActionSheetView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- Two nested Borders on purpose. The outer one carries the shadow; the inner one carries the
+         rounded shape and clips to it. Put on one Border, the shadow is drawn against the square
+         bounds and the corners stop reading as rounded at all. -->
+    <Border BackgroundColor="Transparent"
+            Stroke="Transparent"
+            StrokeThickness="0"
+            Padding="0"
+            HorizontalOptions="End"
+            StrokeShape="RoundRectangle 16">
+        <!-- The shadow follows this Border's shape, so it has to be the same rounded rectangle as
+             the card inside it. Left square, the shadow was cast as a rectangle around the rounded
+             card - invisible against a light page, but a pale halo in dark mode. -->
+        <Border.Shadow>
+            <Shadow Brush="#000000" Opacity="0.35" Radius="14" Offset="0,4" />
+        </Border.Shadow>
+
+        <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}"
+                Stroke="{AppThemeBinding Light={StaticResource HairlineLight}, Dark={StaticResource HairlineDark}}"
+                StrokeThickness="1"
+                WidthRequest="212"
+                Padding="6"
+                StrokeShape="RoundRectangle 16">
+
+            <VerticalStackLayout Spacing="1">
+
+                <!-- Which row this menu belongs to. The toolkit cannot anchor a popup to the control
+                     that opened it, so without the name there is nothing tying the menu to its
+                     row. -->
+                <Label x:Name="TitleLabel"
+                       Style="{StaticResource Caption}"
+                       FontSize="11"
+                       FontAttributes="Bold"
+                       CharacterSpacing="0.5"
+                       Margin="12,7,12,5"
+                       LineBreakMode="TailTruncation" />
+
+                <VerticalStackLayout x:Name="ActionsLayout" Spacing="1" />
+
+            </VerticalStackLayout>
+        </Border>
+    </Border>
+</ContentView>

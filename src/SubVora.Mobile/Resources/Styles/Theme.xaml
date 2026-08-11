@@ -34,6 +34,7 @@
     <PathGeometry x:Key="IconSchedule" Figures="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z" />
     <PathGeometry x:Key="IconCheckCircle" Figures="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
     <PathGeometry x:Key="IconNotifications" Figures="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" />
+    <PathGeometry x:Key="IconMoreVert" Figures="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
 
     <!-- Payment-source icons, one per PaymentSourceType. See PaymentSourceIconConverter. -->
     <PathGeometry x:Key="IconCreditCard" Figures="M20 4H4c-1.11 0-1.99.89-1.99 2L2 18c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V6c0-1.11-.89-2-2-2zm0 14H4v-6h16v6zm0-10H4V6h16v2z" />
@@ -504,6 +505,139 @@
 
     <Style x:Key="EmptyBody" TargetType="Label" BasedOn="{StaticResource Caption}">
         <Setter Property="HorizontalTextAlignment" Value="Center" />
+    </Style>
+
+    <!-- ===== Material 3 Expressive =====
+         Additive and keyed, never implicit: every style below is opted into by name, so adding them
+         changes nothing on a screen that does not ask for them. Categories is the first screen on
+         this treatment; the rest still use the Card/CardRow set above.
+
+         What makes it expressive rather than just rounded:
+           - Shape carries the hierarchy. Containers sit at the M3 "extra large" end (24-28) and
+             every row is its own container instead of hairline-separated rows inside one card.
+           - Section headings are large and sentence case. The older SectionHeading is an 11-13px
+             uppercase muted caption, which whispers; M3E wants the heading to be the anchor.
+           - Full-round shapes for anything interactive and small - icon containers, icon buttons,
+             the text field, the submit button.
+
+         Colours are the existing tokens. No hue is invented here: the categorical palette above is
+         validated for contrast and CVD separation, and a ninth colour added by eye would not be. -->
+
+    <!-- One row of a list. Its own container, so rows read as separate objects rather than as
+         entries in a table - the M3E list treatment. -->
+    <Style x:Key="M3ListItem" TargetType="Border">
+        <!-- SurfaceMutedDark in dark, not SurfaceDark: at #1C1C21 on a #111114 page the rows barely
+             separated from the background and the list read as vague blobs. Light needs no
+             equivalent - white on #F4F5F9 already lifts. -->
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceMutedDark}}" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="Padding" Value="14,12" />
+        <Setter Property="StrokeShape">
+            <Setter.Value>
+                <RoundRectangle CornerRadius="24" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="M3SectionTitle" TargetType="Label">
+        <Setter Property="FontSize" Value="22" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource TextStrongLight}, Dark={StaticResource TextStrongDark}}" />
+    </Style>
+
+    <!-- The count beside a section title. A pill rather than plain text, so the heading row has two
+         distinct shapes in it - shape variety is most of what reads as "expressive". -->
+    <Style x:Key="M3CountPill" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BrandPurpleSoft}, Dark={StaticResource SurfaceMutedDark}}" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="Padding" Value="12,5" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <Setter Property="StrokeShape">
+            <Setter.Value>
+                <RoundRectangle CornerRadius="16" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="M3CountPillText" TargetType="Label">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontAttributes" Value="Bold" />
+        <Setter Property="TextColor" Value="{AppThemeBinding Light={StaticResource BrandPurple}, Dark={StaticResource BrandPurpleLight}}" />
+    </Style>
+
+    <!-- Fully round, unlike the squircle IconTile. At 48 a circle reads as an avatar for the thing
+         it labels, which is what a category tile is. -->
+    <Style x:Key="M3IconCircle" TargetType="Border">
+        <Setter Property="WidthRequest" Value="48" />
+        <Setter Property="HeightRequest" Value="48" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <Setter Property="StrokeShape">
+            <Setter.Value>
+                <RoundRectangle CornerRadius="24" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="M3IconCircleGlyph" TargetType="Path">
+        <Setter Property="Aspect" Value="Uniform" />
+        <Setter Property="HeightRequest" Value="23" />
+        <Setter Property="WidthRequest" Value="23" />
+        <Setter Property="HorizontalOptions" Value="Center" />
+        <Setter Property="VerticalOptions" Value="Center" />
+    </Style>
+
+    <!-- Filled tonal icon button. A Border rather than a Button because a Button cannot host a Path,
+         and the icon set here is path geometry so it can take a theme-bound Fill. 44 square is the
+         accessible minimum tap target. -->
+    <Style x:Key="M3TonalIconButton" TargetType="Border">
+        <Setter Property="WidthRequest" Value="44" />
+        <Setter Property="HeightRequest" Value="44" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <!-- HairlineDark in dark, not SurfaceMutedDark: the row itself is now SurfaceMutedDark, so
+             the button had no edge against the row it sits on. -->
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource BrandPurpleSoft}, Dark={StaticResource HairlineDark}}" />
+        <Setter Property="StrokeShape">
+            <Setter.Value>
+                <RoundRectangle CornerRadius="22" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="M3TonalIconButtonGlyph" TargetType="Path">
+        <Setter Property="Aspect" Value="Uniform" />
+        <Setter Property="HeightRequest" Value="20" />
+        <Setter Property="WidthRequest" Value="20" />
+        <Setter Property="HorizontalOptions" Value="Center" />
+        <Setter Property="VerticalOptions" Value="Center" />
+        <Setter Property="Fill" Value="{AppThemeBinding Light={StaticResource BrandPurple}, Dark={StaticResource BrandPurpleLight}}" />
+    </Style>
+
+    <!-- Filled text field: tonal fill, no outline, fully round. The outlined FieldBorder above is
+         the older treatment. -->
+    <Style x:Key="M3FilledField" TargetType="Border">
+        <Setter Property="BackgroundColor" Value="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceMutedDark}}" />
+        <Setter Property="Stroke" Value="Transparent" />
+        <Setter Property="StrokeThickness" Value="0" />
+        <Setter Property="Padding" Value="18,2" />
+        <Setter Property="StrokeShape">
+            <Setter.Value>
+                <RoundRectangle CornerRadius="28" />
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="M3PillButton" TargetType="Button" BasedOn="{StaticResource BaseButton}">
+        <Setter Property="CornerRadius" Value="28" />
+        <Setter Property="Padding" Value="26,14" />
+        <Setter Property="MinimumHeightRequest" Value="52" />
     </Style>
 
 </ResourceDictionary>
