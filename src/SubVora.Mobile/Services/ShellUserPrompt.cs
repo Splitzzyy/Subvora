@@ -10,4 +10,7 @@ public class ShellUserPrompt : IUserPrompt
 
     public Task<string?> PromptAsync(string title, string message, string initialValue = "") =>
         Shell.Current.DisplayPromptAsync(title, message, initialValue: initialValue);
+
+    public Task<string?> ActionSheetAsync(string title, string cancel, params string[] actions) =>
+        Shell.Current.DisplayActionSheetAsync(title, cancel, destruction: null, actions);
 }

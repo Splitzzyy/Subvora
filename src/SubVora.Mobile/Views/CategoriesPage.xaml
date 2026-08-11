@@ -18,7 +18,7 @@
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
-        <Grid RowDefinitions="Auto,Auto,*" Padding="16,16,16,0" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16,16,16,0" RowSpacing="12">
 
             <Label Grid.Row="0"
                    Style="{StaticResource ErrorText}"
@@ -33,13 +33,34 @@
             </Grid>
 
             <Border Grid.Row="2" Style="{StaticResource Card}" Padding="18,4" Margin="0,0,0,16">
-                <CollectionView ItemsSource="{Binding Categories}">
+                <CollectionView ItemsSource="{Binding Groups}" IsGrouped="True">
+
+                    <!-- Two sections, because these are two kinds of thing: the seeded defaults
+                         every account shares, and this user's own - which are the only ones that
+                         can be renamed or deleted. The heading carries that distinction, so the
+                         rows no longer need a per-row SYSTEM chip. -->
+                    <CollectionView.GroupHeaderTemplate>
+                        <DataTemplate x:DataType="viewModels:CategoryGroup">
+                            <Grid Padding="2,16,2,8" ColumnDefinitions="*,Auto">
+                                <Label Grid.Column="0"
+                                       Style="{StaticResource SectionHeading}"
+                                       Text="{Binding Title}"
+                                       VerticalOptions="Center" />
+                                <Label Grid.Column="1"
+                                       Style="{StaticResource Caption}"
+                                       Text="{Binding Summary}"
+                                       FontSize="12"
+                                       VerticalOptions="Center" />
+                            </Grid>
+                        </DataTemplate>
+                    </CollectionView.GroupHeaderTemplate>
+
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="dtos:CategoryDto">
-                            <!-- Swipe actions rather than inline buttons: the row is mostly a name,
-                                 and two buttons per row would crowd out the thing being named.
-                                 Hidden entirely for system defaults - they are shared by every
-                                 account, and the server answers 404 for them anyway. -->
+                            <!-- Swipe is kept as the fast path, but it advertises itself to nobody,
+                                 so each editable row also carries a visible manage button. Both
+                                 routes are hidden for system defaults - shared by every account,
+                                 and the server answers 404 for them anyway. -->
                             <SwipeView>
                                 <SwipeView.RightItems>
                                     <SwipeItems>
@@ -72,9 +93,21 @@
                                        Style="{StaticResource BodyStrong}"
                                        Text="{Binding Name}"
                                        VerticalOptions="Center" />
-                                <Border Grid.Column="2" Style="{StaticResource Chip}" IsVisible="{Binding IsSystemDefault}">
-                                    <Label Style="{StaticResource ChipText}" Text="SYSTEM" />
-                                </Border>
+
+                                <!-- The discoverable half of rename/delete. A button rather than an
+                                     icon-only tap target so it reads as pressable, and only on rows
+                                     that actually have actions. -->
+                                <Button Grid.Column="2"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Text="•••"
+                                        FontSize="14"
+                                        Padding="12,4"
+                                        MinimumHeightRequest="34"
+                                        MinimumWidthRequest="44"
+                                        SemanticProperties.Description="Rename or delete this category"
+                                        IsVisible="{Binding IsSystemDefault, Converter={StaticResource InvertedBoolConverter}}"
+                                        Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:CategoriesViewModel}}, Path=ManageCommand}"
+                                        CommandParameter="{Binding .}" />
                             </Grid>
                             </SwipeView>
                         </DataTemplate>
@@ -85,11 +118,20 @@
                             <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconTag}" />
                             <Label Style="{StaticResource EmptyTitle}" Text="No categories" />
                             <Label Style="{StaticResource EmptyBody}"
-                                   Text="Add one above to group your subscriptions. Swipe a row left to rename or delete it." />
+                                   Text="Add one above to group your subscriptions." />
                         </VerticalStackLayout>
                     </CollectionView.EmptyView>
                 </CollectionView>
             </Border>
+
+            <!-- Outside the CollectionView on purpose. This hint used to live in EmptyView, which
+                 renders only when the list is empty - so the one thing that explained the gesture
+                 was on screen exactly when there was no row to try it on. -->
+            <Label Grid.Row="3"
+                   Style="{StaticResource Caption}"
+                   Text="Tap ••• on one of your categories to rename or delete it, or swipe the row left."
+                   Margin="4,0,4,16"
+                   IsVisible="{Binding HasManageableCategories}" />
 
         </Grid>
     </RefreshView>

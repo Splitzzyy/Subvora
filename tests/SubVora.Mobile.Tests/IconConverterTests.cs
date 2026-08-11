@@ -41,12 +41,31 @@ public class IconConverterTests
     {
         // A category with a hue but no icon - or the reverse - renders half-styled: a coloured tile
         // with a generic glyph, or the right glyph in neutral grey. Nothing else would catch that.
+        //
+        // "Other" is excluded deliberately and is the one permitted asymmetry: it has its own glyph
+        // (so it is not confused with an unrecognised category - see below) but takes the neutral
+        // grey, because the palette's eight hues are a validated set and inventing a ninth for it
+        // would not be.
         var withIcons = CategoryIconConverter.KnownCategories
             .Where(category => !string.Equals(category, "Other", StringComparison.OrdinalIgnoreCase))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var withColours = CategoryColorConverter.KnownCategories.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         Assert.Equal(withColours.OrderBy(c => c), withIcons.OrderBy(c => c));
+    }
+
+    [Fact]
+    public void SeededCategories_NeverShareTheUnrecognisedFallbackGlyph()
+    {
+        // The reported bug: "Other" was mapped to the fallback key, so the system category "Other"
+        // and a user's "Music" drew the same glyph - and, both missing a hue, the same neutral grey.
+        // The two tiles were pixel-identical. The fallback has to mean "no icon for this" and
+        // nothing else.
+        var fallback = CategoryIconConverter.IconKeyFor("Pet insurance");
+
+        Assert.All(
+            CategoryIconConverter.KnownCategories,
+            category => Assert.NotEqual(fallback, CategoryIconConverter.IconKeyFor(category)));
     }
 
     [Theory]

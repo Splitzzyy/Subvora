@@ -31,4 +31,15 @@ public class FakeUserPrompt : IUserPrompt
         PromptCalls.Add((title, message, initialValue));
         return Task.FromResult(PromptResult);
     }
+
+    /// <summary>Which action the sheet returns. Null - the default - is a dismissal.</summary>
+    public string? ActionSheetResult { get; set; }
+
+    public List<(string Title, string[] Actions)> ActionSheetCalls { get; } = [];
+
+    public Task<string?> ActionSheetAsync(string title, string cancel, params string[] actions)
+    {
+        ActionSheetCalls.Add((title, actions));
+        return Task.FromResult(ActionSheetResult);
+    }
 }

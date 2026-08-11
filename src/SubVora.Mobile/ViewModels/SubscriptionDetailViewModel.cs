@@ -108,6 +108,30 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
     public partial bool IsBusy { get; set; }
 
     /// <summary>
+    /// The screen is still fetching what it opened for. Separate from <see cref="IsBusy"/>, which
+    /// means "a write is in flight" and gates Save - an edit form with no values in it yet needs to
+    /// say so, and previously said nothing at all while three requests went out in series.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsLoading { get; set; }
+
+    /// <summary>
+    /// The category and payment-source lists have not arrived. Disables both pickers rather than
+    /// letting them open an empty dialog, and suppresses the "no payment sources yet" caption,
+    /// which otherwise tells a user who has several that they have none.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowNoPaymentSourcesHint))]
+    public partial bool ArePickersLoading { get; set; }
+
+    /// <summary>
+    /// Whether to say the user has no payment sources. Only once that is actually known - an empty
+    /// list mid-fetch is not the same fact, and the two were indistinguishable while the caption
+    /// keyed off emptiness alone.
+    /// </summary>
+    public bool ShowNoPaymentSourcesHint => !ArePickersLoading && PaymentSources.Count == 0;
+
+    /// <summary>
     /// Whether the device has no network. Refreshed when the screen loads and after a failed write
     /// rather than by subscribing to the connectivity event: this view model is transient while
     /// IConnectivityService is a singleton, so a subscription would outlive the screen.
@@ -196,6 +220,10 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         _connectivity = connectivity;
 
         IsOffline = !connectivity.IsConnected;
+
+        // ShowNoPaymentSourcesHint reads the collection's count, and a collection change raises
+        // nothing for it by itself.
+        PaymentSources.CollectionChanged += (_, _) => OnPropertyChanged(nameof(ShowNoPaymentSourcesHint));
 
         // PurchaseDate and CycleCadence start at their defaults, so neither change handler has fired
         // yet and the add form would otherwise open showing today as the next billing date.
@@ -380,74 +408,172 @@ public partial class SubscriptionDetailViewModel : ObservableObject, IQueryAttri
         ClearSuggestions();
     }
 
+    /// <summary>
+    /// Opens the screen. The three GETs it needs - categories, payment sources and (in edit mode)
+    /// the subscription - are independent, so they go out together and are applied afterwards.
+    /// <para>
+    /// They used to be awaited one after another, which cost three round trips of latency before
+    /// anything appeared. The only real ordering constraint is that the pickers are populated
+    /// before <see cref="ApplySubscription"/> resolves SelectedCategory/SelectedPaymentSource
+    /// against them by id, and that is preserved below.
+    /// </para>
+    /// </summary>
     [RelayCommand]
     private async Task InitializeAsync()
     {
-        await LoadPickersAsync();
-        await LoadSubscriptionAsync();
+        IsLoading = true;
+        ArePickersLoading = true;
+        try
+        {
+            // Started before anything is awaited - that is what makes them concurrent.
+            var pickersTask = LoadPickersAsync();
+            var subscriptionTask = FetchSubscriptionAsync();
+
+            await pickersTask;
+            var subscription = await subscriptionTask;
+
+            if (subscription is not null)
+            {
+                ApplySubscription(subscription);
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     [RelayCommand]
     private async Task LoadPickersAsync()
     {
+        ArePickersLoading = true;
         try
         {
-            var categories = await _categoriesApi.GetAllAsync();
-            Categories.Clear();
-            foreach (var category in categories)
-            {
-                Categories.Add(category);
-            }
+            // Both started before either is awaited - that is what makes them concurrent. Each
+            // failure is captured with its own result rather than thrown, so one endpoint being
+            // down still populates the other picker; plain Task.WhenAll surfaces a single exception
+            // and would have discarded the successful half.
+            var categoriesFetch = TryFetchAsync(_categoriesApi.GetAllAsync);
+            var paymentSourcesFetch = TryFetchAsync(_paymentSourcesApi.GetAllAsync);
 
-            var paymentSources = await _paymentSourcesApi.GetAllAsync();
-            PaymentSources.Clear();
-            foreach (var paymentSource in paymentSources)
+            var (categories, categoriesError) = await categoriesFetch;
+            var (paymentSources, paymentSourcesError) = await paymentSourcesFetch;
+
+            Replace(Categories, categories);
+            Replace(PaymentSources, paymentSources);
+
+            if ((categoriesError ?? paymentSourcesError) is { } failure)
             {
-                PaymentSources.Add(paymentSource);
+                if (!ApiErrorMapper.IsApiFailure(failure))
+                {
+                    // Not a transport problem - a defect. Swallowing it here would show an empty
+                    // picker and no reason, which is the failure mode this screen already had.
+                    throw failure;
+                }
+
+                ErrorMessage = ApiErrorMapper.ToDisplayMessage(failure);
             }
         }
-        catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
+        finally
         {
-            ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            // In a finally, so a failed load leaves the pickers enabled and empty-with-a-reason
+            // rather than stuck disabled on "Loading...".
+            ArePickersLoading = false;
         }
     }
 
-    private async Task LoadSubscriptionAsync()
+    /// <summary>
+    /// Runs a fetch and returns either its result or its exception, never throwing. The call itself
+    /// is inside the try, not just the await, so a client that throws synchronously is captured the
+    /// same way as one whose task faults.
+    /// </summary>
+    private static async Task<(IReadOnlyList<T>? Result, Exception? Error)> TryFetchAsync<T>(Func<CancellationToken, Task<IReadOnlyList<T>>> fetch)
+    {
+        try
+        {
+            return (await fetch(CancellationToken.None), null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex);
+        }
+    }
+
+    private static void Replace<T>(ObservableCollection<T> target, IReadOnlyList<T>? source)
+    {
+        // Null means that fetch failed. Leave whatever is there rather than blanking a list that
+        // was already populated by an earlier visit to the screen.
+        if (source is null)
+        {
+            return;
+        }
+
+        target.Clear();
+        foreach (var item in source)
+        {
+            target.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// Fetches the record being edited, or null in add mode / on failure. Split from
+    /// <see cref="ApplySubscription"/> so the request can be in flight while the pickers load,
+    /// while the values are still written only after those pickers exist to resolve against.
+    /// </summary>
+    private async Task<SubscriptionDto?> FetchSubscriptionAsync()
     {
         if (SubscriptionId is not Guid id)
         {
-            return;
+            return null;
         }
 
         IsOffline = !_connectivity.IsConnected;
 
         try
         {
-            var subscription = await _subscriptionsApi.GetByIdAsync(id);
-            CustomName = subscription.CustomName;
-            CostAmount = subscription.CostAmount;
-            // Options before the value, so the selection has something to land on.
-            Currencies = SupportedCurrencies.Including(subscription.Currency);
-            Currency = subscription.Currency;
-            CycleCadence = subscription.CycleCadence;
-            PurchaseDate = subscription.PurchaseDate.ToDateTime(TimeOnly.MinValue);
-            NextBillingDate = subscription.NextBillingDate.ToDateTime(TimeOnly.MinValue);
-            AlertDaysAdvance = subscription.AlertDaysAdvance;
-            IsFreeTrial = subscription.IsFreeTrial;
-            SelectedCategory = Categories.FirstOrDefault(c => c.Id == subscription.CategoryId);
-            SelectedPaymentSource = PaymentSources.FirstOrDefault(p => p.Id == subscription.PaymentSourceId);
-            // Last, because the CustomName assignment above clears it: saving an untouched edit
-            // must not silently strip the record's existing catalog link.
-            _appliedCatalogId = subscription.CatalogId;
-            _loadedVersion = subscription.Version;
+            return await _subscriptionsApi.GetByIdAsync(id);
         }
         catch (ApiException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {
             SubscriptionNotFound?.Invoke(this, EventArgs.Empty);
+            return null;
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
+            return null;
+        }
+    }
+
+    private void ApplySubscription(SubscriptionDto subscription)
+    {
+        CustomName = subscription.CustomName;
+        CostAmount = subscription.CostAmount;
+        // Options before the value, so the selection has something to land on.
+        Currencies = SupportedCurrencies.Including(subscription.Currency);
+        Currency = subscription.Currency;
+        CycleCadence = subscription.CycleCadence;
+        PurchaseDate = subscription.PurchaseDate.ToDateTime(TimeOnly.MinValue);
+        NextBillingDate = subscription.NextBillingDate.ToDateTime(TimeOnly.MinValue);
+        AlertDaysAdvance = subscription.AlertDaysAdvance;
+        IsFreeTrial = subscription.IsFreeTrial;
+        SelectedCategory = Categories.FirstOrDefault(c => c.Id == subscription.CategoryId);
+        SelectedPaymentSource = PaymentSources.FirstOrDefault(p => p.Id == subscription.PaymentSourceId);
+        // Last, because the CustomName assignment above clears it: saving an untouched edit
+        // must not silently strip the record's existing catalog link.
+        _appliedCatalogId = subscription.CatalogId;
+        _loadedVersion = subscription.Version;
+    }
+
+    /// <summary>
+    /// Re-reads the record and writes it over the form. Used by the 409 path, where the pickers are
+    /// already populated, so it stays sequential.
+    /// </summary>
+    private async Task LoadSubscriptionAsync()
+    {
+        if (await FetchSubscriptionAsync() is { } subscription)
+        {
+            ApplySubscription(subscription);
         }
     }
 

@@ -17,7 +17,7 @@
     </ContentPage.Resources>
 
     <RefreshView Command="{Binding LoadCommand}" IsRefreshing="{Binding IsLoading}">
-        <Grid RowDefinitions="Auto,Auto,*" Padding="16,16,16,0" RowSpacing="12">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Padding="16,16,16,0" RowSpacing="12">
 
             <Label Grid.Row="0"
                    Style="{StaticResource ErrorText}"
@@ -66,7 +66,7 @@
                                     </SwipeItems>
                                 </SwipeView.RightItems>
 
-                                <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto">
+                                <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto,Auto">
                                     <!-- Tinted by type, not per row: a person's cards are not
                                          categories, and a hue each would imply a distinction the
                                          data does not have. -->
@@ -85,6 +85,20 @@
                                     <Border Grid.Column="2" Style="{StaticResource Chip}">
                                         <Label Style="{StaticResource ChipText}" Text="{Binding SourceType}" />
                                     </Border>
+
+                                    <!-- The discoverable half of rename/delete; swipe stays as the
+                                         fast path but nothing on screen ever announced it. -->
+                                    <Button Grid.Column="3"
+                                            Style="{StaticResource SecondaryButton}"
+                                            Text="&#8226;&#8226;&#8226;"
+                                            FontSize="14"
+                                            Padding="12,4"
+                                            Margin="8,0,0,0"
+                                            MinimumHeightRequest="34"
+                                            MinimumWidthRequest="44"
+                                            SemanticProperties.Description="Rename or delete this payment source"
+                                            Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=ManageCommand}"
+                                            CommandParameter="{Binding .}" />
                                 </Grid>
                             </SwipeView>
                         </DataTemplate>
@@ -95,11 +109,19 @@
                             <Path Style="{StaticResource EmptyIcon}" Data="{StaticResource IconWallet}" />
                             <Label Style="{StaticResource EmptyTitle}" Text="No payment sources" />
                             <Label Style="{StaticResource EmptyBody}"
-                                   Text="Add the cards and accounts your subscriptions bill to. Swipe a row left to rename or delete it." />
+                                   Text="Add the cards and accounts your subscriptions bill to." />
                         </VerticalStackLayout>
                     </CollectionView.EmptyView>
                 </CollectionView>
             </Border>
+
+            <!-- Outside the CollectionView on purpose: this hint used to sit in EmptyView, which
+                 renders only when there is no row to act on. -->
+            <Label Grid.Row="3"
+                   Style="{StaticResource Caption}"
+                   Text="Tap &#8226;&#8226;&#8226; on a row to rename or delete it, or swipe the row left."
+                   Margin="4,0,4,16"
+                   IsVisible="{Binding HasPaymentSources}" />
 
         </Grid>
     </RefreshView>

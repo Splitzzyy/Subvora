@@ -123,6 +123,25 @@
                         Command="{Binding SignOutCommand}" />
             </Border>
 
+            <!-- Which build this is. Deliberately populated from code-behind rather than the view
+                 model: AppInfo.Current is a static platform accessor with no counterpart in a plain
+                 xUnit host, and there is no logic here for a test to catch. See SettingsPage.xaml.cs.
+
+                 The pair matters together - the release workflow sets the display version from the
+                 git tag and the build number from the CI run number, so "1.1.0 (build 7)" names one
+                 specific artifact. That is the thing worth asking a bug reporter for. -->
+            <VerticalStackLayout Spacing="2" Padding="4,4,4,0" HorizontalOptions="Center">
+                <Label x:Name="VersionLabel"
+                       Style="{StaticResource Caption}"
+                       HorizontalTextAlignment="Center"
+                       SemanticProperties.Description="Installed app version" />
+                <Label x:Name="PackageLabel"
+                       Style="{StaticResource Caption}"
+                       FontSize="11"
+                       HorizontalTextAlignment="Center"
+                       Opacity="0.7" />
+            </VerticalStackLayout>
+
         </VerticalStackLayout>
     </ScrollView>
 
