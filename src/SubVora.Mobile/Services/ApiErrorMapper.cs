@@ -12,12 +12,22 @@ public static class ApiErrorMapper
     /// <summary>
     /// Whether this is a way an API call can fail, as opposed to a bug in our own code.
     /// <para>
-    /// Refit raises <see cref="ApiException"/> only when the server actually answered with an error
-    /// status. When the API cannot be reached at all - stopped container, dead adb tunnel, no
-    /// network - there is no response to wrap, so HttpClient's own
-    /// <see cref="HttpRequestException"/> (connection refused, no route) or
-    /// <see cref="TaskCanceledException"/> (connect timeout) comes through untouched. Catching only
-    /// ApiException therefore let those escape the command and take the app down.
+    /// Refit raises <see cref="ApiException"/> when the server answered with an error status, and
+    /// <see cref="ApiRequestException"/> when the request failed before any response came back -
+    /// stopped container, dead adb tunnel, no network. Both derive from
+    /// <see cref="ApiExceptionBase"/>, which is what this matches.
+    /// </para>
+    /// <para>
+    /// <see cref="ApiRequestException"/> is the one that has bitten us. Refit 12 let HttpClient's
+    /// own <see cref="HttpRequestException"/> through untouched; Refit 13 <em>wraps</em> it, so a
+    /// filter listing only ApiException/HttpRequestException/TaskCanceledException stopped matching
+    /// the single most common failure there is. The exception then escaped every view model's catch
+    /// filter and AsyncRelayCommand rethrew it on the UI thread - the app hard-crashed the moment
+    /// the API was unreachable, rather than falling back to cache.
+    /// </para>
+    /// <para>
+    /// The bare HttpRequestException and TaskCanceledException cases are kept: not every call goes
+    /// through Refit, and a cancelled await can still surface directly.
     /// </para>
     /// <para>
     /// Used as a catch filter rather than catching Exception outright: a NullReferenceException is
@@ -25,12 +35,14 @@ public static class ApiErrorMapper
     /// </para>
     /// </summary>
     public static bool IsApiFailure(Exception exception) =>
-        exception is ApiException or HttpRequestException or TaskCanceledException;
+        exception is ApiExceptionBase or HttpRequestException or TaskCanceledException;
 
     public static string ToDisplayMessage(Exception exception) => exception switch
     {
+        // Before the ApiRequestException arm: ApiException is the one that carries a status code.
         ApiException apiException => ToDisplayMessage(apiException),
-        HttpRequestException or TaskCanceledException => "You appear to be offline.",
+        // No response ever arrived, so there is no status to map - it is an unreachable server.
+        ApiRequestException or HttpRequestException or TaskCanceledException => "You appear to be offline.",
         _ => "Something went wrong. Please try again.",
     };
 
@@ -45,7 +57,7 @@ public static class ApiErrorMapper
     /// </summary>
     public static string ToWriteFailureMessage(Exception exception) => exception switch
     {
-        HttpRequestException or TaskCanceledException =>
+        ApiRequestException or HttpRequestException or TaskCanceledException =>
             "You're offline — this change wasn't saved. Try again once you're connected.",
         _ => ToDisplayMessage(exception),
     };

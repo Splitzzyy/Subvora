@@ -299,6 +299,40 @@ Live app output:
 adb logcat -s DOTNET:* mono-stdout:* MonoDroid:*
 ```
 
+### Two crashes that look alike and are not
+
+Both kill the app on launch during local debugging, and the fix is completely different.
+
+**1. Fast deployment — a tooling problem, not a bug.**
+
+```
+Abort message: 'No assemblies found in
+'/data/user/0/com.subvora.mobile/files/.__override__/arm64-v8a' or '<unavailable>'.
+Assuming this is part of Fast Deployment. Exiting...'
+```
+
+The APK was installed without the assemblies inside it and the fast-deploy channel never pushed
+them. Rebuild with `-p:EmbedAssembliesIntoApk=true` (see the sideloading section above), or deploy
+through `dotnet build -t:Run` so the same build does both halves. Nothing in the app is wrong.
+
+**2. An unreachable API — historically a real crash.**
+
+```
+FATAL EXCEPTION: main
+android.runtime.JavaProxyThrowable: [Refit.ApiRequestException]: Connection failure
+  at SubVora.Mobile.ViewModels.DashboardViewModel+<LoadAsync>d__44.MoveNext
+  at CommunityToolkit.Mvvm.Input.AsyncRelayCommand+<AwaitAndThrowIfFailed>
+```
+
+This is what a Debug build on a physical phone does when `adb reverse` is not set up: the default
+`10.0.2.2` is an emulator alias, so nothing answers.
+
+The app should now show the offline state instead. If you see this trace again, the exception type
+has escaped `ApiErrorMapper.IsApiFailure` — Refit wraps connection failures in `ApiRequestException`
+rather than letting `HttpRequestException` through, and anything the filter does not match escapes
+every view model's catch block and gets rethrown on the UI thread by `AsyncRelayCommand`. Widen the
+filter; do not add a catch to the individual screen.
+
 Ignore `monodroid-assembly: open_from_bundles: failed to load bundled assembly …` — that is normal
 fast-deploy noise on Debug builds, not an error.
 
