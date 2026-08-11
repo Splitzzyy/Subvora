@@ -69,7 +69,7 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
-    public async Task GetBurnRate_WithAQuarterlySubscription_RoundTripsTheEnumAndProjectsFourChargesAYear()
+    public async Task GetBurnRate_WithAQuarterlySubscription_RoundTripsTheEnumAndChargesFourTimesAYear()
     {
         // Also the only test that proves the native billing_cycle_type enum actually carries the
         // new label: a missing ALTER TYPE fails here at insert, not at compile time.
@@ -94,7 +94,9 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var result = await response.Content.ReadFromJsonAsync<BurnRateResult>(JsonOptions);
         Assert.NotNull(result);
-        Assert.Equal(1604.40m, result!.Yearly);
+        // Four charges of 400. Previously 1604.40, because a quarter was priced as 91 days
+        // against a 365-day year rather than counted as one of four billing cycles.
+        Assert.Equal(1600m, result!.Yearly);
     }
 
     [Fact]
