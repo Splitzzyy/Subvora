@@ -84,8 +84,21 @@ Sign up for Brevo, verify a sender address (a plain Gmail address is fine — no
 and create an **SMTP key**. The credentials are the Brevo *login email* as username and the SMTP
 key as password; the account password will not authenticate.
 
-Email is only used for password-reset codes, so a misconfiguration here does not stop the API from
-starting — `SmtpEmailSender` reads its config at send time and throws only then.
+Email carries password-reset codes, the welcome message a new account gets, and the notice sent to
+the owner of an address someone tried to re-register. A misconfiguration here does not stop the API
+from starting — `SmtpEmailSender` reads its config at send time and throws only then.
+
+That makes an unconfigured mailer easy to miss, because *nothing* in any HTTP response changes: every
+send is queued and fire-and-forget by design, precisely so response times cannot reveal which
+addresses have accounts. Two things make it visible instead:
+
+- `EmailDispatchBackgroundService` logs `SMTP is not configured (...) - no email will be delivered`
+  once at boot when `Smtp__Host` or `Smtp__FromAddress` is unset. Check the Render log after a deploy.
+- A send that fails later logs `Could not deliver an email to {Recipient}` at warning level.
+
+If neither line appears and mail still does not arrive, the send reached Brevo and the problem is
+there: an unverified `Smtp__FromAddress`, the account password used instead of the SMTP key, or the
+300/day free-tier cap. Brevo's activity log distinguishes these.
 
 ### 4. Deploy the API
 
@@ -297,10 +310,11 @@ Render dashboard (*Manual Deploy → Deploy latest commit*) and check again.
 
 Then add a subscription and load `/api/v1/dashboard/burn-rate` for the same proof end to end.
 
-For email, registering a *second* time with an address that already exists is enough: that path
-mails the existing owner while returning an identical 202, so it exercises Brevo and the
-anti-enumeration behaviour at once. Otherwise request a password reset and check Brevo's activity
-log.
+For email, registering a new address is enough — a fresh account gets a welcome message. Registering
+that same address a *second* time then mails the existing owner while returning an identical 202,
+which exercises Brevo and the anti-enumeration behaviour at once. Both send exactly one message, so
+the mailbox is no more of an oracle than the response is. Check Brevo's activity log if neither
+arrives.
 
 On a device, with **no** `adb reverse` mapping active (unlike the local loop in
 [debug/ANDROID_DEVICE.md](./debug/ANDROID_DEVICE.md)): log in, confirm the list populates, then kill

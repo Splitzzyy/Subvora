@@ -62,7 +62,17 @@ public partial class DashboardViewModel : ObservableObject
     [ObservableProperty]
     public partial string? WarningMessage { get; set; }
 
+    /// <summary>
+    /// Which card or account is carrying the most spend, e.g. "Most of it — 62% — goes to HDFC
+    /// Card." Null when there is nothing to say: no subscriptions, or only one payment source, in
+    /// which case "100% goes to your only account" is noise rather than a finding.
+    /// </summary>
+    [ObservableProperty]
+    public partial string? TopSpendSourceSummary { get; set; }
+
     public ObservableCollection<CategoryBreakdownItem> ByCategory { get; } = [];
+
+    public ObservableCollection<PaymentSourceBreakdownItem> ByPaymentSource { get; } = [];
 
     public DashboardViewModel(IDashboardApi dashboardApi, ILocalCacheService localCacheService, IMessenger messenger)
     {
@@ -89,7 +99,9 @@ public partial class DashboardViewModel : ObservableObject
         WarningMessage = null;
         ErrorMessage = null;
         IsShowingCachedData = false;
+        TopSpendSourceSummary = null;
         ByCategory.Clear();
+        ByPaymentSource.Clear();
     }
 
     [RelayCommand]
@@ -113,6 +125,7 @@ public partial class DashboardViewModel : ObservableObject
                 UnresolvedSubscriptionCount = result.UnresolvedSubscriptionIds.Count,
                 OldestRateFetchedAt = result.OldestRateFetchedAt,
                 ByCategory = [.. result.ByCategory],
+                ByPaymentSource = [.. result.ByPaymentSource],
             };
 
             ApplyBurnRate(snapshot);
@@ -163,6 +176,45 @@ public partial class DashboardViewModel : ObservableObject
             item.Share = largest > 0 ? (double)(item.MonthlyAmount / largest) : 0;
             ByCategory.Add(item);
         }
+
+        ByPaymentSource.Clear();
+
+        var largestSource = snapshot.ByPaymentSource.Count == 0 ? 0m : snapshot.ByPaymentSource.Max(i => i.MonthlyAmount);
+        foreach (var item in snapshot.ByPaymentSource)
+        {
+            item.Share = largestSource > 0 ? (double)(item.MonthlyAmount / largestSource) : 0;
+            ByPaymentSource.Add(item);
+        }
+
+        TopSpendSourceSummary = BuildTopSpendSourceSummary(snapshot.ByPaymentSource);
+    }
+
+    /// <summary>
+    /// The headline the payment-source list exists to deliver: which account carries most of the
+    /// burn rate, and by how much. Share is of the total here, not of the leader - the question is
+    /// "how much of my spending is on this card", which only the total answers.
+    /// </summary>
+    private static string? BuildTopSpendSourceSummary(IReadOnlyList<PaymentSourceBreakdownItem> byPaymentSource)
+    {
+        // One source means the answer is "all of it", which the user already knows. Zero means
+        // there is nothing to summarise.
+        if (byPaymentSource.Count < 2)
+        {
+            return null;
+        }
+
+        var total = byPaymentSource.Sum(item => item.MonthlyAmount);
+        if (total <= 0)
+        {
+            return null;
+        }
+
+        // Already ordered largest-first by the server, but the summary must not silently name the
+        // wrong account if that ever stops being true.
+        var top = byPaymentSource.MaxBy(item => item.MonthlyAmount)!;
+        var share = (int)Math.Round(top.MonthlyAmount / total * 100);
+
+        return $"{share}% of your monthly spend goes to {top.PaymentSourceLabel}.";
     }
 
     private static string? BuildWarningMessage(int unresolvedCount, DateTimeOffset? oldestRateFetchedAt)

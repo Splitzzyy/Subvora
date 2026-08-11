@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using SubVora.Application.Auth;
 using SubVora.Application.Dashboard;
+using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
 
@@ -65,6 +66,52 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
         var result = await response.Content.ReadFromJsonAsync<BurnRateResult>(JsonOptions);
         Assert.NotNull(result);
         Assert.Equal(30m, result!.Monthly);
+    }
+
+    [Fact]
+    public async Task GetBurnRate_GroupsSpendByThePaymentSourceItIsChargedTo()
+    {
+        var client = await CreateAuthenticatedClientAsync($"dash-source-{Guid.NewGuid()}@example.com");
+
+        var cardResponse = await client.PostAsJsonAsync("/api/v1/payment-sources", new CreatePaymentSourceRequest { Label = "HDFC Card", SourceType = PaymentSourceType.Card }, JsonOptions);
+        Assert.Equal(HttpStatusCode.Created, cardResponse.StatusCode);
+        var card = await cardResponse.Content.ReadFromJsonAsync<PaymentSourceDto>(JsonOptions);
+
+        await CreateSubscriptionAsync(client, "Netflix", 30m, card!.Id);
+        await CreateSubscriptionAsync(client, "Spotify", 20m, card.Id);
+        // No payment source, so it must land in its own "Unassigned" bucket rather than silently
+        // padding the card's total.
+        await CreateSubscriptionAsync(client, "Gym", 10m, paymentSourceId: null);
+
+        var response = await client.GetAsync("/api/v1/dashboard/burn-rate");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var result = await response.Content.ReadFromJsonAsync<BurnRateResult>(JsonOptions);
+        Assert.NotNull(result);
+        Assert.Equal(2, result!.ByPaymentSource.Count);
+        Assert.Equal("HDFC Card", result.ByPaymentSource[0].PaymentSourceLabel);
+        Assert.Equal(card.Id, result.ByPaymentSource[0].PaymentSourceId);
+        Assert.Equal(50m, result.ByPaymentSource[0].MonthlyAmount);
+        Assert.Equal("Unassigned", result.ByPaymentSource[1].PaymentSourceLabel);
+        Assert.Null(result.ByPaymentSource[1].PaymentSourceId);
+        Assert.Equal(10m, result.ByPaymentSource[1].MonthlyAmount);
+    }
+
+    private static async Task CreateSubscriptionAsync(HttpClient client, string name, decimal cost, Guid? paymentSourceId)
+    {
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", new CreateSubscriptionRequest
+        {
+            CustomName = name,
+            CostAmount = cost,
+            Currency = "INR",
+            CycleCadence = BillingCycleType.Monthly,
+            PurchaseDate = new DateOnly(2026, 1, 1),
+            NextBillingDate = new DateOnly(2026, 8, 1),
+            AlertDaysAdvance = 3,
+            PaymentSourceId = paymentSourceId,
+        }, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
     [Fact]

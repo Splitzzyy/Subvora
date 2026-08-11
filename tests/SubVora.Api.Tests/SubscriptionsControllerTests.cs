@@ -443,6 +443,54 @@ public class SubscriptionsControllerTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
+    public async Task Resolve_WithSeveralPlausibleMatches_ReturnsThemAllForTheUserToPick()
+    {
+        // "youtube" is three seeded products and no score can say which one the user pays for, so
+        // the endpoint hands back the list rather than picking on their behalf.
+        var client = await CreateAuthenticatedClientAsync($"resolve-list-{Guid.NewGuid()}@example.com");
+
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "youtube" }, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var resolved = await response.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
+        Assert.NotNull(resolved);
+        Assert.NotEqual(MatchConfidenceTier.Manual, resolved.Tier);
+        Assert.True(resolved.Suggestions.Count > 1, $"Expected several YouTube candidates, got {resolved.Suggestions.Count}.");
+        Assert.All(resolved.Suggestions, suggestion =>
+        {
+            Assert.NotEqual(Guid.Empty, suggestion.CatalogId);
+            Assert.False(string.IsNullOrWhiteSpace(suggestion.ProviderName));
+            // Every row is tappable, so every row has to have cleared the floor.
+            Assert.True(suggestion.Score >= SubscriptionMatchService.SuggestConfirmSimilarityThreshold);
+        });
+        Assert.True(resolved.Suggestions.Count <= SubscriptionMatchService.MaxSuggestions);
+    }
+
+    [Fact]
+    public async Task Resolve_SuggestedCatalogId_IsAcceptedOnCreate()
+    {
+        // The whole point of the pick list is that tapping a row links the subscription to that
+        // catalog row, so an id handed out by resolve has to survive being sent straight back.
+        var client = await CreateAuthenticatedClientAsync($"resolve-roundtrip-{Guid.NewGuid()}@example.com");
+
+        var resolveResponse = await client.PostAsJsonAsync("/api/v1/subscriptions/resolve", new ResolveSubscriptionRequest { Input = "netflix" }, JsonOptions);
+        var resolved = await resolveResponse.Content.ReadFromJsonAsync<ResolveSubscriptionResponse>(JsonOptions);
+        Assert.NotNull(resolved);
+        Assert.NotEmpty(resolved.Suggestions);
+        var picked = resolved.Suggestions[0];
+
+        var request = ValidRequest();
+        request.CustomName = picked.ProviderName;
+        request.CatalogId = picked.CatalogId;
+
+        var createResponse = await client.PostAsJsonAsync("/api/v1/subscriptions", request, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+        var created = await createResponse.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(picked.CatalogId, created?.CatalogId);
+    }
+
+    [Fact]
     public async Task Resolve_WithinRateLimit_Succeeds()
     {
         // Test config caps this endpoint at 3 requests/minute per user (ApiWebApplicationFactory).

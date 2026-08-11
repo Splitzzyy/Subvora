@@ -15,7 +15,7 @@ public class BurnRateCalculatorTests
         _calculator = new BurnRateCalculator(_fxRateService);
     }
 
-    private static SubscriptionDto RecurringSubscription(decimal cost, BillingCycleType cycle, bool isFreeTrial = false, bool isActive = true, string currency = "USD", Guid? categoryId = null, string? categoryName = null) => new()
+    private static SubscriptionDto RecurringSubscription(decimal cost, BillingCycleType cycle, bool isFreeTrial = false, bool isActive = true, string currency = "USD", Guid? categoryId = null, string? categoryName = null, Guid? paymentSourceId = null, string? paymentSourceLabel = null) => new()
     {
         Id = Guid.NewGuid(),
         CustomName = "Test Subscription",
@@ -27,6 +27,8 @@ public class BurnRateCalculatorTests
         AlertDaysAdvance = 3,
         CategoryId = categoryId,
         CategoryName = categoryName,
+        PaymentSourceId = paymentSourceId,
+        PaymentSourceLabel = paymentSourceLabel,
         IsFreeTrial = isFreeTrial,
         IsActive = isActive,
         CreatedAt = DateTimeOffset.UtcNow,
@@ -251,6 +253,70 @@ public class BurnRateCalculatorTests
         Assert.Null(uncategorized.CategoryId);
         Assert.Equal("Uncategorized", uncategorized.CategoryName);
         Assert.Equal(60m, uncategorized.MonthlyAmount);
+    }
+
+    [Fact]
+    public async Task GroupsMonthlySpendByPaymentSource_LargestFirst_ExcludingOneTimeAndTrials()
+    {
+        var cardId = Guid.NewGuid();
+        var upiId = Guid.NewGuid();
+        var thisYear = DateTime.UtcNow.Year;
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly, paymentSourceId: upiId, paymentSourceLabel: "UPI"),
+            RecurringSubscription(30m, BillingCycleType.Monthly, paymentSourceId: cardId, paymentSourceLabel: "HDFC Card"),
+            RecurringSubscription(60m, BillingCycleType.Monthly, paymentSourceId: cardId, paymentSourceLabel: "HDFC Card"),
+            // Same exclusions as the category breakdown, or "where is my money going" answers with
+            // charges that are not being made.
+            RecurringSubscription(90m, BillingCycleType.Monthly, paymentSourceId: cardId, paymentSourceLabel: "HDFC Card", isFreeTrial: true),
+            OneTimeSubscription(99m, new DateOnly(thisYear, 3, 15)),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Equal(2, result.ByPaymentSource.Count);
+        Assert.Equal("HDFC Card", result.ByPaymentSource[0].PaymentSourceLabel);
+        Assert.Equal(cardId, result.ByPaymentSource[0].PaymentSourceId);
+        Assert.Equal(90m, result.ByPaymentSource[0].MonthlyAmount);
+        Assert.Equal("UPI", result.ByPaymentSource[1].PaymentSourceLabel);
+        Assert.Equal(30m, result.ByPaymentSource[1].MonthlyAmount);
+    }
+
+    [Fact]
+    public async Task SubscriptionsWithNoPaymentSource_GroupUnderUnassigned()
+    {
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly),
+            RecurringSubscription(30m, BillingCycleType.Monthly),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        var unassigned = Assert.Single(result.ByPaymentSource);
+        Assert.Null(unassigned.PaymentSourceId);
+        Assert.Equal("Unassigned", unassigned.PaymentSourceLabel);
+        Assert.Equal(60m, unassigned.MonthlyAmount);
+    }
+
+    [Fact]
+    public async Task PaymentSourceBreakdown_ConvertsToHomeCurrencyLikeTheTotalsDo()
+    {
+        // The breakdown must not be a second, native-currency view of the same data: a EUR
+        // subscription and a USD one on the same card have to add up in one currency to be
+        // comparable at all.
+        _fxRateService.SetRate("EUR", "USD", 1.10m);
+        var cardId = Guid.NewGuid();
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly, currency: "USD", paymentSourceId: cardId, paymentSourceLabel: "HDFC Card"),
+            RecurringSubscription(30m, BillingCycleType.Monthly, currency: "EUR", paymentSourceId: cardId, paymentSourceLabel: "HDFC Card"),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        var card = Assert.Single(result.ByPaymentSource);
+        Assert.Equal(63m, card.MonthlyAmount);
     }
 
     [Fact]

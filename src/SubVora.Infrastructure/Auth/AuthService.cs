@@ -81,30 +81,58 @@ public class AuthService : IAuthService
             // duplicate, not a 500.
             _dbContext.Entry(user).State = EntityState.Detached;
             await SendAlreadyRegisteredNoticeAsync(normalizedEmail, cancellationToken);
+            return;
         }
+
+        await SendWelcomeNoticeAsync(normalizedEmail, cancellationToken);
     }
+
+    /// <summary>
+    /// Confirms the account to the address that now owns it. Both register branches send exactly
+    /// one mail, which is deliberate: the branch that sends nothing is distinguishable from the one
+    /// that does the moment anyone watches the mailbox, and the whole endpoint is built so a caller
+    /// cannot tell which ran.
+    /// </summary>
+    private Task SendWelcomeNoticeAsync(string email, CancellationToken cancellationToken) =>
+        SendQuietlyAsync(
+            email,
+            "Welcome to SubVora",
+            "Your SubVora account is ready. Sign in on the app to start tracking subscriptions, and "
+                + "we will remind you before each renewal so nothing charges you by surprise.\n\n"
+                + "If you did not create this account, you can ignore this message - nobody can sign in "
+                + "without the password chosen at sign-up.",
+            cancellationToken);
 
     /// <summary>
     /// Tells the address's real owner that someone tried to register with it. This is the whole
     /// reason register can stay silent: the person entitled to know is told, over a channel only
     /// they control, while the caller learns nothing.
     /// </summary>
-    private async Task SendAlreadyRegisteredNoticeAsync(string email, CancellationToken cancellationToken)
+    private Task SendAlreadyRegisteredNoticeAsync(string email, CancellationToken cancellationToken) =>
+        SendQuietlyAsync(
+            email,
+            "Someone tried to create a SubVora account with your email",
+            "You already have a SubVora account with this address. If this was you, sign in instead - "
+                + "or use \"forgot password\" if you cannot remember it. If it was not you, no action is needed: "
+                + "your account was not changed and no one was let in.",
+            cancellationToken);
+
+    /// <summary>
+    /// Sends and swallows. A mail failure must not become a 500 on register, because the response
+    /// to a duplicate registration has to be indistinguishable from the response to a new one.
+    /// </summary>
+    private async Task SendQuietlyAsync(string email, string subject, string body, CancellationToken cancellationToken)
     {
         try
         {
-            await _emailSender.SendAsync(
-                email,
-                "Someone tried to create a SubVora account with your email",
-                "You already have a SubVora account with this address. If this was you, sign in instead - "
-                    + "or use \"forgot password\" if you cannot remember it. If it was not you, no action is needed: "
-                    + "your account was not changed and no one was let in.",
-                cancellationToken);
+            await _emailSender.SendAsync(email, subject, body, cancellationToken);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            // Best-effort. A mail failure must not become a 500, because the response to a
-            // duplicate registration has to be indistinguishable from the response to a new one.
+            // Logged without the address: mail is the one thing about register that is invisible
+            // from the outside, so a silent failure here is otherwise indistinguishable from a
+            // working mailer with a slow inbox - which is exactly the report this branch answers.
+            _logger.LogWarning(ex, "Could not queue a registration email.");
         }
     }
 

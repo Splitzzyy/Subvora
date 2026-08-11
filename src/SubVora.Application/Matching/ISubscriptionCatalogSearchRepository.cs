@@ -2,8 +2,11 @@ namespace SubVora.Application.Matching;
 
 public interface ISubscriptionCatalogSearchRepository
 {
-    /// <summary>Returns the best subscription_catalog row by trigram similarity, or null when the catalog is empty.</summary>
-    Task<CatalogMatchCandidate?> FindNearestAsync(string input, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Returns up to <paramref name="limit"/> subscription_catalog rows ordered by trigram
+    /// similarity, best first. Empty when the catalog is empty.
+    /// </summary>
+    Task<IReadOnlyList<CatalogMatchCandidate>> FindTopAsync(string input, int limit, CancellationToken cancellationToken = default);
 
     // No Add here on purpose: the catalog is global and unowned, so nothing user-typed goes into
     // it at runtime. Rows arrive only from the seed migration - see SubscriptionMatchService.

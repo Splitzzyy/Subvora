@@ -34,4 +34,18 @@ public class CachedBurnRate
         get => JsonSerializer.Deserialize<List<CategoryBreakdownItem>>(ByCategoryJson) ?? [];
         set => ByCategoryJson = JsonSerializer.Serialize(value);
     }
+
+    public string ByPaymentSourceJson { get; set; } = "[]";
+
+    [Ignore]
+    public List<PaymentSourceBreakdownItem> ByPaymentSource
+    {
+        // Defaulted rather than required: sqlite-net-pcl adds the column to an existing table on
+        // CreateTableAsync but leaves it null on rows written before it existed, so the first
+        // offline read after an upgrade lands here rather than throwing.
+        get => string.IsNullOrEmpty(ByPaymentSourceJson)
+            ? []
+            : JsonSerializer.Deserialize<List<PaymentSourceBreakdownItem>>(ByPaymentSourceJson) ?? [];
+        set => ByPaymentSourceJson = JsonSerializer.Serialize(value);
+    }
 }

@@ -20,4 +20,12 @@ public class BurnRateResult
 
     /// <summary>Monthly recurring spend grouped by category, in home currency. Excludes one-time purchases and active trials.</summary>
     public IReadOnlyList<CategoryBreakdownItem> ByCategory { get; set; } = [];
+
+    /// <summary>
+    /// The same monthly recurring spend grouped by the card/account it is charged to, largest
+    /// first - which account is actually carrying the burn rate. Same exclusions as
+    /// <see cref="ByCategory"/>; subscriptions with no payment source assigned group under
+    /// "Unassigned".
+    /// </summary>
+    public IReadOnlyList<PaymentSourceBreakdownItem> ByPaymentSource { get; set; } = [];
 }

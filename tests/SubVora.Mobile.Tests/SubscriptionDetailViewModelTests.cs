@@ -130,17 +130,32 @@ public class SubscriptionDetailViewModelTests
         Assert.Equal("Netflix", call.Input);
     }
 
-    private static FakeSubscriptionsApi AutoFillingApi(Guid? categoryId = null, Guid? catalogId = null) => new()
+    private static FakeSubscriptionsApi AutoFillingApi(Guid? categoryId = null, Guid? catalogId = null)
     {
-        ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+        // Fixed per fake, not per call: the view model suppresses a re-offer by comparing catalog
+        // ids, so a handler that minted a new one on every resolve would defeat the thing under
+        // test rather than exercise it.
+        var resolvedCatalogId = catalogId ?? Guid.NewGuid();
+
+        return new FakeSubscriptionsApi
         {
-            Tier = MatchConfidenceTier.AutoFill,
-            CatalogId = catalogId,
-            ProviderName = "Netflix",
-            LogoUrl = "https://example.com/netflix.png",
-            CategoryId = categoryId,
-        }),
-    };
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.AutoFill,
+                Suggestions =
+                [
+                    new CatalogMatchCandidate
+                    {
+                        CatalogId = resolvedCatalogId,
+                        ProviderName = "Netflix",
+                        LogoUrl = "https://example.com/netflix.png",
+                        CategoryId = categoryId,
+                        Score = 1.0,
+                    },
+                ],
+            }),
+        };
+    }
 
     [Fact]
     public void AutoFillResponse_ChangesNothingOnTheFormUntilTheUserTakesIt()
@@ -161,7 +176,7 @@ public class SubscriptionDetailViewModelTests
         Assert.Null(viewModel.ErrorMessage);
 
         Assert.Equal(MatchConfidenceTier.AutoFill, viewModel.SuggestedTier);
-        Assert.Equal("Netflix", viewModel.SuggestedProviderName);
+        Assert.Equal("Netflix", Assert.Single(viewModel.Suggestions).ProviderName);
     }
 
     [Fact]
@@ -175,7 +190,7 @@ public class SubscriptionDetailViewModelTests
 
         viewModel.CustomName = "netflx";
         debouncer.Flush();
-        viewModel.AcceptSuggestionCommand.Execute(null);
+        viewModel.UseSuggestionCommand.Execute(viewModel.Suggestions.FirstOrDefault());
 
         Assert.Equal("Netflix", viewModel.CustomName);
         Assert.Equal(category, viewModel.SelectedCategory);
@@ -184,6 +199,44 @@ public class SubscriptionDetailViewModelTests
         // SaveAsync_AfterAcceptingASuggestion_SendsTheResolvedCatalogId, which asserts the thing
         // that actually leaves the device.
         Assert.Null(viewModel.SuggestedTier);
+    }
+
+    [Fact]
+    public async Task SeveralMatches_AreAllOffered_AndThePickedOneIsWhatGetsSaved()
+    {
+        // The reason this is a list and not a single chip: "youtube" is three products, and the
+        // top-ranked one is not necessarily the one being paid for.
+        var musicCategory = new CategoryDto { Id = Guid.NewGuid(), Name = "Music" };
+        var tvCatalogId = Guid.NewGuid();
+        var subscriptionsApi = new FakeSubscriptionsApi
+        {
+            ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
+            {
+                Tier = MatchConfidenceTier.AutoFill,
+                Suggestions =
+                [
+                    new CatalogMatchCandidate { CatalogId = Guid.NewGuid(), ProviderName = "YouTube Music", CategoryId = musicCategory.Id, Score = 1.0 },
+                    new CatalogMatchCandidate { CatalogId = tvCatalogId, ProviderName = "YouTube TV", Score = 0.875 },
+                ],
+            }),
+        };
+        var debouncer = new FakeDebouncer();
+        var viewModel = CreateViewModel(subscriptionsApi: subscriptionsApi, debouncer: debouncer);
+        viewModel.Categories.Add(musicCategory);
+
+        viewModel.CustomName = "youtube";
+        debouncer.Flush();
+
+        Assert.Equal(["YouTube Music", "YouTube TV"], viewModel.Suggestions.Select(s => s.ProviderName));
+
+        // The runner-up, not the leader.
+        viewModel.UseSuggestionCommand.Execute(viewModel.Suggestions[1]);
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.Equal("YouTube TV", viewModel.CustomName);
+        // The leader's category must not ride along with a different pick.
+        Assert.Null(viewModel.SelectedCategory);
+        Assert.Equal(tvCatalogId, Assert.Single(subscriptionsApi.CreateCalls).CatalogId);
     }
 
     [Fact]
@@ -214,7 +267,7 @@ public class SubscriptionDetailViewModelTests
 
         viewModel.CustomName = "netflx";
         debouncer.Flush();
-        viewModel.AcceptSuggestionCommand.Execute(null);
+        viewModel.UseSuggestionCommand.Execute(viewModel.Suggestions.FirstOrDefault());
 
         // Accepting rewrites the name, which re-arms the debouncer; the resolve that follows must
         // not re-raise the chip the user just answered.
@@ -242,7 +295,7 @@ public class SubscriptionDetailViewModelTests
         Assert.Equal(chosen, viewModel.SelectedCategory);
 
         // Taking the suggestion is the user asking for the provider's own category, so it wins here.
-        viewModel.AcceptSuggestionCommand.Execute(null);
+        viewModel.UseSuggestionCommand.Execute(viewModel.Suggestions.FirstOrDefault());
 
         Assert.Equal(matched, viewModel.SelectedCategory);
     }
@@ -278,8 +331,7 @@ public class SubscriptionDetailViewModelTests
                 return Task.FromResult(new ResolveSubscriptionResponse
                 {
                     Tier = MatchConfidenceTier.AutoFill,
-                    ProviderName = "Netflix",
-                    LogoUrl = "https://example.com/netflix.png",
+                    Suggestions = [new CatalogMatchCandidate { CatalogId = Guid.NewGuid(), ProviderName = "Netflix", Score = 1.0 }],
                 });
             },
         };
@@ -302,9 +354,10 @@ public class SubscriptionDetailViewModelTests
             ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
             {
                 Tier = MatchConfidenceTier.SuggestConfirm,
-                ProviderName = "Netflix",
-                LogoUrl = "https://example.com/netflix.png",
-                CategoryId = category.Id,
+                Suggestions =
+                [
+                    new CatalogMatchCandidate { CatalogId = Guid.NewGuid(), ProviderName = "Netflix", CategoryId = category.Id, Score = 0.545 },
+                ],
             }),
         };
         var debouncer = new FakeDebouncer();
@@ -315,11 +368,11 @@ public class SubscriptionDetailViewModelTests
         debouncer.Flush();
 
         Assert.Equal(MatchConfidenceTier.SuggestConfirm, viewModel.SuggestedTier);
-        Assert.Equal("Netflix", viewModel.SuggestedProviderName);
+        Assert.Equal("Netflix", Assert.Single(viewModel.Suggestions).ProviderName);
         Assert.Equal("nflx", viewModel.CustomName);
         Assert.Null(viewModel.SelectedCategory);
 
-        viewModel.AcceptSuggestionCommand.Execute(null);
+        viewModel.UseSuggestionCommand.Execute(viewModel.Suggestions.FirstOrDefault());
 
         Assert.Equal("Netflix", viewModel.CustomName);
         Assert.Equal(category, viewModel.SelectedCategory);
@@ -451,8 +504,7 @@ public class SubscriptionDetailViewModelTests
             ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
             {
                 Tier = MatchConfidenceTier.SuggestConfirm,
-                CatalogId = catalogId,
-                ProviderName = "Netflix",
+                Suggestions = [new CatalogMatchCandidate { CatalogId = catalogId, ProviderName = "Netflix", Score = 0.545 }],
             }),
         };
         var debouncer = new FakeDebouncer();
@@ -460,7 +512,7 @@ public class SubscriptionDetailViewModelTests
 
         viewModel.CustomName = "nflx";
         debouncer.Flush();
-        viewModel.AcceptSuggestionCommand.Execute(null);
+        viewModel.UseSuggestionCommand.Execute(viewModel.Suggestions.FirstOrDefault());
 
         await viewModel.SaveCommand.ExecuteAsync(null);
 
@@ -495,8 +547,7 @@ public class SubscriptionDetailViewModelTests
             ResolveHandler = _ => Task.FromResult(new ResolveSubscriptionResponse
             {
                 Tier = MatchConfidenceTier.AutoFill,
-                CatalogId = Guid.NewGuid(),
-                ProviderName = "Netflix",
+                Suggestions = [new CatalogMatchCandidate { CatalogId = Guid.NewGuid(), ProviderName = "Netflix", Score = 1.0 }],
             }),
         };
         var debouncer = new FakeDebouncer();

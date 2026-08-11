@@ -222,12 +222,17 @@ public class SubscriptionsController : ControllerBase
     /// third-party call. Scoring is the better of the two <c>word_similarity</c> directions, since
     /// the function is directional and either argument can be the substring.
     /// <para>
-    /// The response carries one of three tiers. <c>AutoFill</c> means confident enough to populate
-    /// the form from the matched entry; <c>SuggestConfirm</c> means show it and let the user accept
-    /// or reject; <c>Manual</c> means no usable match, and the client keeps whatever the user typed.
-    /// The thresholds separating them were measured against the seeded catalog rather than guessed -
-    /// see <c>SubscriptionMatchService</c> for the figures and
+    /// The response carries every candidate that cleared the measured similarity floor, best first,
+    /// so the client can offer a pick list rather than a single take-it-or-leave-it guess. <c>Tier</c>
+    /// describes the best candidate only - <c>AutoFill</c> for a confident match, <c>SuggestConfirm</c>
+    /// for a plausible one, <c>Manual</c> when nothing cleared the floor and <c>Suggestions</c> is
+    /// empty. The thresholds were measured against the seeded catalog rather than guessed - see
+    /// <c>SubscriptionMatchService</c> for the figures and
     /// <c>SubscriptionCatalogSearchRepositoryTests</c>, which pins them.
+    /// </para>
+    /// <para>
+    /// Nothing is auto-applied on the strength of the tier alone: even an <c>AutoFill</c> match is a
+    /// guess about a field the user is still typing, so the choice stays theirs.
     /// </para>
     /// <para>
     /// Nothing is written. An unmatched input is <em>not</em> added to the catalog: the catalog is

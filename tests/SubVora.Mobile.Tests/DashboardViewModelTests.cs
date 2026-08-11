@@ -104,6 +104,96 @@ public class DashboardViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_WithSeveralPaymentSources_NamesTheOneCarryingTheMostSpend()
+    {
+        var burnRate = new BurnRateResult
+        {
+            Monthly = 100m,
+            HomeCurrency = "INR",
+            ByPaymentSource =
+            [
+                new PaymentSourceBreakdownItem { PaymentSourceId = Guid.NewGuid(), PaymentSourceLabel = "HDFC Card", MonthlyAmount = 75m },
+                new PaymentSourceBreakdownItem { PaymentSourceId = Guid.NewGuid(), PaymentSourceLabel = "UPI", MonthlyAmount = 25m },
+            ],
+        };
+        var api = new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) };
+        var cache = new FakeLocalCacheService();
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.Equal("75% of your monthly spend goes to HDFC Card.", viewModel.TopSpendSourceSummary);
+        Assert.Equal(2, viewModel.ByPaymentSource.Count);
+        // Bars normalise against the leader, same as the category list.
+        Assert.Equal(1d, viewModel.ByPaymentSource[0].Share, precision: 5);
+        Assert.Equal(1d / 3d, viewModel.ByPaymentSource[1].Share, precision: 5);
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithASinglePaymentSource_SaysNothing()
+    {
+        // "100% of your spend goes to your only card" is not a finding, and a one-row breakdown has
+        // nothing to compare against.
+        var burnRate = new BurnRateResult
+        {
+            Monthly = 100m,
+            HomeCurrency = "INR",
+            ByPaymentSource = [new PaymentSourceBreakdownItem { PaymentSourceLabel = "HDFC Card", MonthlyAmount = 100m }],
+        };
+        var api = new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) };
+        var viewModel = new DashboardViewModel(api, new FakeLocalCacheService(), new WeakReferenceMessenger());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.Null(viewModel.TopSpendSourceSummary);
+    }
+
+    [Fact]
+    public async Task LoadAsync_OnApiFailure_ShowsTheCachedPaymentSourceBreakdownToo()
+    {
+        // The offline path applies the same snapshot shape as the live one, so a field wired up on
+        // only one of them is the failure this pins.
+        var cache = new FakeLocalCacheService();
+        await cache.UpsertAsync(new CachedBurnRate
+        {
+            Monthly = 40m,
+            HomeCurrency = "INR",
+            ByPaymentSource =
+            [
+                new PaymentSourceBreakdownItem { PaymentSourceLabel = "HDFC Card", MonthlyAmount = 30m },
+                new PaymentSourceBreakdownItem { PaymentSourceLabel = "UPI", MonthlyAmount = 10m },
+            ],
+        });
+        var api = new FakeDashboardApi { Handler = () => throw new HttpRequestException("network down") };
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        Assert.True(viewModel.IsShowingCachedData);
+        Assert.Equal(2, viewModel.ByPaymentSource.Count);
+        Assert.Equal("75% of your monthly spend goes to HDFC Card.", viewModel.TopSpendSourceSummary);
+    }
+
+    [Fact]
+    public async Task LoadAsync_RoundTripsThePaymentSourceBreakdownThroughTheCache()
+    {
+        var burnRate = new BurnRateResult
+        {
+            Monthly = 40m,
+            HomeCurrency = "INR",
+            ByPaymentSource = [new PaymentSourceBreakdownItem { PaymentSourceLabel = "HDFC Card", MonthlyAmount = 40m }],
+        };
+        var cache = new FakeLocalCacheService();
+        var api = new FakeDashboardApi { Handler = () => Task.FromResult(burnRate) };
+        var viewModel = new DashboardViewModel(api, cache, new WeakReferenceMessenger());
+
+        await viewModel.LoadCommand.ExecuteAsync(null);
+
+        var cached = Assert.Single(await cache.GetAllAsync<CachedBurnRate>());
+        Assert.Equal("HDFC Card", Assert.Single(cached.ByPaymentSource).PaymentSourceLabel);
+    }
+
+    [Fact]
     public async Task LoadAsync_WhenNothingIsExcludedAndRatesAreFresh_ShowsNoWarning()
     {
         var burnRate = new BurnRateResult

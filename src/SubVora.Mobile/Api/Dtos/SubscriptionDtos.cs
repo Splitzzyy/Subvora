@@ -86,9 +86,19 @@ public class ResolveSubscriptionRequest
 
 public class ResolveSubscriptionResponse
 {
+    /// <summary>How good the best candidate is. Wording only - the user picks from the list either way.</summary>
     public MatchConfidenceTier Tier { get; set; }
-    public Guid? CatalogId { get; set; }
-    public string? ProviderName { get; set; }
-    public string? LogoUrl { get; set; }
+
+    /// <summary>Catalog rows that cleared the server's similarity floor, best first. Empty on Manual.</summary>
+    public IReadOnlyList<CatalogMatchCandidate> Suggestions { get; set; } = [];
+}
+
+/// <summary>One row of the provider pick list. Mirrors the API's CatalogMatchCandidate.</summary>
+public class CatalogMatchCandidate
+{
+    public Guid CatalogId { get; set; }
+    public string ProviderName { get; set; } = string.Empty;
     public Guid? CategoryId { get; set; }
+    public string? LogoUrl { get; set; }
+    public double Score { get; set; }
 }

@@ -13,7 +13,7 @@ public class SubscriptionCatalogSearchRepository : ISubscriptionCatalogSearchRep
         _dbContext = dbContext;
     }
 
-    public async Task<CatalogMatchCandidate?> FindNearestAsync(string input, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CatalogMatchCandidate>> FindTopAsync(string input, int limit, CancellationToken cancellationToken = default)
     {
         // word_similarity is directional - it asks how well its first argument matches some
         // substring of its second - so both directions are needed and the better one wins:
@@ -35,12 +35,11 @@ public class SubscriptionCatalogSearchRepository : ISubscriptionCatalogSearchRep
                                 word_similarity(provider_name, {input})) AS score
                 FROM subscription_catalog
                 ORDER BY score DESC, provider_name
-                LIMIT 1
+                LIMIT {limit}
                 """)
             .ToListAsync(cancellationToken);
 
-        var row = rows.SingleOrDefault();
-        return row is null ? null : new CatalogMatchCandidate(row.Id, row.ProviderName, row.CategoryId, row.LogoUrl, row.Score);
+        return [.. rows.Select(row => new CatalogMatchCandidate(row.Id, row.ProviderName, row.CategoryId, row.LogoUrl, row.Score))];
     }
 
     public Task<bool> ExistsAsync(Guid catalogId, CancellationToken cancellationToken = default) =>

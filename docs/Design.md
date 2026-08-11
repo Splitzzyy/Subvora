@@ -82,7 +82,7 @@ To see the live schema: `docker compose exec db psql -U subvora -d subvora_dev -
 | `subscription_catalog` | Canonical provider list, category, logo URL | Matched on `provider_name` by `pg_trgm`. Seeded from `subscription-catalog.json` on start; existing rows are never overwritten |
 | `user_subscriptions` | One row per tracked subscription | Stores its own currency and amount, unconverted. `next_billing_date` moves only when the user marks a charge paid, so a past date means the charge is outstanding — see `last_paid_date` |
 | `categories` | System and per-user categories | `user_id IS NULL` marks a system default. Deleting a user cascades to theirs |
-| `payment_sources` | A user's cards, accounts and wallets | Optional on a subscription |
+| `payment_sources` | A user's cards, accounts and wallets | Optional on a subscription; the burn-rate response groups monthly spend by it so the dashboard can name the account carrying the most |
 | `fx_rates` | Cached conversion rates | Burn-rate totals are converted at read time from this cache, never by mutating a stored amount |
 | `refresh_tokens` | Opaque refresh tokens | Only the SHA-256 hash is persisted, never the plaintext. Access tokens are stateless and not stored at all |
 
@@ -109,16 +109,17 @@ Free-text entry is standardized in the database, with no external service on the
        ▼
 [.NET Backend API] ──(single SQL query, no network hop)──► [PostgreSQL + pg_trgm]
        │                                                            │
-       ◄────────────(best provider_name + similarity score)─────────┘
+       ◄──────(top provider_name rows + similarity scores)──────────┘
        │
        ▼
-[3-tier decision: >= 0.70 AutoFill | >= 0.50 SuggestConfirm | else Manual]
+[every row >= 0.50, best first, for the user to pick]
+[tier of the best: >= 0.70 AutoFill | >= 0.50 SuggestConfirm | else Manual]
 ```
 
 ### How the score is computed
 
 The whole match is one parameterised query against `subscription_catalog`, ordered by score, taking
-the single best row. It lives in `SubscriptionCatalogSearchRepository`.
+the top few rows. It lives in `SubscriptionCatalogSearchRepository`.
 
 **Both directions are scored and the higher one wins.** `word_similarity` is directional, which
 matters more than it sounds:
@@ -145,6 +146,12 @@ Measured against the seeded 54-provider catalog rather than guessed. Correct mat
 and up (`net flix` 0.545, `netflx` 0.714, `spotifyy` 0.875, exact and substring matches 1.000);
 wrong answers topped out at 0.429 (`the mouse streaming service` → Strava). `Manual` sits in that
 gap at 0.50, `AutoFill` at 0.70. `SubscriptionCatalogTrigramMatchTests` pins both bands.
+
+**The tier is wording, not authority.** Every candidate above the floor is returned and the client
+shows the list; nothing is written into the form until the user taps one. `AutoFill` only says the
+top row is a confident guess — and a confident guess about "youtube" is still three real products,
+which no score can choose between. The floor still applies per row, so a good match never drags
+sub-threshold noise onto the screen behind it.
 
 What trigrams do not cover is rebrands and pure semantics — `G Suite` → Google Workspace,
 `MS Office` → Microsoft 365. Those score below the floor and fall through to `Manual`.

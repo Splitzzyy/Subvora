@@ -38,6 +38,12 @@ The main dashboard is the centerpiece of the app: it automatically aggregates ev
 
 This updates live as subscriptions are added, removed, or edited — no manual recalculation needed.
 
+Below the totals the dashboard answers the follow-up question the totals raise — *where is it going?* —
+twice over: by category, and by the card or account the charge lands on ("75% of your monthly spend
+goes to HDFC Card"). The payment-source view is what makes §2.6 useful at a glance rather than
+per-subscription; it is hidden when there is only one payment source, since "all of it goes to your
+only card" is not a finding.
+
 ### 2.8 Multi-Currency Uniformity
 Users can add subscriptions priced in any currency (USD, EUR, INR, etc.) — exactly as they're billed. The app automatically converts everything into the user's chosen home currency for the burn-rate totals and dashboard, so mixed-currency subscriptions still roll up into one honest number.
 
