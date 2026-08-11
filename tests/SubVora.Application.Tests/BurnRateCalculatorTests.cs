@@ -1,4 +1,4 @@
-using SubVora.Application.Currency;
+﻿using SubVora.Application.Currency;
 using SubVora.Application.Dashboard;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
@@ -52,34 +52,76 @@ public class BurnRateCalculatorTests
     [Fact]
     public async Task CalculatesWeeklyMonthlyYearly_ForMixOfCycles()
     {
-        // Costs chosen so each subscription's daily rate is exactly 1 (cost == cycle length in
-        // days), avoiding decimal-division rounding noise in the expected values below.
+        // Each subscription costs 1200 a year, by four different routes.
         var subscriptions = new[]
         {
-            RecurringSubscription(7m, BillingCycleType.Weekly),
-            RecurringSubscription(30m, BillingCycleType.Monthly),
-            RecurringSubscription(91m, BillingCycleType.Quarterly),
-            RecurringSubscription(365m, BillingCycleType.Yearly),
+            RecurringSubscription(1200m / 52, BillingCycleType.Weekly),
+            RecurringSubscription(100m, BillingCycleType.Monthly),
+            RecurringSubscription(300m, BillingCycleType.Quarterly),
+            RecurringSubscription(1200m, BillingCycleType.Yearly),
         };
 
         var result = await _calculator.CalculateAsync(subscriptions, "USD");
 
-        // dailyRateSum = 1 + 1 + 1 + 1 = 4
-        Assert.Equal(28m, result.Weekly);
-        Assert.Equal(120m, result.Monthly);
-        Assert.Equal(1460m, result.Yearly);
+        Assert.Equal(4800m, result.Yearly);
+        Assert.Equal(400m, result.Monthly);
+        Assert.Equal(Math.Round(4800m / 52, 2), result.Weekly);
+    }
+
+    [Theory]
+    // The reported bug: 1000 a month read as 12166.67 a year, because normalising to a daily rate
+    // over a 30-day month and a 365-day year makes a year 12.17 months long.
+    [InlineData(1000, BillingCycleType.Monthly, 12000)]
+    [InlineData(300, BillingCycleType.Quarterly, 1200)]
+    [InlineData(100, BillingCycleType.Weekly, 5200)]
+    [InlineData(12000, BillingCycleType.Yearly, 12000)]
+    public async Task AnnualTotalIsTheCostTimesTheNumberOfCharges(decimal cost, BillingCycleType cadence, decimal expectedYearly)
+    {
+        var result = await _calculator.CalculateAsync([RecurringSubscription(cost, cadence)], "USD");
+
+        Assert.Equal(expectedYearly, result.Yearly);
     }
 
     [Fact]
-    public async Task QuarterlySubscription_ProjectsToRoughlyFourChargesAYear()
+    public async Task MonthlySubscription_ReadsBackAsItsOwnCostPerMonth()
     {
-        // The reason the divisor is 365/4 and not 3 x 30: at 90 days a 400/quarter subscription
-        // reports 1622/year, which is 4.06 charges. The user pays four.
-        var subscriptions = new[] { RecurringSubscription(400m, BillingCycleType.Quarterly) };
+        // The figure a user checks first, and the one the bug report was written against.
+        var result = await _calculator.CalculateAsync([RecurringSubscription(1000m, BillingCycleType.Monthly)], "USD");
+
+        Assert.Equal(1000m, result.Monthly);
+        Assert.Equal(12000m, result.Yearly);
+    }
+
+    [Fact]
+    public async Task WeeklySubscription_ReadsBackAsItsOwnCostPerWeek()
+    {
+        var result = await _calculator.CalculateAsync([RecurringSubscription(100m, BillingCycleType.Weekly)], "USD");
+
+        Assert.Equal(100m, result.Weekly);
+        Assert.Equal(5200m, result.Yearly);
+    }
+
+    [Fact]
+    public async Task TheThreeHorizonsAgreeWithEachOther()
+    {
+        // Monthly x 12 and Weekly x 52 must both come back to Yearly. Under the old daily-rate
+        // normalisation they did not: the three were separate projections of a fractional rate.
+        var subscriptions = new[]
+        {
+            RecurringSubscription(1000m, BillingCycleType.Monthly),
+            RecurringSubscription(300m, BillingCycleType.Quarterly),
+        };
 
         var result = await _calculator.CalculateAsync(subscriptions, "USD");
 
-        Assert.Equal(1604.40m, result.Yearly);
+        Assert.Equal(result.Yearly, result.Monthly * 12);
+
+        // Weekly is rounded to the cent before the client ever sees it, so multiplying it back by
+        // 52 amplifies that rounding by up to 26 cents. Exact equality is the wrong assertion; that
+        // the two agree to well under a currency unit is the real property.
+        Assert.True(
+            Math.Abs(result.Weekly * 52 - result.Yearly) < 0.5m,
+            $"Weekly {result.Weekly} x 52 should be within half a unit of Yearly {result.Yearly}.");
     }
 
     [Fact]
@@ -94,8 +136,9 @@ public class BurnRateCalculatorTests
 
         var result = await _calculator.CalculateAsync(subscriptions, "USD");
 
-        // dailyRate = 30/30 = 1, so Weekly = 1*7 = 7
-        Assert.Equal(7m, result.Weekly);
+        // 30 a month is 360 a year, so 360/52 = 6.92 a week. The old daily-rate math said 7.00,
+        // by treating a month as 30 days and a year as 365 - which prices a year at 12.17 months.
+        Assert.Equal(6.92m, result.Weekly);
         Assert.Equal(30m, result.Monthly);
         Assert.Equal(99m, result.OneTimeThisYear);
     }
@@ -173,8 +216,8 @@ public class BurnRateCalculatorTests
 
         var result = await _calculator.CalculateAsync(subscriptions, "USD");
 
-        // USD sub: dailyRate = 1. EUR sub converted: 30 * 1.1 = 33, dailyRate = 1.1. Sum = 2.1/day.
-        Assert.Equal(Math.Round(2.1m * 30, 2), result.Monthly);
+        // USD sub: 30/month. EUR sub converted: 30 * 1.1 = 33/month. Sum = 63/month.
+        Assert.Equal(63m, result.Monthly);
         Assert.Equal(110m, result.OneTimeThisYear);
         Assert.Equal("USD", result.HomeCurrency);
         Assert.Empty(result.UnresolvedSubscriptionIds);
@@ -249,6 +292,8 @@ public class BurnRateCalculatorTests
         var utilities = result.ByCategory.Single(c => c.CategoryId == utilitiesCategoryId);
         Assert.Equal("Utilities", utilities.CategoryName);
         Assert.Equal(30m, utilities.MonthlyAmount);
+        // The breakdown adds back up to the headline, rather than being a separate projection.
+        Assert.Equal(result.Monthly, result.ByCategory.Sum(c => c.MonthlyAmount));
     }
 
     [Fact]

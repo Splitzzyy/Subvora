@@ -17,16 +17,34 @@ namespace SubVora.Application.Dashboard;
 /// </summary>
 public class BurnRateCalculator
 {
-    private const int WeeklyDays = 7;
-    private const int MonthlyDays = 30;
+    private const int MonthsPerYear = 12;
 
     /// <summary>
-    /// 365/4 rounded, not 3 x MonthlyDays. The daily rate exists to be projected back out to a
-    /// year, and 90 would report a quarterly subscription as costing 4.06 charges a year.
+    /// Weeks in a year for the purpose of the weekly headline. 52, not 365/7 - a weekly
+    /// subscription should read back as exactly its own cost per week.
     /// </summary>
-    private const int QuarterlyDays = 91;
+    private const int WeeksPerYear = 52;
 
-    private const int YearlyDays = 365;
+    /// <summary>
+    /// How many times a cycle is charged in a year. This is the whole calculation: a subscription's
+    /// annual cost is its price times the number of times it is billed, and every other figure is
+    /// derived from that sum.
+    /// <para>
+    /// It replaces normalising to a daily rate (<c>cost / cycle_days</c> with a 30-day month and a
+    /// 365-day year), which quietly made a year 365/30 = 12.17 months: 1000/month reported 12166.67
+    /// a year instead of 12000. The error was invisible at small numbers and grew with the total.
+    /// Calendar cycles are counts, not spans of days, and counting them is also what a user checks
+    /// the figure against.
+    /// </para>
+    /// </summary>
+    private static int ChargesPerYear(BillingCycleType cadence) => cadence switch
+    {
+        BillingCycleType.Weekly => WeeksPerYear,
+        BillingCycleType.Monthly => MonthsPerYear,
+        BillingCycleType.Quarterly => 4,
+        BillingCycleType.Yearly => 1,
+        _ => throw new ArgumentOutOfRangeException(nameof(cadence), cadence, "Unexpected billing cycle for a recurring subscription."),
+    };
 
     private readonly IFxRateService _fxRateService;
 
@@ -41,11 +59,11 @@ public class BurnRateCalculator
         const string unassignedPaymentSourceLabel = "Unassigned";
 
         var currentYear = DateTime.UtcNow.Year;
-        var dailyRateSum = 0m;
+        var annualSum = 0m;
         var oneTimeThisYear = 0m;
         var unresolvedSubscriptionIds = new List<Guid>();
-        var categoryDailyRates = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
-        var paymentSourceDailyRates = new Dictionary<(Guid? PaymentSourceId, string Label), decimal>();
+        var categoryAnnualAmounts = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
+        var paymentSourceAnnualAmounts = new Dictionary<(Guid? PaymentSourceId, string Label), decimal>();
         DateTimeOffset? oldestRateFetchedAt = null;
 
         // Materialized because the currencies are collected in one pass and the amounts summed in
@@ -105,50 +123,44 @@ public class BurnRateCalculator
                 continue;
             }
 
-            var cycleDays = subscription.CycleCadence switch
-            {
-                BillingCycleType.Weekly => WeeklyDays,
-                BillingCycleType.Monthly => MonthlyDays,
-                BillingCycleType.Quarterly => QuarterlyDays,
-                BillingCycleType.Yearly => YearlyDays,
-                _ => throw new ArgumentOutOfRangeException(nameof(subscriptions), subscription.CycleCadence, "Unexpected billing cycle for a recurring subscription."),
-            };
-
-            var subscriptionDailyRate = convertedCost / cycleDays;
-            dailyRateSum += subscriptionDailyRate;
+            // What this subscription costs over a year: its price times how often it is billed.
+            var subscriptionAnnual = convertedCost * ChargesPerYear(subscription.CycleCadence);
+            annualSum += subscriptionAnnual;
 
             var categoryKey = (subscription.CategoryId, subscription.CategoryName ?? uncategorizedName);
-            categoryDailyRates[categoryKey] = categoryDailyRates.GetValueOrDefault(categoryKey) + subscriptionDailyRate;
+            categoryAnnualAmounts[categoryKey] = categoryAnnualAmounts.GetValueOrDefault(categoryKey) + subscriptionAnnual;
 
             var paymentSourceKey = (subscription.PaymentSourceId, subscription.PaymentSourceLabel ?? unassignedPaymentSourceLabel);
-            paymentSourceDailyRates[paymentSourceKey] = paymentSourceDailyRates.GetValueOrDefault(paymentSourceKey) + subscriptionDailyRate;
+            paymentSourceAnnualAmounts[paymentSourceKey] = paymentSourceAnnualAmounts.GetValueOrDefault(paymentSourceKey) + subscriptionAnnual;
         }
 
-        var byCategory = categoryDailyRates
+        var byCategory = categoryAnnualAmounts
             .Select(kvp => new CategoryBreakdownItem
             {
                 CategoryId = kvp.Key.CategoryId,
                 CategoryName = kvp.Key.CategoryName,
-                MonthlyAmount = Math.Round(kvp.Value * MonthlyDays, 2),
+                MonthlyAmount = Math.Round(kvp.Value / MonthsPerYear, 2),
             })
             .OrderByDescending(item => item.MonthlyAmount)
             .ToList();
 
-        var byPaymentSource = paymentSourceDailyRates
+        var byPaymentSource = paymentSourceAnnualAmounts
             .Select(kvp => new PaymentSourceBreakdownItem
             {
                 PaymentSourceId = kvp.Key.PaymentSourceId,
                 PaymentSourceLabel = kvp.Key.Label,
-                MonthlyAmount = Math.Round(kvp.Value * MonthlyDays, 2),
+                MonthlyAmount = Math.Round(kvp.Value / MonthsPerYear, 2),
             })
             .OrderByDescending(item => item.MonthlyAmount)
             .ToList();
 
         return new BurnRateResult
         {
-            Weekly = Math.Round(dailyRateSum * WeeklyDays, 2),
-            Monthly = Math.Round(dailyRateSum * MonthlyDays, 2),
-            Yearly = Math.Round(dailyRateSum * YearlyDays, 2),
+            // All three derived from the annual total, so they stay consistent with each other:
+            // Monthly x 12 and Weekly x 52 both come back to Yearly, up to rounding.
+            Weekly = Math.Round(annualSum / WeeksPerYear, 2),
+            Monthly = Math.Round(annualSum / MonthsPerYear, 2),
+            Yearly = Math.Round(annualSum, 2),
             OneTimeThisYear = Math.Round(oneTimeThisYear, 2),
             HomeCurrency = homeCurrency,
             UnresolvedSubscriptionIds = unresolvedSubscriptionIds,
