@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<!--
+    Material 3 Expressive bottom sheet, standing in for DisplayActionSheetAsync.
+
+    The platform action sheet is an unstyled list of strings in a system alert - it cannot take the
+    app's shape, colour or type scale, and next to the Categories screen it read as a different
+    application. This is the same two choices with the app's own treatment: rounded top corners, a
+    drag handle, and one tappable container per action carrying its icon.
+-->
+<ContentView
+    x:Class="SubVora.Mobile.Views.ActionSheetView"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:SubVora.Mobile.Views">
+
+    <!-- Top corners only: the sheet is anchored to the bottom edge, so rounding the bottom would
+         float it and lose the "attached to the screen edge" read. -->
+    <Border BackgroundColor="{AppThemeBinding Light={StaticResource SurfaceLight}, Dark={StaticResource SurfaceDark}}"
+            Stroke="Transparent"
+            StrokeThickness="0"
+            Padding="16,10,16,20">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="28,28,0,0" />
+        </Border.StrokeShape>
+
+        <VerticalStackLayout Spacing="4">
+
+            <!-- Drag handle. Non-interactive here - the sheet is dismissed by tapping outside or
+                 choosing an action - but it is the shape people read as "this is a sheet". -->
+            <Border WidthRequest="36"
+                    HeightRequest="4"
+                    HorizontalOptions="Center"
+                    Margin="0,0,0,10"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource HairlineLight}, Dark={StaticResource HairlineDark}}"
+                    Stroke="Transparent"
+                    StrokeThickness="0">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="2" />
+                </Border.StrokeShape>
+            </Border>
+
+            <Label x:Name="TitleLabel"
+                   Style="{StaticResource M3SectionTitle}"
+                   FontSize="20"
+                   Margin="8,0,8,10"
+                   LineBreakMode="TailTruncation" />
+
+            <VerticalStackLayout x:Name="ActionsLayout" Spacing="6" />
+
+        </VerticalStackLayout>
+    </Border>
+</ContentView>
