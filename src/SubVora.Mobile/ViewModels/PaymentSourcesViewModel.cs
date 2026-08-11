@@ -30,12 +30,24 @@ public partial class PaymentSourcesViewModel : ObservableObject
 
     public ObservableCollection<PaymentSourceDto> PaymentSources { get; } = [];
 
+    /// <summary>
+    /// Whether there is any row to act on. Gates the manage hint under the list - it used to live
+    /// in the CollectionView's EmptyView, which renders only when the list is empty, so it was on
+    /// screen exactly when it did not apply.
+    /// </summary>
+    public bool HasPaymentSources => PaymentSources.Count > 0;
+
     public PaymentSourcesViewModel(IPaymentSourcesApi paymentSourcesApi, IUserPrompt userPrompt, IConnectivityService connectivity)
     {
         _connectivity = connectivity;
         IsOffline = !connectivity.IsConnected;
         _paymentSourcesApi = paymentSourcesApi;
         _userPrompt = userPrompt;
+
+        // HasPaymentSources is derived from the collection, and a collection change raises nothing
+        // for it on its own. Hooked once here rather than remembered at each of the four call sites
+        // that mutate the list.
+        PaymentSources.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasPaymentSources));
     }
     /// <summary>
     /// Whether the device has no network. Refreshed when the screen loads and after a failed write
@@ -89,7 +101,11 @@ public partial class PaymentSourcesViewModel : ObservableObject
         try
         {
             var created = await _paymentSourcesApi.CreateAsync(new CreatePaymentSourceRequest { Label = NewLabel, SourceType = NewSourceType });
-            PaymentSources.Add(created);
+
+            // Where the next load will also put it. Appending sent the new row to the bottom, and
+            // the server's OrderBy(p => p.Label) then relocated it on the next visit.
+            PaymentSources.Insert(SortedIndexFor(created.Label), created);
+
             NewLabel = string.Empty;
             NewSourceType = PaymentSourceType.Other;
         }
@@ -154,17 +170,53 @@ public partial class PaymentSourcesViewModel : ObservableObject
             });
 
             // Replaced rather than mutated: PaymentSourceDto is not observable, so the row would
-            // not repaint.
+            // not repaint. Removed and re-inserted rather than swapped in place, because a rename
+            // that changes the first letter changes where the row belongs - leaving it put would
+            // move it on the next load instead.
             var index = PaymentSources.IndexOf(paymentSource);
             if (index >= 0)
             {
-                PaymentSources[index] = updated;
+                PaymentSources.RemoveAt(index);
+                PaymentSources.Insert(SortedIndexFor(updated.Label), updated);
             }
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
             IsOffline = !_connectivity.IsConnected;
             ErrorMessage = ApiErrorMapper.ToWriteFailureMessage(ex);
+        }
+    }
+
+    /// <summary>
+    /// Where a label belongs in the list, matching the server's <c>OrderBy(p =&gt; p.Label)</c>.
+    /// <para>
+    /// CurrentCultureIgnoreCase against Postgres' own collation: the two agree for ASCII labels and
+    /// can differ on accents, in which case the next load re-sorts. That beats every new row landing
+    /// at the bottom and moving later.
+    /// </para>
+    /// </summary>
+    private int SortedIndexFor(string label) =>
+        PaymentSources.TakeWhile(existing =>
+            string.Compare(existing.Label, label, StringComparison.CurrentCultureIgnoreCase) < 0).Count();
+
+    /// <summary>
+    /// The discoverable route to rename/delete, behind the row's manage button. Swipe still works
+    /// and is faster, but nothing on screen ever said it was there.
+    /// </summary>
+    [RelayCommand]
+    private async Task ManageAsync(PaymentSourceDto paymentSource)
+    {
+        var choice = await _userPrompt.ActionSheetAsync(paymentSource.Label, "Cancel", "Rename", "Delete");
+
+        switch (choice)
+        {
+            case "Rename":
+                await RenameAsync(paymentSource);
+                break;
+            case "Delete":
+                await DeleteAsync(paymentSource.Id);
+                break;
+            // Dismissed, or something we did not offer - do nothing.
         }
     }
 }

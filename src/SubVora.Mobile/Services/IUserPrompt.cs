@@ -18,4 +18,14 @@ public interface IUserPrompt
     /// it as an empty string.
     /// </summary>
     Task<string?> PromptAsync(string title, string message, string initialValue = "");
+
+    /// <summary>
+    /// Offers a short list of actions and returns the one chosen, or null when dismissed. Used by
+    /// the row-level manage button on Categories and Payment sources, which exists because swiping
+    /// advertises itself to nobody.
+    /// <para>
+    /// Null is a dismissal, not a selection - callers must not fall through to a default action.
+    /// </para>
+    /// </summary>
+    Task<string?> ActionSheetAsync(string title, string cancel, params string[] actions);
 }

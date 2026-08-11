@@ -16,6 +16,11 @@ namespace SubVora.Mobile.Converters;
 /// a guessed one. Inventing an icon from a name would be wrong more often than blank, and wrong is
 /// worse: a plate against "Pet insurance" reads as a bug.
 /// </para>
+/// <para>
+/// The fallback is reserved for that case. No seeded category may share it, or "unrecognised" and
+/// that category become indistinguishable - which is exactly what happened while <c>Other</c> was
+/// mapped to it: both took the same glyph and, having no hue either, the same neutral grey.
+/// </para>
 /// </summary>
 public class CategoryIconConverter : IValueConverter
 {
@@ -30,7 +35,11 @@ public class CategoryIconConverter : IValueConverter
         ["Travel"] = "IconFlight",
         ["Finance"] = "IconPayments",
         ["Productivity"] = "IconWork",
-        ["Other"] = FallbackIconKey,
+        // Its own glyph, not the fallback. "Other" is a real seeded category, and while it shared
+        // FallbackIconKey it was drawn identically to every unrecognised name - including every
+        // user-created one, which also takes the neutral grey. A user's "Music" and the system
+        // "Other" were pixel-identical tiles.
+        ["Other"] = "IconInbox",
     };
 
     /// <summary>The categories this converter has a specific icon for. Public so a test can hold it against <see cref="CategoryColorConverter.KnownCategories"/> - a category with a colour but no icon renders half-styled.</summary>

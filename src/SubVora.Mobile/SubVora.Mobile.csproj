@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFrameworks>net10.0-android</TargetFrameworks>
@@ -33,8 +33,12 @@
 		<!-- App Identifier -->
 		<ApplicationId>com.subvora.mobile</ApplicationId>
 
-		<!-- Versions -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<!-- Versions. Local/dev builds only: release-android.yml overrides both, from the git tag
+		     (ApplicationDisplayVersion) and the CI run number (ApplicationVersion, which Android
+		     requires to increase monotonically for an in-place upgrade). Kept in step with the
+		     latest tag anyway - Settings now shows this string, so a sideloaded debug build would
+		     otherwise claim to be a release behind. -->
+		<ApplicationDisplayVersion>1.1.0</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
 		<!-- To develop, package, and publish an app to the Microsoft Store, see: https://aka.ms/MauiTemplateUnpackaged -->

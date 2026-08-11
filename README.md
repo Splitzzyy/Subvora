@@ -24,7 +24,7 @@ No account is needed to download. Register inside the app.
 ## Features
 
 - 🏷️ Auto-matched brand logos and categories
-- 🔁 Weekly / Monthly / Yearly / One-time billing types
+- 🔁 Weekly / Monthly / Quarterly / Yearly / One-time billing types
 - 📅 Purchase & next-billing date tracking
 - 🔔 Configurable renewal alerts (1 / 3 / 7 days before), delivered as on-device notifications — no push service, no account
 - 💳 Track source of deduction (which card/account is billed)
@@ -56,7 +56,7 @@ API docs (Swagger UI) are served at `/swagger` when the API runs in the `Develop
 
 ## Status
 
-**Live.** The API runs on Render against Neon Postgres, and v1.0.0 of the Android app is published
+**Live.** The API runs on Render against Neon Postgres, and v1.1.0 of the Android app is published
 under [Releases](https://github.com/Splitzzyy/Subvora/releases/latest). Both sides remain under
 active development.
 

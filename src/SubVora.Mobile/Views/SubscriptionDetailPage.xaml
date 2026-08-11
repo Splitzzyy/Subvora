@@ -23,6 +23,14 @@
                    Text="{Binding ErrorMessage}"
                    IsVisible="{Binding ErrorMessage, Converter={StaticResource StringToBoolConverter}}" />
 
+            <!-- Until this existed, an edit form that had not loaded yet was indistinguishable from
+                 a loaded one: default dates, 0.00, empty name. The real values arriving a moment
+                 later read as the app overwriting what the user was looking at. -->
+            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center" IsVisible="{Binding IsLoading}">
+                <ActivityIndicator IsRunning="{Binding IsLoading}" WidthRequest="18" HeightRequest="18" VerticalOptions="Center" />
+                <Label Style="{StaticResource Caption}" Text="Loading&#8230;" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+
             <!-- ===== What it is ===== -->
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="12">
@@ -81,11 +89,19 @@
 
                     <Label Style="{StaticResource FieldLabel}" Text="Category" />
                     <Border Style="{StaticResource FieldBorder}">
+                        <!-- Disabled until the list arrives. An enabled-but-empty Picker opens an
+                             empty dialog, which reads as broken and had users tapping repeatedly
+                             until the fetch happened to land. -->
                         <Picker Title="Choose a category"
                                 ItemsSource="{Binding Categories}"
                                 ItemDisplayBinding="{Binding Name}"
-                                SelectedItem="{Binding SelectedCategory}" />
+                                SelectedItem="{Binding SelectedCategory}"
+                                IsEnabled="{Binding ArePickersLoading, Converter={StaticResource InvertedBoolConverter}}" />
                     </Border>
+                    <Label Style="{StaticResource Caption}"
+                           Text="Loading categories&#8230;"
+                           Margin="4,0,0,0"
+                           IsVisible="{Binding ArePickersLoading}" />
                 </VerticalStackLayout>
             </Border>
 
@@ -132,14 +148,22 @@
                         <Picker Title="Choose a payment source"
                                 ItemsSource="{Binding PaymentSources}"
                                 ItemDisplayBinding="{Binding Label}"
-                                SelectedItem="{Binding SelectedPaymentSource}" />
+                                SelectedItem="{Binding SelectedPaymentSource}"
+                                IsEnabled="{Binding ArePickersLoading, Converter={StaticResource InvertedBoolConverter}}" />
                     </Border>
+                    <Label Style="{StaticResource Caption}"
+                           Text="Loading payment sources&#8230;"
+                           Margin="4,0,0,0"
+                           IsVisible="{Binding ArePickersLoading}" />
                     <!-- An empty Picker opens an empty dialog and looks broken. Say why it is empty
-                         and where to fix it, rather than leaving the user tapping a dead control. -->
+                         and where to fix it, rather than leaving the user tapping a dead control.
+                         Gated on the fetch having finished: keyed on emptiness alone this told a
+                         user who has payment sources that they had none, every time the screen
+                         opened. -->
                     <Label Style="{StaticResource Caption}"
                            Text="No payment sources yet — add one on the Payment tab, then come back. Optional either way."
                            Margin="4,0,0,0"
-                           IsVisible="{Binding PaymentSources, Converter={StaticResource IsListEmptyConverter}}" />
+                           IsVisible="{Binding ShowNoPaymentSourcesHint}" />
 
                     <Grid ColumnDefinitions="*,Auto" Margin="4,4,0,0">
                         <Label Grid.Column="0" Style="{StaticResource BodyText}" Text="Free trial" VerticalOptions="Center" />
