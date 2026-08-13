@@ -79,6 +79,23 @@ public partial class SubscriptionListViewModel : ObservableObject
     /// <summary>Raised by the Add toolbar button, to navigate to the detail screen in add mode.</summary>
     public event EventHandler? AddRequested;
 
+    /// <summary>
+    /// Whether this screen already holds rows worth showing.
+    /// <para>
+    /// Shell raises OnAppearing on every tab selection, so a page that loads unconditionally there
+    /// refetches - clearing and repainting itself - on each tab tap. Against a slow or unreachable
+    /// API that is a spinner every time the user comes back, which is what it looked like the app
+    /// was stuck refreshing.
+    /// </para>
+    /// <para>
+    /// Invalidated by <see cref="SubscriptionsChangedMessage"/> rather than by a clock: this data
+    /// only moves when this app moves it, and every writer already publishes that message. Failing
+    /// with nothing to show leaves the flag false, so a retry still happens on the next visit, and
+    /// pull-to-refresh forces one through <see cref="LoadCommand"/> at any time.
+    /// </para>
+    /// </summary>
+    private bool _isLoaded;
+
     public SubscriptionListViewModel(
         ISubscriptionsApi subscriptionsApi,
         ILocalCacheService localCacheService,
@@ -95,6 +112,33 @@ public partial class SubscriptionListViewModel : ObservableObject
         _connectivity = connectivity;
 
         IsOffline = !connectivity.IsConnected;
+
+        // Weak registrations (WeakReferenceMessenger), so the singleton messenger does not keep a
+        // transient view model alive. A write made from the detail screen marks the list stale; the
+        // reload happens when the user is actually looking at it rather than behind their back.
+        messenger.Register<SubscriptionsChangedMessage>(this, (_, _) => _isLoaded = false);
+        messenger.Register<SessionEndedMessage>(this, (_, _) => Reset());
+    }
+
+    /// <summary>
+    /// What OnAppearing calls: load on the first visit, then leave the screen alone until something
+    /// says the data moved. See <see cref="_isLoaded"/>.
+    /// </summary>
+    [RelayCommand]
+    private Task EnsureLoadedAsync() => _isLoaded ? Task.CompletedTask : LoadAsync();
+
+    /// <summary>
+    /// Drops the signed-out session's rows. The tab pages outlive a sign-out - Shell keeps the page
+    /// it built for each ShellContent - so without this the next user would be handed the previous
+    /// one's list on the first appearance and no fetch, because the screen thinks it is loaded.
+    /// </summary>
+    private void Reset()
+    {
+        _isLoaded = false;
+        Subscriptions.Clear();
+        Groups.Clear();
+        ErrorMessage = null;
+        IsShowingCachedData = false;
     }
 
     [RelayCommand]
@@ -114,6 +158,7 @@ public partial class SubscriptionListViewModel : ObservableObject
             }
 
             IsShowingCachedData = false;
+            _isLoaded = true;
 
             await _localCacheService.ClearAsync<CachedSubscription>();
             foreach (var subscription in result)
@@ -136,6 +181,10 @@ public partial class SubscriptionListViewModel : ObservableObject
                 }
 
                 IsShowingCachedData = true;
+
+                // Cached rows count as loaded: showing the mirror and refetching on every tab tap
+                // is the same 30-second spinner, for a screen that already has something on it.
+                _isLoaded = true;
             }
             else
             {

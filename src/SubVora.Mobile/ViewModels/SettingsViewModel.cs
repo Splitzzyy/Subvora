@@ -1,7 +1,7 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Refit;
 using CommunityToolkit.Mvvm.Messaging;
+using Refit;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Formatting;
@@ -128,6 +128,32 @@ public partial class SettingsViewModel : ObservableObject
         // OnThemeChanged and re-applies the value it already has, which is a no-op - the theme was
         // applied at startup, long before this page is built.
         Theme = _themeService.Current;
+
+        // Weak registration: the messenger is a singleton and this view model is not. Signing out
+        // is published from this same view model, and the handler is what makes the next user's
+        // visit fetch their profile instead of showing the previous one's.
+        messenger.Register<SessionEndedMessage>(this, (_, _) => Reset());
+    }
+
+    /// <summary>
+    /// Whether the profile has already been fetched. Shell raises OnAppearing on every tab
+    /// selection, so loading unconditionally there meant a request per tab tap - see
+    /// <c>SubscriptionListViewModel._isLoaded</c> for the full reasoning. Save applies what the
+    /// server returns, so the fields cannot drift from it between visits.
+    /// </summary>
+    private bool _isLoaded;
+
+    /// <summary>What OnAppearing calls: fetch the profile on the first visit only.</summary>
+    [RelayCommand]
+    private Task EnsureLoadedAsync() => _isLoaded ? Task.CompletedTask : LoadAsync();
+
+    /// <summary>Drops the signed-out session's profile so the next one is fetched, not inherited.</summary>
+    private void Reset()
+    {
+        _isLoaded = false;
+        PreferredCurrency = string.Empty;
+        SelectedCurrency = null;
+        ErrorMessage = null;
     }
 
     /// <summary>
@@ -162,9 +188,11 @@ public partial class SettingsViewModel : ObservableObject
             Currencies = SupportedCurrencies.Including(profile.PreferredCurrency);
             PreferredCurrency = profile.PreferredCurrency;
             DefaultAlertDaysAdvance = profile.DefaultAlertDaysAdvance;
+            _isLoaded = true;
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
+            // _isLoaded stays false: the fields hold nothing, so the next visit should retry.
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally

@@ -1,9 +1,11 @@
 ﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Refit;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -13,6 +15,15 @@ public partial class PaymentSourcesViewModel : ObservableObject
     private readonly IPaymentSourcesApi _paymentSourcesApi;
     private readonly IUserPrompt _userPrompt;
     private readonly IConnectivityService _connectivity;
+    private readonly IMessenger _messenger;
+
+    /// <summary>
+    /// Whether this screen already holds the payment sources. Shell raises OnAppearing on every tab
+    /// selection, so loading unconditionally there refetched on each tab tap - see
+    /// <c>SubscriptionListViewModel._isLoaded</c> for the full reasoning. Every mutation below
+    /// applies its own result locally, so the list cannot go stale between visits.
+    /// </summary>
+    private bool _isLoaded;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -30,12 +41,37 @@ public partial class PaymentSourcesViewModel : ObservableObject
 
     public ObservableCollection<PaymentSourceDto> PaymentSources { get; } = [];
 
-    public PaymentSourcesViewModel(IPaymentSourcesApi paymentSourcesApi, IUserPrompt userPrompt, IConnectivityService connectivity)
+    public PaymentSourcesViewModel(
+        IPaymentSourcesApi paymentSourcesApi,
+        IUserPrompt userPrompt,
+        IConnectivityService connectivity,
+        IMessenger messenger)
     {
         _connectivity = connectivity;
         IsOffline = !connectivity.IsConnected;
         _paymentSourcesApi = paymentSourcesApi;
         _userPrompt = userPrompt;
+        _messenger = messenger;
+
+        // Weak registration: the messenger is a singleton and this view model is not.
+        messenger.Register<SessionEndedMessage>(this, (_, _) => Reset());
+    }
+
+    /// <summary>
+    /// What OnAppearing calls: load on the first visit only. See <see cref="_isLoaded"/>.
+    /// </summary>
+    [RelayCommand]
+    private Task EnsureLoadedAsync() => _isLoaded ? Task.CompletedTask : LoadAsync();
+
+    /// <summary>
+    /// Drops the signed-out session's payment sources. Shell keeps the page it built for each tab,
+    /// so without this the next user would see the previous one's accounts and no fetch would run.
+    /// </summary>
+    private void Reset()
+    {
+        _isLoaded = false;
+        PaymentSources.Clear();
+        ErrorMessage = null;
     }
     /// <summary>
     /// Whether the device has no network. Refreshed when the screen loads and after a failed write
@@ -69,9 +105,12 @@ public partial class PaymentSourcesViewModel : ObservableObject
             {
                 PaymentSources.Add(paymentSource);
             }
+
+            _isLoaded = true;
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
+            // _isLoaded stays false: nothing is on screen, so the next visit should retry.
             // A read, so the plain wording: nothing was lost, there is just nothing to show.
             IsOffline = !_connectivity.IsConnected;
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
@@ -125,6 +164,10 @@ public partial class PaymentSourcesViewModel : ObservableObject
             {
                 PaymentSources.Remove(toRemove);
             }
+
+            // Subscriptions that billed to it are detached, which changes the dashboard's spend-by-
+            // account breakdown. Neither that screen nor the list refetches on tab switch now.
+            _messenger.Send(new SubscriptionsChangedMessage());
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
@@ -167,6 +210,10 @@ public partial class PaymentSourcesViewModel : ObservableObject
                 PaymentSources.RemoveAt(index);
                 PaymentSources.Insert(SortedIndexFor(updated.Label), updated);
             }
+
+            // The dashboard names accounts in its spend-by-account summary, and it no longer
+            // refetches on tab switch - so the new label has to be announced.
+            _messenger.Send(new SubscriptionsChangedMessage());
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {

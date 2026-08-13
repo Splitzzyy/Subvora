@@ -20,7 +20,9 @@ public partial class CategoriesPage : ContentPage
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();
-		_viewModel.LoadCommand.Execute(null);
+		// EnsureLoaded, not Load: Shell raises OnAppearing on every tab selection, and a
+		// refetch per tab tap is what made the app look like it was permanently refreshing.
+		_viewModel.EnsureLoadedCommand.Execute(null);
 	}
 
 	/// <summary>

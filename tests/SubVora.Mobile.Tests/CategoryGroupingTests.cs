@@ -1,4 +1,5 @@
-﻿using SubVora.Mobile.Api.Dtos;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
 
@@ -16,7 +17,7 @@ public class CategoryGroupingTests
     private static CategoryDto User(string name) => new() { Id = Guid.NewGuid(), Name = name, IsSystemDefault = false };
 
     private static CategoriesViewModel CreateViewModel(FakeCategoriesApi api, FakeUserPrompt? prompt = null) =>
-        new(api, new FakeConnectivityService(), prompt ?? new FakeUserPrompt());
+        new(api, new FakeConnectivityService(), prompt ?? new FakeUserPrompt(), new WeakReferenceMessenger());
 
     private static FakeCategoriesApi ApiReturning(params CategoryDto[] categories) => new()
     {

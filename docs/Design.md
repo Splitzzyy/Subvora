@@ -57,6 +57,7 @@ The application automates mundane workflows like logo provisioning, smart catego
 1. **Cross-Platform Mobile Component (.NET MAUI):**
    * **Local State Caching:** Embedded `SQLite` context database providing sub-second runtime latency and offline access capabilities.
    * **Renewal Reminders:** Local notifications scheduled on-device from the local mirror. The OS delivers them with the app closed, so no push service, vendor project or API key is involved.
+   * **Screens Load Once, Not Per Tab Switch:** Shell raises `OnAppearing` on every tab selection, so each page's `OnAppearing` calls `EnsureLoadedCommand` — a first-visit fetch, then nothing. Freshness comes from invalidation, not repetition: a write publishes `SubscriptionsChangedMessage`, signing out publishes `SessionEndedMessage`, and pull-to-refresh (`LoadCommand`) always fetches. A load that ended with nothing on screen is not "loaded", so an error screen still retries on the next visit.
 2. **Microservice Backend API (ASP.NET Core):**
    * **Authentication Matrix:** Secure stateless JWT (JSON Web Tokens) handling verification flows via industry-grade encryption frameworks.
    * **Background Work:** Only what a client cannot do for itself — refreshing cached FX rates, syncing the provider catalog, and dispatching queued email. Nothing advances a billing date on a timer: that moves when the user marks a charge paid, so a date left in the past means the charge is genuinely outstanding.

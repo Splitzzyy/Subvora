@@ -52,55 +52,44 @@
                 <CollectionView ItemsSource="{Binding PaymentSources}">
                     <CollectionView.ItemTemplate>
                         <DataTemplate x:DataType="dtos:PaymentSourceDto">
-                            <SwipeView>
-                                <SwipeView.RightItems>
-                                    <SwipeItems>
-                                        <SwipeItem Text="Rename"
-                                                   BackgroundColor="#512BD4"
-                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=RenameCommand}"
-                                                   CommandParameter="{Binding .}" />
-                                        <SwipeItem Text="Delete"
-                                                   BackgroundColor="#C62828"
-                                                   Command="{Binding Source={RelativeSource AncestorType={x:Type viewModels:PaymentSourcesViewModel}}, Path=DeleteCommand}"
-                                                   CommandParameter="{Binding Id}" />
-                                    </SwipeItems>
-                                </SwipeView.RightItems>
+                            <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto,Auto">
+                                <!-- Tinted by type, not per row: a person's cards are not
+                                     categories, and a hue each would imply a distinction the
+                                     data does not have. -->
+                                <Border Grid.Column="0"
+                                        Style="{StaticResource IconTile}"
+                                        Margin="0,0,12,0"
+                                        BackgroundColor="{Binding SourceType, Converter={StaticResource PaymentSourceColorConverter}, ConverterParameter=soft}">
+                                    <Path Style="{StaticResource IconTileGlyph}"
+                                          Data="{Binding SourceType, Converter={StaticResource PaymentSourceIconConverter}}"
+                                          Fill="{Binding SourceType, Converter={StaticResource PaymentSourceColorConverter}}" />
+                                </Border>
+                                <Label Grid.Column="1"
+                                       Style="{StaticResource BodyStrong}"
+                                       Text="{Binding Label}"
+                                       VerticalOptions="Center" />
+                                <Border Grid.Column="2" Style="{StaticResource Chip}">
+                                    <Label Style="{StaticResource ChipText}" Text="{Binding SourceType}" />
+                                </Border>
 
-                                <Grid Style="{StaticResource CardRow}" ColumnDefinitions="Auto,*,Auto,Auto">
-                                    <!-- Tinted by type, not per row: a person's cards are not
-                                         categories, and a hue each would imply a distinction the
-                                         data does not have. -->
-                                    <Border Grid.Column="0"
-                                            Style="{StaticResource IconTile}"
-                                            Margin="0,0,12,0"
-                                            BackgroundColor="{Binding SourceType, Converter={StaticResource PaymentSourceColorConverter}, ConverterParameter=soft}">
-                                        <Path Style="{StaticResource IconTileGlyph}"
-                                              Data="{Binding SourceType, Converter={StaticResource PaymentSourceIconConverter}}"
-                                              Fill="{Binding SourceType, Converter={StaticResource PaymentSourceColorConverter}}" />
-                                    </Border>
-                                    <Label Grid.Column="1"
-                                           Style="{StaticResource BodyStrong}"
-                                           Text="{Binding Label}"
-                                           VerticalOptions="Center" />
-                                    <Border Grid.Column="2" Style="{StaticResource Chip}">
-                                        <Label Style="{StaticResource ChipText}" Text="{Binding SourceType}" />
-                                    </Border>
-
-                                    <!-- The discoverable half of rename/delete; swipe stays as the
-                                         fast path but nothing on screen ever announced it. -->
-                                    <Button Grid.Column="3"
-                                            Style="{StaticResource SecondaryButton}"
-                                            Text="&#8226;&#8226;&#8226;"
-                                            FontSize="14"
-                                            Padding="12,4"
-                                            Margin="8,0,0,0"
-                                            MinimumHeightRequest="34"
-                                            MinimumWidthRequest="44"
-                                            SemanticProperties.Description="Rename or delete this payment source"
-                                            CommandParameter="{Binding .}"
-                                            Clicked="OnManageClicked" />
-                                </Grid>
-                            </SwipeView>
+                                <!-- The only route to rename/delete, and the same vertical-dots
+                                     button the Categories rows use - one affordance means one thing
+                                     on both screens. Swipe used to sit alongside it and is gone:
+                                     nothing on screen announced it, and two ways into the same menu
+                                     is one more than this screen needs. -->
+                                <Border Grid.Column="3"
+                                        Style="{StaticResource M3TonalIconButton}"
+                                        Margin="8,0,0,0"
+                                        SemanticProperties.Description="Rename or delete this payment source">
+                                    <!-- Handled in code-behind rather than bound straight to the
+                                         command: the menu is anchored to this button, and where it
+                                         is on screen is a fact only the page can supply. -->
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnManageTapped" CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Path Style="{StaticResource M3TonalIconButtonGlyph}" Data="{StaticResource IconMoreVert}" />
+                                </Border>
+                            </Grid>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
 

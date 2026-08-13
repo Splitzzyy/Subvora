@@ -1,4 +1,5 @@
 using System.Net;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -13,7 +14,7 @@ public class CategoryEditingViewModelTests
     private static async Task<CategoriesViewModel> LoadedAsync(FakeCategoriesApi api, FakeUserPrompt prompt, params CategoryDto[] categories)
     {
         api.GetAllHandler = () => Task.FromResult<IReadOnlyList<CategoryDto>>(categories);
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), prompt);
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), prompt, new WeakReferenceMessenger());
         await viewModel.LoadCommand.ExecuteAsync(null);
         return viewModel;
     }
@@ -180,7 +181,7 @@ public class CategoryEditingViewModelTests
                 [new PaymentSourceDto { Id = Guid.NewGuid(), Label = "HDFC 4021", SourceType = PaymentSourceType.Card }]),
         };
         var prompt = new FakeUserPrompt { PromptResult = "HDFC Credit ••4021" };
-        var viewModel = new PaymentSourcesViewModel(api, prompt, new FakeConnectivityService());
+        var viewModel = new PaymentSourcesViewModel(api, prompt, new FakeConnectivityService(), new WeakReferenceMessenger());
         await viewModel.LoadCommand.ExecuteAsync(null);
 
         await viewModel.RenameCommand.ExecuteAsync(viewModel.PaymentSources.Single());

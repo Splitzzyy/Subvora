@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -10,7 +11,7 @@ public class PaymentSourcesViewModelTests
     private static PaymentSourcesViewModel CreateViewModel(
         FakePaymentSourcesApi? api = null,
         FakeUserPrompt? userPrompt = null) =>
-        new(api ?? new FakePaymentSourcesApi(), userPrompt ?? new FakeUserPrompt(), new FakeConnectivityService());
+        new(api ?? new FakePaymentSourcesApi(), userPrompt ?? new FakeUserPrompt(), new FakeConnectivityService(), new WeakReferenceMessenger());
 
     [Fact]
     public async Task LoadAsync_PopulatesList()

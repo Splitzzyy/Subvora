@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using CommunityToolkit.Mvvm.Messaging;
 using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
@@ -18,7 +19,7 @@ public class CategoriesViewModelTests
                 new CategoryDto { Id = Guid.NewGuid(), Name = "My Custom Category", IsSystemDefault = false },
             ]),
         };
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt());
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt(), new WeakReferenceMessenger());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -31,7 +32,7 @@ public class CategoriesViewModelTests
     public async Task AddAsync_WithValidName_CallsCreateAndAppendsToList()
     {
         var api = new FakeCategoriesApi();
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "Streaming" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt(), new WeakReferenceMessenger()) { NewCategoryName = "Streaming" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -48,7 +49,7 @@ public class CategoriesViewModelTests
         {
             CreateHandler = _ => throw TestApiExceptions.Create(HttpStatusCode.Conflict),
         };
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "Utilities" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt(), new WeakReferenceMessenger()) { NewCategoryName = "Utilities" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
@@ -65,7 +66,7 @@ public class CategoriesViewModelTests
                 HttpStatusCode.BadRequest,
                 """{"errors":{"Name":["'Name' must not be empty."]}}"""),
         };
-        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt()) { NewCategoryName = "" };
+        var viewModel = new CategoriesViewModel(api, new FakeConnectivityService(), new FakeUserPrompt(), new WeakReferenceMessenger()) { NewCategoryName = "" };
 
         await viewModel.AddCommand.ExecuteAsync(null);
 
