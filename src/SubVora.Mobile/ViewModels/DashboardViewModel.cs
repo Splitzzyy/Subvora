@@ -74,6 +74,15 @@ public partial class DashboardViewModel : ObservableObject
 
     public ObservableCollection<PaymentSourceBreakdownItem> ByPaymentSource { get; } = [];
 
+    /// <summary>
+    /// Whether the figures on screen came from a load. Shell raises OnAppearing on every tab
+    /// selection, so loading unconditionally there meant a fetch per tab tap - see
+    /// <c>SubscriptionListViewModel._isLoaded</c> for the full reasoning. Here the message handler
+    /// below refetches straight away rather than only marking it stale, because this view model is
+    /// a singleton whose totals are what a change to a subscription or the home currency moves.
+    /// </summary>
+    private bool _isLoaded;
+
     public DashboardViewModel(IDashboardApi dashboardApi, ILocalCacheService localCacheService, IMessenger messenger)
     {
         _dashboardApi = dashboardApi;
@@ -86,11 +95,21 @@ public partial class DashboardViewModel : ObservableObject
     }
 
     /// <summary>
+    /// What OnAppearing calls: load the first time the tab is opened, then leave the numbers alone
+    /// until a change message refetches them. See <see cref="_isLoaded"/>.
+    /// </summary>
+    [RelayCommand]
+    private Task EnsureLoadedAsync() => _isLoaded ? Task.CompletedTask : LoadAsync();
+
+    /// <summary>
     /// Drops the figures so the banner cannot outlive the session that produced them - a signed-out
     /// or expired user must not still see their spend on the login screen.
     /// </summary>
     public void Clear()
     {
+        // Also makes the next appearance fetch again: this view model is a singleton, so without it
+        // the next user to sign in would open a dashboard that believes it is already loaded.
+        _isLoaded = false;
         Weekly = 0;
         Monthly = 0;
         Yearly = 0;
@@ -130,6 +149,7 @@ public partial class DashboardViewModel : ObservableObject
 
             ApplyBurnRate(snapshot);
             IsShowingCachedData = false;
+            _isLoaded = true;
 
             await _localCacheService.UpsertAsync(snapshot);
         }
@@ -143,6 +163,9 @@ public partial class DashboardViewModel : ObservableObject
             {
                 ApplyBurnRate(cached);
                 IsShowingCachedData = true;
+
+                // Cached totals still count as loaded - see the same call in the list view model.
+                _isLoaded = true;
             }
             else
             {

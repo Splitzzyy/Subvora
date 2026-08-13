@@ -36,7 +36,14 @@ public class FakeSubscriptionsApi : ISubscriptionsApi
     public List<Guid> MarkPaidCalls { get; } = [];
     public List<ResolveSubscriptionRequest> ResolveCalls { get; } = [];
 
-    public Task<IReadOnlyList<SubscriptionDto>> GetAllAsync(CancellationToken cancellationToken = default) => GetAllHandler();
+    /// <summary>How many times the list has been fetched - what the tab-switch reload tests count.</summary>
+    public int GetAllCallCount { get; private set; }
+
+    public Task<IReadOnlyList<SubscriptionDto>> GetAllAsync(CancellationToken cancellationToken = default)
+    {
+        GetAllCallCount++;
+        return GetAllHandler();
+    }
 
     public Task<SubscriptionDto> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) => GetByIdHandler(id);
 

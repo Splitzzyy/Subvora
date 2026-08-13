@@ -20,16 +20,18 @@ public partial class PaymentSourcesPage : ContentPage
 	protected override void OnAppearing()
 	{
 		base.OnAppearing();
-		_viewModel.LoadCommand.Execute(null);
+		// EnsureLoaded, not Load: Shell raises OnAppearing on every tab selection, and a
+		// refetch per tab tap is what made the app look like it was permanently refreshing.
+		_viewModel.EnsureLoadedCommand.Execute(null);
 	}
 
 	/// <summary>
 	/// Opens the row menu anchored to the button tapped - see CategoriesPage.OnManageTapped for why
 	/// this goes through the page rather than binding the command directly.
 	/// </summary>
-	private void OnManageClicked(object? sender, EventArgs e)
+	private void OnManageTapped(object? sender, TappedEventArgs e)
 	{
-		if (sender is not Button button || button.CommandParameter is not PaymentSourceDto paymentSource)
+		if (sender is not VisualElement button || e.Parameter is not PaymentSourceDto paymentSource)
 		{
 			return;
 		}

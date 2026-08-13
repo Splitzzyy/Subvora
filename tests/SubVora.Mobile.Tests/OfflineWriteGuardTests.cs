@@ -53,8 +53,8 @@ public class OfflineWriteGuardTests
         // The list serves itself from the SQLite mirror, so it is the screen most likely to be open
         // with no network - and it carries two writes, swipe-to-delete and mark-as-paid.
         Assert.False(List(offline).CanSubmit);
-        Assert.False(new CategoriesViewModel(new FakeCategoriesApi(), offline, new FakeUserPrompt()).CanSubmit);
-        Assert.False(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), offline).CanSubmit);
+        Assert.False(new CategoriesViewModel(new FakeCategoriesApi(), offline, new FakeUserPrompt(), new WeakReferenceMessenger()).CanSubmit);
+        Assert.False(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), offline, new WeakReferenceMessenger()).CanSubmit);
     }
 
     [Fact]
@@ -65,8 +65,8 @@ public class OfflineWriteGuardTests
         Assert.True(Settings(online).CanSubmit);
         Assert.True(Detail(online).CanSubmit);
         Assert.True(List(online).CanSubmit);
-        Assert.True(new CategoriesViewModel(new FakeCategoriesApi(), online, new FakeUserPrompt()).CanSubmit);
-        Assert.True(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), online).CanSubmit);
+        Assert.True(new CategoriesViewModel(new FakeCategoriesApi(), online, new FakeUserPrompt(), new WeakReferenceMessenger()).CanSubmit);
+        Assert.True(new PaymentSourcesViewModel(new FakePaymentSourcesApi(), new FakeUserPrompt(), online, new WeakReferenceMessenger()).CanSubmit);
     }
 
     [Fact]

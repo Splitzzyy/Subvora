@@ -1,9 +1,11 @@
 ﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using Refit;
 using SubVora.Mobile.Api;
 using SubVora.Mobile.Api.Dtos;
+using SubVora.Mobile.Messages;
 using SubVora.Mobile.Services;
 
 namespace SubVora.Mobile.ViewModels;
@@ -13,6 +15,15 @@ public partial class CategoriesViewModel : ObservableObject
     private readonly ICategoriesApi _categoriesApi;
     private readonly IConnectivityService _connectivity;
     private readonly IUserPrompt _userPrompt;
+    private readonly IMessenger _messenger;
+
+    /// <summary>
+    /// Whether this screen already holds the category list. Shell raises OnAppearing on every tab
+    /// selection, so loading unconditionally there refetched on each tab tap - see
+    /// <c>SubscriptionListViewModel._isLoaded</c> for the full reasoning. Every mutation below
+    /// applies its own result locally, so nothing on this screen goes stale between visits.
+    /// </summary>
+    private bool _isLoaded;
 
     [ObservableProperty]
     public partial bool IsLoading { get; set; }
@@ -37,12 +48,38 @@ public partial class CategoriesViewModel : ObservableObject
     /// </summary>
     public ObservableCollection<CategoryGroup> Groups { get; } = [];
 
-    public CategoriesViewModel(ICategoriesApi categoriesApi, IConnectivityService connectivity, IUserPrompt userPrompt)
+    public CategoriesViewModel(
+        ICategoriesApi categoriesApi,
+        IConnectivityService connectivity,
+        IUserPrompt userPrompt,
+        IMessenger messenger)
     {
         _categoriesApi = categoriesApi;
         _connectivity = connectivity;
         _userPrompt = userPrompt;
+        _messenger = messenger;
         IsOffline = !connectivity.IsConnected;
+
+        // Weak registration: the messenger is a singleton and this view model is not.
+        messenger.Register<SessionEndedMessage>(this, (_, _) => Reset());
+    }
+
+    /// <summary>
+    /// What OnAppearing calls: load on the first visit only. See <see cref="_isLoaded"/>.
+    /// </summary>
+    [RelayCommand]
+    private Task EnsureLoadedAsync() => _isLoaded ? Task.CompletedTask : LoadAsync();
+
+    /// <summary>
+    /// Drops the signed-out session's categories. Shell keeps the page it built for each tab, so
+    /// without this the next user would see the previous one's list and no fetch would follow.
+    /// </summary>
+    private void Reset()
+    {
+        _isLoaded = false;
+        Categories.Clear();
+        Groups.Clear();
+        ErrorMessage = null;
     }
 
     /// <summary>
@@ -78,9 +115,11 @@ public partial class CategoriesViewModel : ObservableObject
             }
 
             RebuildGroups();
+            _isLoaded = true;
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
+            // _isLoaded stays false: there is nothing on screen, so the next visit should retry.
             ErrorMessage = ApiErrorMapper.ToDisplayMessage(ex);
         }
         finally
@@ -208,6 +247,10 @@ public partial class CategoriesViewModel : ObservableObject
                 Categories[index] = renamed;
                 RebuildGroups();
             }
+
+            // The dashboard names categories in its breakdown and the subscription list groups by
+            // them, and neither refetches on tab switch any more - so the rename has to say so.
+            _messenger.Send(new SubscriptionsChangedMessage());
         }
         catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
         {
@@ -242,6 +285,10 @@ public partial class CategoriesViewModel : ObservableObject
             var result = await _categoriesApi.DeleteAsync(category.Id);
             Categories.Remove(category);
             RebuildGroups();
+
+            // Subscriptions that used it are now uncategorised, which moves both the dashboard
+            // breakdown and the grouping on the list.
+            _messenger.Send(new SubscriptionsChangedMessage());
 
             if (result.SubscriptionsUncategorized > 0)
             {

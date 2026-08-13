@@ -1,4 +1,5 @@
-﻿using SubVora.Mobile.Api.Dtos;
+﻿using CommunityToolkit.Mvvm.Messaging;
+using SubVora.Mobile.Api.Dtos;
 using SubVora.Mobile.Tests.Fakes;
 using SubVora.Mobile.ViewModels;
 
@@ -15,7 +16,7 @@ public class ManageActionTests
         new() { Id = Guid.NewGuid(), Name = name, IsSystemDefault = false };
 
     private static CategoriesViewModel Categories(FakeCategoriesApi api, FakeUserPrompt prompt) =>
-        new(api, new FakeConnectivityService(), prompt);
+        new(api, new FakeConnectivityService(), prompt, new WeakReferenceMessenger());
 
     [Fact]
     public async Task Manage_ChoosingRename_OpensTheRenamePrompt()
@@ -98,7 +99,7 @@ public class ManageActionTests
             GetAllHandler = () => Task.FromResult<IReadOnlyList<PaymentSourceDto>>([source]),
             DeleteHandler = id => { deleted.Add(id); return Task.CompletedTask; },
         };
-        var viewModel = new PaymentSourcesViewModel(api, prompt, new FakeConnectivityService());
+        var viewModel = new PaymentSourcesViewModel(api, prompt, new FakeConnectivityService(), new WeakReferenceMessenger());
         await viewModel.LoadCommand.ExecuteAsync(null);
 
         await viewModel.ManageCommand.ExecuteAsync(source);
