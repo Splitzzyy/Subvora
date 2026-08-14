@@ -1,8 +1,11 @@
 ﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SubVora.Application.Auth;
 using SubVora.Application.Users;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Tests;
 
@@ -55,6 +58,26 @@ public class UsersControllerTests : IClassFixture<ApiWebApplicationFactory>
         var response = await client.GetAsync("/api/v1/users/me");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetMe_WhenTheRowIsGone_Returns404()
+    {
+        // The token is still valid - it is signed, not looked up - so the request authenticates and
+        // then finds nothing. Answering 200 with a null body made that indistinguishable from a
+        // successful read; PUT has always answered 404 here.
+        var email = $"users-getme-vanished-{Guid.NewGuid()}@example.com";
+        var client = await CreateAuthenticatedClientAsync(email);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await dbContext.Users.Where(u => u.Email == email).ExecuteDeleteAsync();
+        }
+
+        var response = await client.GetAsync("/api/v1/users/me");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
