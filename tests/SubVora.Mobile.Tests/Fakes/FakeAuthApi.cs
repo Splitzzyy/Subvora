@@ -23,18 +23,10 @@ public class FakeAuthApi : IAuthApi
     public Func<ResetPasswordRequest, Task<IApiResponse>> ResetPasswordHandler =
         _ => Task.FromResult(CreateResponse(HttpStatusCode.OK));
 
-    public Func<ChangePasswordRequest, Task<IApiResponse<AuthTokenResponse>>> ChangePasswordHandler =
-        _ => Task.FromResult(CreateResponse(HttpStatusCode.OK, SampleTokens()));
-
-    public Func<RefreshRequest, Task<IApiResponse>> LogoutHandler =
-        _ => Task.FromResult(CreateResponse(HttpStatusCode.NoContent));
-
     public List<RegisterRequest> RegisterCalls { get; } = [];
     public List<LoginRequest> LoginCalls { get; } = [];
-    public List<RefreshRequest> LogoutCalls { get; } = [];
     public List<ForgotPasswordRequest> ForgotPasswordCalls { get; } = [];
     public List<ResetPasswordRequest> ResetPasswordCalls { get; } = [];
-    public List<ChangePasswordRequest> ChangePasswordCalls { get; } = [];
 
     public Task<IApiResponse> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
@@ -51,12 +43,6 @@ public class FakeAuthApi : IAuthApi
     public Task<IApiResponse<AuthTokenResponse>> RefreshAsync(RefreshRequest request, CancellationToken cancellationToken = default) =>
         RefreshHandler(request);
 
-    public Task<IApiResponse> LogoutAsync(RefreshRequest request, CancellationToken cancellationToken = default)
-    {
-        LogoutCalls.Add(request);
-        return LogoutHandler(request);
-    }
-
     public Task<IApiResponse> ForgotPasswordAsync(ForgotPasswordRequest request, CancellationToken cancellationToken = default)
     {
         ForgotPasswordCalls.Add(request);
@@ -67,12 +53,6 @@ public class FakeAuthApi : IAuthApi
     {
         ResetPasswordCalls.Add(request);
         return ResetPasswordHandler(request);
-    }
-
-    public Task<IApiResponse<AuthTokenResponse>> ChangePasswordAsync(ChangePasswordRequest request, CancellationToken cancellationToken = default)
-    {
-        ChangePasswordCalls.Add(request);
-        return ChangePasswordHandler(request);
     }
 
     public static AuthTokenResponse SampleTokens() => new()

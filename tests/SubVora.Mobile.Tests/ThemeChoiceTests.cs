@@ -14,7 +14,7 @@ public class ThemeChoiceTests
     private static SettingsViewModel CreateViewModel(FakeThemeService themeService) =>
         new(
             new FakeUsersApi(),
-            new FakeAuthApi(),
+            new FakeAccountApi(),
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt(),

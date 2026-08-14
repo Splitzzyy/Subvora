@@ -190,7 +190,7 @@ public class BurnRateBannerTests
 
         var viewModel = new SettingsViewModel(
             new FakeUsersApi(),
-            new FakeAuthApi(),
+            new FakeAccountApi(),
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
@@ -215,7 +215,7 @@ public class BurnRateBannerTests
 
         var viewModel = new SettingsViewModel(
             new FakeUsersApi(),
-            new FakeAuthApi(),
+            new FakeAccountApi(),
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt { ConfirmResult = true },

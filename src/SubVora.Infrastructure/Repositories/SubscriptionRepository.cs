@@ -70,6 +70,19 @@ public class SubscriptionRepository : ISubscriptionRepository
         subscription.CatalogId = request.CatalogId;
         subscription.IsFreeTrial = request.IsFreeTrial;
 
+        // Force the row to be written even when nothing above actually differs. Without this, an
+        // unchanged payload leaves the entity Unchanged, EF issues no UPDATE at all, and there is no
+        // statement for the xmin predicate to be part of - so SaveChangesAsync cannot raise a
+        // concurrency exception and the call returns 200 against a row that has moved on.
+        //
+        // That is not a corner case: the conflict this check exists for is an edit screen opened
+        // before a mark-paid and then saved. A user who changed nothing is exactly the user whose
+        // save would silently roll the billing date back.
+        if (request.Version is not null)
+        {
+            _dbContext.Entry(subscription).State = EntityState.Modified;
+        }
+
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);

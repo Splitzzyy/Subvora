@@ -242,10 +242,27 @@ public class AuthService : IAuthService
     {
         var normalizedEmail = email.Trim().ToLowerInvariant();
 
+        // Generated and hashed before the lookup, and unconditionally - the same shape RegisterAsync
+        // uses for its BCrypt hash and LoginAsync for DummyPasswordHash. Both branches now pay for
+        // the CSPRNG draw and the SHA-256, so that much of the work no longer depends on whether the
+        // address exists.
+        var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        var codeHash = HashResetCode(code);
+
         var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
         if (user is null)
         {
-            // No enumeration - caller gets the same outcome either way.
+            // No enumeration by status or body - the caller gets the same 200 and empty response
+            // either way, and the work above is done regardless.
+            //
+            // Residual, accepted deliberately: a real account additionally performs a SELECT for
+            // outstanding codes, an UPDATE per code found, an INSERT and a SaveChanges, so a known
+            // address still costs more round trips than an unknown one. Closing that fully would
+            // mean issuing throwaway writes for addresses with no account - real write load driven
+            // by anyone who can reach the endpoint. Judged not worth it: the remaining signal is a
+            // few milliseconds of database time rather than the ~250ms BCrypt asymmetry the register
+            // and login paths exist to erase, and this endpoint is IP rate-limited (the "auth"
+            // policy, 10/min by default) which bounds how finely it can be sampled.
             return;
         }
 
@@ -260,12 +277,10 @@ public class AuthService : IAuthService
             superseded.UsedAt = DateTimeOffset.UtcNow;
         }
 
-        var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
-
         _dbContext.PasswordResetCodes.Add(new PasswordResetCode
         {
             UserId = user.Id,
-            CodeHash = HashResetCode(code),
+            CodeHash = codeHash,
             ExpiresAt = DateTimeOffset.UtcNow.Add(PasswordResetCodeLifetime),
             CreatedAt = DateTimeOffset.UtcNow,
         });

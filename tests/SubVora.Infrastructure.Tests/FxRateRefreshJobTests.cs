@@ -113,12 +113,59 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
 
         await BuildService(new FakeExchangeRateClient(0.90m)).RefreshOnceAsync();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => BuildService(new ThrowingExchangeRateClient()).RefreshOnceAsync());
+        // No longer throws: failures are isolated per base currency so one bad pair cannot discard
+        // the pass. A total outage still writes nothing, which is what this test has always been
+        // about - the previously cached rate must survive untouched either way.
+        await BuildService(new ThrowingExchangeRateClient()).RefreshOnceAsync();
 
         var rate = await _dbContext.FxRates.AsNoTracking()
             .SingleAsync(r => r.BaseCurrency == "USD" && r.TargetCurrency == "EUR");
         Assert.Equal(0.90m, rate.Rate);
+    }
+
+    [Fact]
+    public async Task FxRateRefreshJob_WhenOneBaseCurrencyFails_StillUpsertsTheRest()
+    {
+        // The defect: rates accumulated into one list and were upserted only after the loop, so a
+        // single unsupported pair or one transient 5xx threw past the upsert and discarded every
+        // rate already fetched. One user tracking something exotic aged everybody's totals.
+        var user = new User
+        {
+            Email = $"fx-partial-{Guid.NewGuid()}@example.com",
+            PasswordHash = "not-a-real-hash",
+            PreferredCurrency = "EUR",
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        _dbContext.Users.Add(user);
+        await _dbContext.SaveChangesAsync();
+
+        foreach (var currency in new[] { "USD", "ZZZ" })
+        {
+            _dbContext.UserSubscriptions.Add(new UserSubscription
+            {
+                UserId = user.Id,
+                CustomName = $"{currency} Subscription",
+                CostAmount = 10m,
+                Currency = currency,
+                CycleCadence = BillingCycleType.Monthly,
+                PurchaseDate = new DateOnly(2026, 1, 1),
+                NextBillingDate = new DateOnly(2026, 2, 1),
+                AlertDaysAdvance = 3,
+                CreatedAt = DateTimeOffset.UtcNow,
+            });
+        }
+
+        await _dbContext.SaveChangesAsync();
+
+        await BuildService(new SelectivelyFailingExchangeRateClient(failFor: "ZZZ", rate: 0.88m)).RefreshOnceAsync();
+
+        var usd = await _dbContext.FxRates.AsNoTracking()
+            .SingleOrDefaultAsync(r => r.BaseCurrency == "USD" && r.TargetCurrency == "EUR");
+        Assert.NotNull(usd);
+        Assert.Equal(0.88m, usd!.Rate);
+
+        Assert.False(await _dbContext.FxRates.AsNoTracking()
+            .AnyAsync(r => r.BaseCurrency == "ZZZ" && r.TargetCurrency == "EUR"));
     }
 
     [Fact]
@@ -259,5 +306,29 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
     {
         public Task<IReadOnlyList<ExchangeRate>> GetLatestRatesAsync(string baseCurrency, IReadOnlyCollection<string> targetCurrencies, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Simulated exchangerate.host outage.");
+    }
+
+    /// <summary>Fails for one base currency and succeeds for every other - the partial-failure case.</summary>
+    private class SelectivelyFailingExchangeRateClient : IExchangeRateClient
+    {
+        private readonly string _failFor;
+        private readonly decimal _rate;
+
+        public SelectivelyFailingExchangeRateClient(string failFor, decimal rate)
+        {
+            _failFor = failFor;
+            _rate = rate;
+        }
+
+        public Task<IReadOnlyList<ExchangeRate>> GetLatestRatesAsync(string baseCurrency, IReadOnlyCollection<string> targetCurrencies, CancellationToken cancellationToken = default)
+        {
+            if (baseCurrency == _failFor)
+            {
+                throw new InvalidOperationException($"Simulated provider refusal for {baseCurrency}.");
+            }
+
+            IReadOnlyList<ExchangeRate> rates = targetCurrencies.Select(target => new ExchangeRate(baseCurrency, target, _rate)).ToList();
+            return Task.FromResult(rates);
+        }
     }
 }

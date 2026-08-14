@@ -7,10 +7,10 @@ namespace SubVora.Mobile.Tests;
 
 public class ChangePasswordViewModelTests
 {
-    private static SettingsViewModel CreateViewModel(FakeAuthApi authApi, FakeTokenStore tokenStore, FakeConnectivityService? connectivity = null) =>
+    private static SettingsViewModel CreateViewModel(FakeAccountApi accountApi, FakeTokenStore tokenStore, FakeConnectivityService? connectivity = null) =>
         new(
             new FakeUsersApi(),
-            authApi,
+            accountApi,
             tokenStore,
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
@@ -25,7 +25,7 @@ public class ChangePasswordViewModelTests
         // storing the replacement pair the next 401 signs the user out of the phone they are
         // holding - the change looking like it broke the app.
         var tokenStore = new FakeTokenStore();
-        var viewModel = CreateViewModel(new FakeAuthApi(), tokenStore);
+        var viewModel = CreateViewModel(new FakeAccountApi(), tokenStore);
         viewModel.CurrentPassword = "correct-horse-battery-staple";      // pragma: allowlist secret
         viewModel.NewPassword = "an-entirely-different-passphrase";      // pragma: allowlist secret
 
@@ -36,9 +36,28 @@ public class ChangePasswordViewModelTests
     }
 
     [Fact]
+    public async Task ChangePassword_GoesThroughTheClientThatCarriesABearerToken()
+    {
+        // The whole defect: change-password lived on IAuthApi, which is registered without
+        // AuthDelegatingHandler, so the call went out with no Authorization header against an
+        // [Authorize] endpoint and answered 401 every time. Asserting the call lands on IAccountApi
+        // is what pins it to the client that attaches the token.
+        var accountApi = new FakeAccountApi();
+        var viewModel = CreateViewModel(accountApi, new FakeTokenStore());
+        viewModel.CurrentPassword = "correct-horse-battery-staple";      // pragma: allowlist secret
+        viewModel.NewPassword = "an-entirely-different-passphrase";      // pragma: allowlist secret
+
+        await viewModel.ChangePasswordCommand.ExecuteAsync(null);
+
+        var call = Assert.Single(accountApi.ChangePasswordCalls);
+        Assert.Equal("correct-horse-battery-staple", call.CurrentPassword);  // pragma: allowlist secret
+        Assert.Equal("an-entirely-different-passphrase", call.NewPassword);  // pragma: allowlist secret
+    }
+
+    [Fact]
     public async Task ChangePassword_OnSuccess_ClearsTheFieldsAndConfirms()
     {
-        var viewModel = CreateViewModel(new FakeAuthApi(), new FakeTokenStore());
+        var viewModel = CreateViewModel(new FakeAccountApi(), new FakeTokenStore());
         viewModel.CurrentPassword = "correct-horse-battery-staple";  // pragma: allowlist secret
         viewModel.NewPassword = "an-entirely-different-passphrase";  // pragma: allowlist secret
 
@@ -57,7 +76,7 @@ public class ChangePasswordViewModelTests
     [Fact]
     public async Task ChangePassword_WithTheWrongCurrentPassword_KeepsTheSessionAndExplains()
     {
-        var authApi = new FakeAuthApi
+        var accountApi = new FakeAccountApi
         {
             ChangePasswordHandler = _ => Task.FromResult(FakeAuthApi.CreateResponse(
                 HttpStatusCode.BadRequest,
@@ -68,7 +87,7 @@ public class ChangePasswordViewModelTests
         await tokenStore.SaveTokensAsync(FakeAuthApi.SampleTokens());
         var existingToken = tokenStore.AccessToken;
 
-        var viewModel = CreateViewModel(authApi, tokenStore);
+        var viewModel = CreateViewModel(accountApi, tokenStore);
         viewModel.CurrentPassword = "wrong";                             // pragma: allowlist secret
         viewModel.NewPassword = "an-entirely-different-passphrase";      // pragma: allowlist secret
 
@@ -84,11 +103,11 @@ public class ChangePasswordViewModelTests
     {
         // Both live on the same screen. A failed password change must not paint the currency card
         // red, and vice versa.
-        var authApi = new FakeAuthApi
+        var accountApi = new FakeAccountApi
         {
             ChangePasswordHandler = _ => Task.FromResult(FakeAuthApi.CreateResponse(HttpStatusCode.BadRequest, content: null)),
         };
-        var viewModel = CreateViewModel(authApi, new FakeTokenStore());
+        var viewModel = CreateViewModel(accountApi, new FakeTokenStore());
         viewModel.CurrentPassword = "wrong";  // pragma: allowlist secret
 
         await viewModel.ChangePasswordCommand.ExecuteAsync(null);
@@ -100,8 +119,8 @@ public class ChangePasswordViewModelTests
     [Fact]
     public async Task ChangePassword_WhenOffline_SaysTheChangeDidNotLand()
     {
-        var authApi = new FakeAuthApi { ChangePasswordHandler = _ => throw new HttpRequestException("Connection refused") };
-        var viewModel = CreateViewModel(authApi, new FakeTokenStore(), new FakeConnectivityService { IsConnected = false });
+        var accountApi = new FakeAccountApi { ChangePasswordHandler = _ => throw new HttpRequestException("Connection refused") };
+        var viewModel = CreateViewModel(accountApi, new FakeTokenStore(), new FakeConnectivityService { IsConnected = false });
         viewModel.CurrentPassword = "correct-horse-battery-staple";  // pragma: allowlist secret
 
         await viewModel.ChangePasswordCommand.ExecuteAsync(null);

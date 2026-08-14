@@ -16,7 +16,7 @@ public class OfflineWriteGuardTests
     private static SettingsViewModel Settings(FakeConnectivityService connectivity, FakeUsersApi? usersApi = null) =>
         new(
             usersApi ?? new FakeUsersApi(),
-            new FakeAuthApi(),
+            new FakeAccountApi(),
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
