@@ -50,6 +50,29 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
+    public async Task ForgotPassword_UnknownEmail_WritesNoResetCodeRow()
+    {
+        // Both branches now generate and hash a code before the user lookup, so response time
+        // depends less on whether the address exists. The unknown branch must still persist
+        // nothing - the hashing is throwaway work, not a row.
+        //
+        // Timing parity itself is held by the structure of ForgotPasswordAsync (and its comment
+        // recording the accepted residual gap), not asserted here: a wall-clock assertion would be
+        // flaky in CI and would fail for reasons unrelated to the property it claims to check.
+        var client = _factory.CreateClient();
+        var unknownEmail = $"unknown-norow-{Guid.NewGuid()}@example.com";
+
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var before = await dbContext.PasswordResetCodes.CountAsync();
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/forgot-password", new ForgotPasswordRequest { Email = unknownEmail });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(before, await dbContext.PasswordResetCodes.CountAsync());
+    }
+
+    [Fact]
     public async Task ForgotPassword_KnownEmail_CreatesCodeAndSendsEmail()
     {
         var client = _factory.CreateClient();
