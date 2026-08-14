@@ -3,6 +3,17 @@ using SubVora.Mobile.Api.Dtos;
 
 namespace SubVora.Mobile.Api;
 
+/// <summary>
+/// The auth endpoints that take no bearer token. Registered <em>without</em>
+/// <c>AuthDelegatingHandler</c> on purpose: this interface carries <c>/auth/refresh</c>, and chaining
+/// the handler here would let a 401 during refresh recurse back into refresh.
+/// <para>
+/// An endpoint that requires authentication does not belong here - it goes on
+/// <see cref="IAccountApi"/>, which is registered with the handler attached. Adding one here would
+/// ship a call with no <c>Authorization</c> header against an <c>[Authorize]</c> endpoint, which is
+/// exactly how change-password and logout came to be silently broken.
+/// </para>
+/// </summary>
 public interface IAuthApi
 {
     [Post("/api/v1/auth/register")]
@@ -13,9 +24,6 @@ public interface IAuthApi
 
     [Post("/api/v1/auth/refresh")]
     Task<IApiResponse<AuthTokenResponse>> RefreshAsync([Body] RefreshRequest request, CancellationToken cancellationToken = default);
-
-    [Post("/api/v1/auth/logout")]
-    Task<IApiResponse> LogoutAsync([Body] RefreshRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Requests a reset code. Answers 200 whether or not the address has an account - the server
@@ -30,11 +38,4 @@ public interface IAuthApi
     /// </summary>
     [Post("/api/v1/auth/reset-password")]
     Task<IApiResponse> ResetPasswordAsync([Body] ResetPasswordRequest request, CancellationToken cancellationToken = default);
-
-    /// <summary>
-    /// Changes the signed-in user's password. Returns a fresh token pair, because succeeding
-    /// revokes every refresh token the account holds - including this device's.
-    /// </summary>
-    [Post("/api/v1/auth/change-password")]
-    Task<IApiResponse<AuthTokenResponse>> ChangePasswordAsync([Body] ChangePasswordRequest request, CancellationToken cancellationToken = default);
 }

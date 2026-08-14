@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System.Net;
+using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
 using Refit;
@@ -13,7 +14,11 @@ namespace SubVora.Mobile.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IUsersApi _usersApi;
-    private readonly IAuthApi _authApi;
+
+    // Change-password and logout both need a bearer token, so they live on IAccountApi, which is
+    // registered with AuthDelegatingHandler attached. This view model has no anonymous auth calls
+    // left, so it does not take IAuthApi at all.
+    private readonly IAccountApi _accountApi;
     private readonly ITokenStore _tokenStore;
     private readonly ILocalCacheService _localCacheService;
     private readonly IUserPrompt _userPrompt;
@@ -110,10 +115,23 @@ public partial class SettingsViewModel : ObservableObject
     /// <summary>Raised after the password changes, so the view can confirm it.</summary>
     public event EventHandler? PasswordChanged;
 
-    public SettingsViewModel(IUsersApi usersApi, IAuthApi authApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService, IConnectivityService connectivity)
+    /// <summary>
+    /// Raised when the server refused the sign-out revoke. The local session still ends - that is
+    /// unconditional - but this says the refresh token may still be live server-side, which is the
+    /// one part of signing out the device cannot do for itself.
+    /// <para>
+    /// An event rather than a log line because this class has no logger and the two existing
+    /// outcomes here (<see cref="SignedOut"/>, <see cref="PasswordChanged"/>) are already events.
+    /// Nothing subscribes yet; it exists so the failure is observable at all, since the whole defect
+    /// was that a refusal was indistinguishable from a success.
+    /// </para>
+    /// </summary>
+    public event EventHandler<HttpStatusCode?>? LogoutRevokeFailed;
+
+    public SettingsViewModel(IUsersApi usersApi, IAccountApi accountApi, ITokenStore tokenStore, ILocalCacheService localCacheService, IUserPrompt userPrompt, IMessenger messenger, IThemeService themeService, IConnectivityService connectivity)
     {
         _usersApi = usersApi;
-        _authApi = authApi;
+        _accountApi = accountApi;
         _tokenStore = tokenStore;
         _localCacheService = localCacheService;
         _userPrompt = userPrompt;
@@ -239,7 +257,7 @@ public partial class SettingsViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var response = await _authApi.ChangePasswordAsync(new ChangePasswordRequest
+            var response = await _accountApi.ChangePasswordAsync(new ChangePasswordRequest
             {
                 CurrentPassword = CurrentPassword,
                 NewPassword = NewPassword,
@@ -249,6 +267,13 @@ public partial class SettingsViewModel : ObservableObject
             {
                 // 400 covers both a wrong current password and a new one that fails validation;
                 // the server's own message distinguishes them, so surface that rather than guess.
+                //
+                // A 401 maps to "session expired", which is only truthful because the call now goes
+                // through IAccountApi: the handler attaches the token and retries once on 401, and
+                // SessionRefresher ends the session if that refresh fails. Reaching here with a 401
+                // therefore does mean the session is gone. On IAuthApi - no handler, no token - the
+                // endpoint answered 401 unconditionally and that same message sent every user round
+                // a re-login loop that could never succeed.
                 PasswordErrorMessage = ApiErrorMapper.ToDisplayMessage(response);
                 return;
             }
@@ -288,7 +313,16 @@ public partial class SettingsViewModel : ObservableObject
         {
             try
             {
-                await _authApi.LogoutAsync(new RefreshRequest { RefreshToken = refreshToken });
+                var response = await _accountApi.LogoutAsync(new RefreshRequest { RefreshToken = refreshToken });
+
+                // Observed, not assumed. LogoutAsync returns IApiResponse, which does not throw on a
+                // non-success status, so a refusal used to sail past the catch below and read
+                // exactly like a successful revoke. That is how logout came to clear the local
+                // tokens while leaving the refresh token live on the server for its full 30 days.
+                if (!response.IsSuccessStatusCode)
+                {
+                    LogoutRevokeFailed?.Invoke(this, response.StatusCode);
+                }
             }
             catch (Exception ex) when (ApiErrorMapper.IsApiFailure(ex))
             {

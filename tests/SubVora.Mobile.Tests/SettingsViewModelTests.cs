@@ -11,7 +11,7 @@ public class SettingsViewModelTests
 {
     private static SettingsViewModel CreateViewModel(
         FakeUsersApi? usersApi = null,
-        FakeAuthApi? authApi = null,
+        FakeAccountApi? accountApi = null,
         FakeTokenStore? tokenStore = null,
         FakeLocalCacheService? cache = null,
         FakeUserPrompt? userPrompt = null,
@@ -19,7 +19,7 @@ public class SettingsViewModelTests
         FakeThemeService? themeService = null) =>
         new(
             usersApi ?? new FakeUsersApi(),
-            authApi ?? new FakeAuthApi(),
+            accountApi ?? new FakeAccountApi(),
             tokenStore ?? new FakeTokenStore(),
             cache ?? new FakeLocalCacheService(),
             userPrompt ?? new FakeUserPrompt(),
@@ -89,9 +89,9 @@ public class SettingsViewModelTests
         var cache = new FakeLocalCacheService();
         await cache.UpsertAsync(new CachedBurnRate { Weekly = 10 });
         await cache.UpsertAsync(new CachedSubscription { Id = Guid.NewGuid(), CustomName = "Netflix" });
-        var authApi = new FakeAuthApi();
+        var accountApi = new FakeAccountApi();
         var userPrompt = new FakeUserPrompt { ConfirmResult = true };
-        var viewModel = CreateViewModel(authApi: authApi, tokenStore: tokenStore, cache: cache, userPrompt: userPrompt);
+        var viewModel = CreateViewModel(accountApi: accountApi, tokenStore: tokenStore, cache: cache, userPrompt: userPrompt);
 
         var raised = false;
         viewModel.SignedOut += (_, _) => raised = true;
@@ -100,18 +100,83 @@ public class SettingsViewModelTests
 
         Assert.True(raised);
         Assert.True(tokenStore.Cleared);
-        Assert.Single(authApi.LogoutCalls);
+        Assert.Single(accountApi.LogoutCalls);
         Assert.Empty(await cache.GetAllAsync<CachedBurnRate>());
         Assert.Empty(await cache.GetAllAsync<CachedSubscription>());
+    }
+
+    [Fact]
+    public async Task SignOutAsync_RevokesThroughTheClientThatCarriesABearerToken()
+    {
+        // /auth/logout is [Authorize]. On IAuthApi - registered without AuthDelegatingHandler - the
+        // call went out with no token, answered 401, and IApiResponse does not throw, so the refusal
+        // was indistinguishable from a successful revoke. The refresh token then stayed live server
+        // side for its full 30 days after the user had explicitly signed out.
+        var tokenStore = new FakeTokenStore { AccessToken = "access", RefreshToken = "refresh" };
+        var accountApi = new FakeAccountApi();
+        var viewModel = CreateViewModel(
+            accountApi: accountApi,
+            tokenStore: tokenStore,
+            userPrompt: new FakeUserPrompt { ConfirmResult = true });
+
+        await viewModel.SignOutCommand.ExecuteAsync(null);
+
+        var call = Assert.Single(accountApi.LogoutCalls);
+        Assert.Equal("refresh", call.RefreshToken);
+    }
+
+    [Fact]
+    public async Task SignOutAsync_WhenTheRevokeIsRefused_StillEndsTheLocalSessionAndSaysSo()
+    {
+        // The local session ends unconditionally - that part was never in doubt. What is new is that
+        // a refusal is observed rather than silently treated as success.
+        var tokenStore = new FakeTokenStore { AccessToken = "access", RefreshToken = "refresh" };
+        var accountApi = new FakeAccountApi
+        {
+            LogoutHandler = _ => Task.FromResult(FakeAuthApi.CreateResponse(HttpStatusCode.Unauthorized)),
+        };
+        var viewModel = CreateViewModel(
+            accountApi: accountApi,
+            tokenStore: tokenStore,
+            userPrompt: new FakeUserPrompt { ConfirmResult = true });
+
+        HttpStatusCode? refusedWith = null;
+        viewModel.LogoutRevokeFailed += (_, status) => refusedWith = status;
+
+        var signedOut = false;
+        viewModel.SignedOut += (_, _) => signedOut = true;
+
+        await viewModel.SignOutCommand.ExecuteAsync(null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, refusedWith);
+        Assert.True(signedOut);
+        Assert.True(tokenStore.Cleared);
+    }
+
+    [Fact]
+    public async Task SignOutAsync_WhenTheRevokeSucceeds_RaisesNoFailure()
+    {
+        var accountApi = new FakeAccountApi();
+        var viewModel = CreateViewModel(
+            accountApi: accountApi,
+            tokenStore: new FakeTokenStore { AccessToken = "access", RefreshToken = "refresh" },
+            userPrompt: new FakeUserPrompt { ConfirmResult = true });
+
+        var failed = false;
+        viewModel.LogoutRevokeFailed += (_, _) => failed = true;
+
+        await viewModel.SignOutCommand.ExecuteAsync(null);
+
+        Assert.False(failed);
     }
 
     [Fact]
     public async Task SignOutAsync_WhenDeclined_MakesNoChanges()
     {
         var tokenStore = new FakeTokenStore { AccessToken = "access", RefreshToken = "refresh" };
-        var authApi = new FakeAuthApi();
+        var accountApi = new FakeAccountApi();
         var userPrompt = new FakeUserPrompt { ConfirmResult = false };
-        var viewModel = CreateViewModel(authApi: authApi, tokenStore: tokenStore, userPrompt: userPrompt);
+        var viewModel = CreateViewModel(accountApi: accountApi, tokenStore: tokenStore, userPrompt: userPrompt);
 
         var raised = false;
         viewModel.SignedOut += (_, _) => raised = true;
@@ -120,6 +185,6 @@ public class SettingsViewModelTests
 
         Assert.False(raised);
         Assert.False(tokenStore.Cleared);
-        Assert.Empty(authApi.LogoutCalls);
+        Assert.Empty(accountApi.LogoutCalls);
     }
 }

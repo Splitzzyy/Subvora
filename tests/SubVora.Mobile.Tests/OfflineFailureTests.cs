@@ -119,7 +119,7 @@ public class OfflineFailureTests
     public async Task Settings_WhenApiIsUnreachable_ShowsOfflineMessageInsteadOfCrashing()
     {
         var usersApi = new FakeUsersApi { GetMeHandler = () => throw Unreachable() };
-        var viewModel = BuildSettingsViewModel(usersApi, new FakeAuthApi(), new FakeTokenStore());
+        var viewModel = BuildSettingsViewModel(usersApi, new FakeAccountApi(), new FakeTokenStore());
 
         await viewModel.LoadCommand.ExecuteAsync(null);
 
@@ -132,11 +132,11 @@ public class OfflineFailureTests
     {
         // Signing out with no connection is the most likely case of all: the server-side revoke is
         // best-effort, but the local session must go either way.
-        var authApi = new FakeAuthApi { LogoutHandler = _ => throw Unreachable() };
+        var accountApi = new FakeAccountApi { LogoutHandler = _ => throw Unreachable() };
         var tokenStore = new FakeTokenStore();
         await tokenStore.SaveTokensAsync(FakeAuthApi.SampleTokens());
 
-        var viewModel = BuildSettingsViewModel(new FakeUsersApi(), authApi, tokenStore);
+        var viewModel = BuildSettingsViewModel(new FakeUsersApi(), accountApi, tokenStore);
 
         var signedOut = false;
         viewModel.SignedOut += (_, _) => signedOut = true;
@@ -150,11 +150,11 @@ public class OfflineFailureTests
 
     private static SettingsViewModel BuildSettingsViewModel(
         FakeUsersApi usersApi,
-        FakeAuthApi authApi,
+        FakeAccountApi accountApi,
         FakeTokenStore tokenStore) =>
         new(
             usersApi,
-            authApi,
+            accountApi,
             tokenStore,
             new FakeLocalCacheService(),
             new FakeUserPrompt { ConfirmResult = true },

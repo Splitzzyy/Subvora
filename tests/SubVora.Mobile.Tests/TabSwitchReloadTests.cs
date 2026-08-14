@@ -273,7 +273,7 @@ public class TabSwitchReloadTests
         var messenger = new WeakReferenceMessenger();
         var viewModel = new SettingsViewModel(
             usersApi,
-            new FakeAuthApi(),
+            new FakeAccountApi(),
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt(),

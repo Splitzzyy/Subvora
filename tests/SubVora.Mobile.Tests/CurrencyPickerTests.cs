@@ -15,7 +15,7 @@ public class CurrencyPickerTests
     private static SettingsViewModel CreateViewModel(FakeUsersApi usersApi) =>
         new(
             usersApi,
-            new FakeAuthApi(),
+            new FakeAccountApi(),
             new FakeTokenStore(),
             new FakeLocalCacheService(),
             new FakeUserPrompt(),
