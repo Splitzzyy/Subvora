@@ -34,7 +34,7 @@ public class BurnRateCalculatorTests
         CreatedAt = DateTimeOffset.UtcNow,
     };
 
-    private static SubscriptionDto OneTimeSubscription(decimal cost, DateOnly purchaseDate, bool isActive = true, string currency = "USD") => new()
+    private static SubscriptionDto OneTimeSubscription(decimal cost, DateOnly purchaseDate, bool isActive = true, string currency = "USD", bool isFreeTrial = false) => new()
     {
         Id = Guid.NewGuid(),
         CustomName = "One-Time Purchase",
@@ -44,10 +44,39 @@ public class BurnRateCalculatorTests
         PurchaseDate = purchaseDate,
         NextBillingDate = purchaseDate,
         AlertDaysAdvance = 3,
-        IsFreeTrial = false,
+        IsFreeTrial = isFreeTrial,
         IsActive = isActive,
         CreatedAt = DateTimeOffset.UtcNow,
     };
+
+    [Fact]
+    public async Task OneTimePurchase_OnAFreeTrial_IsExcludedFromOneTimeThisYear()
+    {
+        // The free-trial guard used to sit *after* the OneTime branch returned, so a one-time
+        // purchase marked as a trial was never tested against it and counted in full.
+        var subscriptions = new[]
+        {
+            OneTimeSubscription(99m, new DateOnly(DateTime.UtcNow.Year, 3, 1), isFreeTrial: true),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Equal(0m, result.OneTimeThisYear);
+    }
+
+    [Fact]
+    public async Task OneTimePurchase_NotOnAFreeTrial_StillCounts()
+    {
+        // The other half of the guard: excluding trials must not quietly exclude real purchases.
+        var subscriptions = new[]
+        {
+            OneTimeSubscription(99m, new DateOnly(DateTime.UtcNow.Year, 3, 1), isFreeTrial: false),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Equal(99m, result.OneTimeThisYear);
+    }
 
     [Fact]
     public async Task CalculatesWeeklyMonthlyYearly_ForMixOfCycles()

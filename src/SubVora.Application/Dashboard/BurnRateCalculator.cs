@@ -106,6 +106,18 @@ public class BurnRateCalculator
 
             var convertedCost = subscription.CostAmount * rate;
 
+            // Active free trials aren't being charged yet - excluded until IsFreeTrial flips
+            // to false, at which point the same subscription joins the totals automatically.
+            //
+            // Above the cadence branch, not below it: sitting after the OneTime `continue` meant a
+            // one-time purchase marked as a free trial was never tested against this at all, and
+            // landed in OneTimeThisYear despite nothing being charged for it. Whether a trial counts
+            // is not a question about its cadence, so no cadence gets to bypass the check.
+            if (subscription.IsFreeTrial)
+            {
+                continue;
+            }
+
             if (subscription.CycleCadence == BillingCycleType.OneTime)
             {
                 if (subscription.PurchaseDate.Year == currentYear)
@@ -113,13 +125,6 @@ public class BurnRateCalculator
                     oneTimeThisYear += convertedCost;
                 }
 
-                continue;
-            }
-
-            // Active free trials aren't being charged yet - excluded until IsFreeTrial flips
-            // to false, at which point the same subscription joins the totals automatically.
-            if (subscription.IsFreeTrial)
-            {
                 continue;
             }
 
