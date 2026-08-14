@@ -141,6 +141,51 @@ public class ConcurrentUpdateTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Update_WithAStaleVersionButNoActualChanges_StillReturns409()
+    {
+        // Every other conflict test alters a field, so EF generates an UPDATE and the xmin predicate
+        // rides along with it. Submit values byte-identical to what is stored and EF marks nothing
+        // modified, issues no statement at all, and SaveChangesAsync cannot raise a concurrency
+        // exception - the save answered 200 against a row that had moved on.
+        //
+        // This is the shape the check exists for, not a corner case: a user who opened the edit
+        // screen, changed nothing, and pressed Save is exactly the one whose write would silently
+        // roll back whatever happened underneath them.
+        var client = await CreateAuthenticatedClientAsync();
+        var created = await CreateAsync(client);
+
+        var firstEdit = ValidRequest();
+        firstEdit.Version = created.Version;
+        firstEdit.CustomName = "Edited on device A";
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", firstEdit, JsonOptions)).StatusCode);
+
+        // Exactly what is stored now, but carrying the version read before device A's edit.
+        var unchanged = ValidRequest();
+        unchanged.Version = created.Version;
+        unchanged.CustomName = "Edited on device A";
+
+        var response = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", unchanged, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Update_WithTheCurrentVersionAndNoActualChanges_StillSucceeds()
+    {
+        // The other side of the same guard: forcing the write must not turn an unchanged save
+        // carrying a *current* version into a spurious conflict.
+        var client = await CreateAuthenticatedClientAsync();
+        var created = await CreateAsync(client);
+
+        var unchanged = ValidRequest();
+        unchanged.Version = created.Version;
+
+        var response = await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", unchanged, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Update_WithNoVersion_StillAppliesUnconditionally()
     {
         // Backward compatibility: APKs already installed do not know about Version, and sideloaded
