@@ -82,6 +82,8 @@ public class FxRateRefreshBackgroundService : BackgroundService
         var baseCurrencies = subscriptionCurrencies.Union(preferredCurrencies).Distinct();
 
         var allRates = new List<ExchangeRate>();
+        var failedCurrencies = 0;
+
         foreach (var baseCurrency in baseCurrencies)
         {
             var targets = targetCurrencies.Where(t => t != baseCurrency).ToList();
@@ -90,13 +92,47 @@ public class FxRateRefreshBackgroundService : BackgroundService
                 continue;
             }
 
-            var rates = await _exchangeRateClient.GetLatestRatesAsync(baseCurrency, targets, cancellationToken);
-            allRates.AddRange(rates);
+            // Isolated per currency, deliberately: a partial pass beats none. These rates were
+            // accumulated and upserted only after the loop, so a single unsupported pair or one
+            // transient 5xx threw straight past the upsert and discarded every rate that had
+            // already been fetched successfully - every user's totals aged by a day because one
+            // user tracked something exotic. The next scheduled run retries whatever failed.
+            try
+            {
+                var rates = await _exchangeRateClient.GetLatestRatesAsync(baseCurrency, targets, cancellationToken);
+                allRates.AddRange(rates);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failedCurrencies++;
+                _logger.LogWarning(ex, "FX rate fetch failed for base currency {BaseCurrency}; continuing with the rest of the pass.", baseCurrency);
+            }
         }
 
         if (allRates.Count > 0)
         {
             await fxRateService.UpsertRatesAsync(allRates, cancellationToken);
+        }
+
+        // Otherwise a provider that has quietly dropped a currency is invisible until someone works
+        // backwards from a total that stopped moving. Escalated to Error when nothing at all came
+        // back: isolating failures per currency must not turn a total provider outage - which used
+        // to throw and log at Error - into a handful of warnings nobody pages on.
+        if (failedCurrencies > 0)
+        {
+            if (allRates.Count == 0)
+            {
+                _logger.LogError(
+                    "FX rate refresh fetched nothing: all {FailedCurrencyCount} base currency/currencies failed. Previously cached rates are unaffected.",
+                    failedCurrencies);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "FX rate refresh completed with {FailedCurrencyCount} base currency/currencies failing; {UpsertedRateCount} rate(s) were still refreshed.",
+                    failedCurrencies,
+                    allRates.Count);
+            }
         }
     }
 }
