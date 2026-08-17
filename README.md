@@ -8,6 +8,9 @@ SubVora is a cross-platform mobile app that tracks all your subscriptions, warns
 
 **[⬇ Get the Android APK — latest release](https://github.com/Splitzzyy/Subvora/releases/latest)**
 
+[![APK downloads, all releases](https://img.shields.io/github/downloads/Splitzzyy/Subvora/total?label=APK%20downloads)](https://github.com/Splitzzyy/Subvora/releases)
+[![APK downloads, latest release](https://img.shields.io/github/downloads/Splitzzyy/Subvora/latest/total?label=latest%20release)](https://github.com/Splitzzyy/Subvora/releases/latest)
+
 Android 8.0 (API 26) or newer. Download the `.apk` on your phone and tap it.
 
 Android blocks the first attempt and offers **Settings → Allow from this source** — that permission
