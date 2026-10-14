@@ -28,6 +28,7 @@ Backend and mobile client both exist and are under active development. Actual la
   /SubVora.Infrastructure  # EF Core, repositories, hosted services, external clients, migrations
   /SubVora.Api             # ASP.NET Core Web API (controllers, Program.cs)
   /SubVora.Mobile          # .NET MAUI app (Android + iOS)
+/Android                   # React Native (Expo) Android client, Material 3 Expressive - same API
 /tests
   /SubVora.Api.Tests            # integration, Testcontainers + WebApplicationFactory
   /SubVora.Application.Tests    # pure unit, no database
@@ -36,7 +37,7 @@ Backend and mobile client both exist and are under active development. Actual la
 /docs
 ```
 
-There is deliberately **no `SubVora.Shared`** — mobile DTOs mirror the API's JSON contract by convention, so a contract change means editing both sides.
+There is deliberately **no `SubVora.Shared`** — mobile DTOs mirror the API's JSON contract by convention, so a contract change means editing every client: the MAUI DTOs and `Android/src/api/types.ts`. `Android/` has its own `README.md`/`DESIGN.md`; its pure rules (`src/lib/logic.ts`) port the MAUI ones (billing dates, grouping, reminders, money formatting) and must stay in step with them.
 
 ### Build, test, run
 
@@ -87,7 +88,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 ## Conventions
 
-- C# throughout (mobile + backend) — no separate Swift/Kotlin/JS layers per the single-codebase design goal.
+- C# for the backend and the MAUI app — no separate Swift/Kotlin layers. `Android/` is a deliberate exception: a React Native (Expo, TypeScript) Android client added on request, talking to the same API.
 - REST API versioned under `/api/v1/`.
 - Don't add a web or desktop client — mobile-only is a deliberate v1 scope decision (see NON_TECHNICAL_REQUIREMENTS.md §6).
 - Don't build bank/email auto-scraping or in-app cancellation-on-behalf-of-user — explicitly out of scope for v1.

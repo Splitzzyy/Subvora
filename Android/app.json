@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "SubVora",
+    "slug": "subvora",
+    "scheme": "subvora",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.subvora.app"
+    },
+    "android": {
+      "package": "com.subvora.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#5A3FC0",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      "@react-native-community/datetimepicker",
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
+          "backgroundColor": "#FDF8FF",
+          "dark": {
+            "backgroundColor": "#141318"
+          }
+        }
+      ]
+    ]
+  }
+}
