@@ -14,10 +14,9 @@
     "android": {
       "package": "com.subvora.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#5A3FC0",
+        "backgroundColor": "#512BD4",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "monochromeImage": "./assets/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
