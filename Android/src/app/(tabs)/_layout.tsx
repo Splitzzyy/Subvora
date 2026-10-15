@@ -28,6 +28,8 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   return (
     <Tabs
+      // Back walks the tabs you actually visited before leaving the app, not straight to Home.
+      backBehavior="history"
       screenOptions={{
         headerShown: false,
         sceneStyle: { backgroundColor: colors.surface },
