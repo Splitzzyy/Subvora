@@ -11,7 +11,7 @@ SubVora — cross-platform subscription tracker with cancellation reminders, bur
 - `docs/Design.md` — architecture diagram, what each table is for, matching flow
 - `docs/ADDING_A_PROVIDER.md` — how to add, rename, or remove a subscription provider
 - `docs/DEPLOYMENT.md` — hosting the API (Render + Neon + Brevo, all free tier) and shipping the signed Android APK
-- `docs/debug/ANDROID_DEVICE.md` — running/debugging the MAUI app on a physical phone against a local API
+- `Android/README.md` / `Android/DESIGN.md` — running the React Native app on a phone against a local API, and its Material 3 Expressive design system
 
 Read the relevant doc before implementing a feature — don't guess at requirements that are already written down.
 
@@ -27,17 +27,19 @@ Backend and mobile client both exist and are under active development. Actual la
   /SubVora.Application     # DTOs, validators, interfaces, pure logic — no EF Core
   /SubVora.Infrastructure  # EF Core, repositories, hosted services, external clients, migrations
   /SubVora.Api             # ASP.NET Core Web API (controllers, Program.cs)
-  /SubVora.Mobile          # .NET MAUI app (Android + iOS)
-/Android                   # React Native (Expo) Android client, Material 3 Expressive - same API
+  /SubVora.Mobile          # RETIRED .NET MAUI client - code kept for reference; not built, not in SubVora.slnx, not in CI
+/Android                   # The mobile client: React Native (Expo, TypeScript), Material 3 Expressive
 /tests
   /SubVora.Api.Tests            # integration, Testcontainers + WebApplicationFactory
   /SubVora.Application.Tests    # pure unit, no database
   /SubVora.Infrastructure.Tests # integration, Testcontainers
-  /SubVora.Mobile.Tests         # view-model unit tests, Windows-only TFM
+  /SubVora.Mobile.Tests         # RETIRED with SubVora.Mobile - kept, not built
 /docs
 ```
 
-There is deliberately **no `SubVora.Shared`** — mobile DTOs mirror the API's JSON contract by convention, so a contract change means editing every client: the MAUI DTOs and `Android/src/api/types.ts`. `Android/` has its own `README.md`/`DESIGN.md`; its pure rules (`src/lib/logic.ts`) port the MAUI ones (billing dates, grouping, reminders, money formatting) and must stay in step with them.
+There is deliberately **no `SubVora.Shared`** — mobile DTOs mirror the API's JSON contract by convention, so a contract change means editing `Android/src/api/types.ts` too. The client's pure rules (billing dates, grouping, reminders, money formatting) live in `Android/src/lib/logic.ts`, tested with `npm test`.
+
+Don't edit, build or test `src/SubVora.Mobile` / `tests/SubVora.Mobile.Tests`: the MAUI client is retired. They stay in the tree as reference only.
 
 ### Build, test, run
 
@@ -48,12 +50,13 @@ dotnet run --project src/SubVora.Api
 dotnet test tests/SubVora.Api.Tests/SubVora.Api.Tests.csproj -c Release
 dotnet test tests/SubVora.Application.Tests/SubVora.Application.Tests.csproj -c Release
 dotnet test tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.csproj -c Release
-dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj -c Release   # Windows only
+
+cd Android && npm ci && npm run typecheck && npm run lint && npm test   # mobile client
 ```
 
-Building `SubVora.slnx` as a whole additionally needs the Android SDK installed (`SubVora.Mobile` targets `net10.0-android`), so build the API project directly unless you are working on mobile. Test each project directly too: on Linux `SubVora.Mobile` only exposes `net10.0-android` (its ios/maccatalyst/windows TFMs are conditioned out), so `SubVora.Mobile.Tests` — which targets `net10.0-windows` unconditionally — can never resolve its `ProjectReference` there. `.github/workflows/ci.yml` splits accordingly: the first three projects on `ubuntu-latest`, the mobile tests on `windows-latest`.
+`SubVora.slnx` holds only the backend projects, so `dotnet build SubVora.slnx` needs no Android SDK or MAUI workload. `.github/workflows/ci.yml` runs the three backend test projects plus the `android` job (typecheck, lint, tests, Hermes bundle); `release-android.yml` builds the signed APK from `Android/` on a `v*` tag.
 
-`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` spin up a real `pgvector/pgvector:pg16` container per test class via Testcontainers (stock Postgres 16 plus an extension the app no longer uses — kept so existing dev volumes keep working) — Docker must be running. `SubVora.Application.Tests` and `SubVora.Mobile.Tests` need nothing.
+`SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` spin up a real `pgvector/pgvector:pg16` container per test class via Testcontainers (stock Postgres 16 plus an extension the app no longer uses — kept so existing dev volumes keep working) — Docker must be running. `SubVora.Application.Tests` needs nothing.
 
 ### Adding a brand to the subscription catalog
 
@@ -71,7 +74,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 ## Stack (see docs/TECHNICAL_REQUIREMENTS.md for full detail)
 
-- **Mobile:** .NET MAUI, single C# codebase for Android + iOS, local SQLite cache for offline support
+- **Mobile:** React Native (Expo SDK 57, Expo Router, TypeScript) in `Android/`, Android-only, `expo-sqlite` kv-store as the offline read cache. `docs/TECHNICAL_REQUIREMENTS.md` still says .NET MAUI — follow the code.
 - **Backend:** ASP.NET Core Web API, JWT auth, EF Core + Npgsql. `docs/TECHNICAL_REQUIREMENTS.md` §3 says ".NET 8 LTS"; every `.csproj` actually targets `net10.0` — follow the code.
 - **Database:** PostgreSQL + `pg_trgm` — relational subscription data plus trigram similarity for provider matching
 - **Provider matching:** in-database trigram similarity. There is no AI provider and no API key — see `docs/TECHNICAL_REQUIREMENTS.md` §8 for the scoring and the known gap (rebrands/semantic input fall through to manual entry)
@@ -81,14 +84,14 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 - **Currency conversion is a read-time projection, not a write-time mutation.** Store each subscription's original `currency` + `cost_amount` unchanged; convert to the user's home currency only when computing dashboard/burn-rate totals. Never overwrite stored amounts with converted values.
 - **Burn-rate math is server-side, and counts cycles rather than days.** Each active subscription's annual cost is `cost * charges_per_year` (Weekly 52, Monthly 12, Quarterly 4, Yearly 1); sum those, then derive `Monthly = annual / 12` and `Weekly = annual / 52`. Keep this logic in the API, not duplicated in the mobile client. **Do not reintroduce a daily rate** (`cost / cycle_days`): with a 30-day month and a 365-day year it makes a year 12.17 months long, so 1000/month reported 12166.67/year. A calendar month is a count, not 30 days.
 - **Provider matching is one SQL query, not a service call.** Scoring is `greatest(word_similarity(input, name), word_similarity(name, input))` — both directions are load-bearing. Thresholds are measured, not guessed; `SubscriptionCatalogTrigramMatchTests` pins them.
-- **Renewal reminders are scheduled on-device, not pushed.** `RenewalNotificationPlanner` derives them from the subscription list; the OS delivers them with the app closed. There is no push service, no device-token table and no vendor project.
+- **Renewal reminders are scheduled on-device, not pushed.** `planReminders` (`Android/src/lib/logic.ts`) derives them from the subscription list; the OS delivers them with the app closed. There is no push service, no device-token table and no vendor project.
 - **Nothing advances `next_billing_date` on a timer.** A date left in the past is how the app says a charge is outstanding, which is what `SubscriptionDto.IsOverdue` reads. It moves only when the user marks the charge paid (`POST /api/v1/subscriptions/{id}/mark-paid`), which records `last_paid_date` and steps on exactly one cycle from the date just settled — not from today, which would silently write off the periods in between. The nightly `BillingDateAdvanceBackgroundService` was removed for this reason: it erased the very signal overdue depends on.
-- **The mobile SQLite cache is a read-only mirror — there are no offline writes.** It is refreshed from successful GETs only; there is no outbox, no replay on reconnect and no conflict resolution. A write made without a connection fails and is discarded, saying so (`ApiErrorMapper.ToWriteFailureMessage`), with the write buttons disabled when the device has no network. That is the intended behaviour, not a gap waiting to be filled — offline *reads* cover the common case, while offline writes would need queueing, replay ordering, a pending state, and conflict handling against the `Version` token (a queued edit can hit the same stale-version 409, with nobody to ask while the app is closed). Decided in #144; don't add an outbox without revisiting it.
-- **`billing_cycle_type`** is a fixed enum: `Weekly`, `Monthly`, `Yearly`, `OneTime`, `Quarterly`. Extend deliberately, not ad hoc — and **append, never insert**. It is a native Postgres enum (mapped in `AppDbContextOptionsFactory`), so a new member needs a migration, and the mobile `CachedSubscription` SQLite table stores it as its *ordinal*, so renumbering silently misreads every cached row on an already-installed device. That is why `Quarterly` sits last despite reading better after `Monthly`; `SubscriptionDetailViewModel.BillingCycleTypes` orders the picker instead. `BillingCycleType_OrdinalsAreFrozen` pins it.
+- **The mobile cache is a read-only mirror — there are no offline writes.** It is refreshed from successful GETs only; there is no outbox, no replay on reconnect and no conflict resolution. A write made without a connection fails and is discarded, saying so (`writeErrorMessage` in `Android/src/api/client.ts`), with the write buttons disabled when the device has no network. That is the intended behaviour, not a gap waiting to be filled — offline *reads* cover the common case, while offline writes would need queueing, replay ordering, a pending state, and conflict handling against the `Version` token (a queued edit can hit the same stale-version 409, with nobody to ask while the app is closed). Decided in #144; don't add an outbox without revisiting it.
+- **`billing_cycle_type`** is a fixed enum: `Weekly`, `Monthly`, `Yearly`, `OneTime`, `Quarterly`. Extend deliberately, not ad hoc — and **append, never insert**. It is a native Postgres enum (mapped in `AppDbContextOptionsFactory`), so a new member needs a migration and a matching entry in the client's `BillingCycle` union. `Quarterly` sits last despite reading better after `Monthly`; the client's `CYCLES_ORDERED` orders the picker instead.
 
 ## Conventions
 
-- C# for the backend and the MAUI app — no separate Swift/Kotlin layers. `Android/` is a deliberate exception: a React Native (Expo, TypeScript) Android client added on request, talking to the same API.
+- C# for the backend, TypeScript (React Native/Expo) for the mobile client in `Android/`. No Swift/Kotlin layers - native config goes through `Android/app.json` and config plugins (`Android/android/` is generated and gitignored).
 - REST API versioned under `/api/v1/`.
 - Don't add a web or desktop client — mobile-only is a deliberate v1 scope decision (see NON_TECHNICAL_REQUIREMENTS.md §6).
 - Don't build bank/email auto-scraping or in-app cancellation-on-behalf-of-user — explicitly out of scope for v1.

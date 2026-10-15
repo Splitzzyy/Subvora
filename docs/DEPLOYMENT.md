@@ -121,9 +121,9 @@ the service (Render dashboard → the service → Settings → Deploy Hook), and
 named `RENDER_DEPLOY_HOOK_URL` in the `production` GitHub environment. The URL embeds its own key,
 which is why it is a secret rather than a plain setting.
 
-If you deploy somewhere other than Render, the service name in `render.yaml` and the Release
-`ApiBaseAddress` in `SubVora.Mobile.csproj` both have to change — and the second one means cutting a
-new APK (see [Distribution](#distribution)).
+If you deploy somewhere other than Render, the service name in `render.yaml` and the client's default
+`API_BASE_URL` in `Android/src/api/client.ts` both have to change — and the second one means cutting a
+new APK (see [Cutting a release](#cutting-a-release)).
 
 ### 5. Keep it warm
 
@@ -168,7 +168,7 @@ key: lose the keystore and you can never ship an upgrade to an already-installed
 to uninstall and lose their local cache. `.gitignore` blocks `*.keystore`/`*.jks` because
 `detect-secrets` does not inspect binaries and would not catch it.
 
-Then add four repo secrets:
+Then add four secrets to the `production` GitHub environment:
 
 | Secret | Value |
 |---|---|
@@ -214,7 +214,9 @@ git tag v1.1.0
 git push origin v1.1.0
 ```
 
-`.github/workflows/release-android.yml` builds a signed APK and attaches it to a GitHub Release.
+`.github/workflows/release-android.yml` builds the React Native app in `Android/` into a signed APK
+(arm64 + armv7, JS bundle embedded) and attaches it to a GitHub Release. The retired MAUI client in
+`src/SubVora.Mobile` is not built or released any more.
 Users download it and sideload; `adb install -r <apk>` for a device on your desk.
 
 ### Tag from `main` or you will have to start over
@@ -243,9 +245,8 @@ into `main`, so the tag ends up referencing something outside the repo's history
 
 ### If the build fails
 
-`Verify signing secrets` runs before the ~90-second publish and names the offending secret. It is
-there because `AndroidApkSigner` swallows apksigner's stderr, so the raw symptom is
-`MSB6006: "java" exited with code 2` and nothing else.
+`Verify signing secrets` runs before the build and names the offending secret, so a bad keystore
+secret fails in seconds rather than after the multi-minute Gradle build.
 
 | Message | Cause |
 |---|---|
@@ -257,22 +258,21 @@ there because `AndroidApkSigner` swallows apksigner's stderr, so the raw symptom
 The keystore is PKCS12 (keytool's default since JDK 9), which has **no separate key password** —
 `ANDROID_KEY_PASSWORD` must equal `ANDROID_KEYSTORE_PASSWORD`.
 
-If the publish itself fails, the job uploads `publish-binlog` as an artifact for one day. It holds
-every task's real stdout and stderr, including what `MSB6006` discards. Open it at
-<https://live.msbuildlog.com>.
+If the Gradle build fails, its own output in the job log names the failing task; re-run it locally
+with `cd Android && npx expo prebuild --platform android && cd android && ./gradlew assembleRelease`.
 
 ### What the workflow controls deliberately
 
-- **It does not pass `ApiBaseAddress`.** The Release default in `SubVora.Mobile.csproj` is the single
-  source of truth for which backend a shipped build talks to. That address is read from assembly
-  metadata by `ApiConfig`, so it is fixed at build time — a shipped APK cannot be repointed, and
-  moving hosts means a new release.
-- **`ApplicationVersion` comes from the run number**, not the `.csproj`. Android refuses an in-place
-  upgrade unless the version code strictly increases, and the checked-in value is static.
+- **It does not set `EXPO_PUBLIC_API_URL`.** The default in `Android/src/api/client.ts` is the single
+  source of truth for which backend a shipped build talks to. It is inlined into the JS bundle at
+  build time — a shipped APK cannot be repointed, and moving hosts means a new release.
+- **`versionCode` comes from the run number** and `versionName` from the tag (`v1.2.3` → `1.2.3`).
+  Android refuses an in-place upgrade unless the version code strictly increases.
+- **It re-signs with `apksigner`.** The generated Gradle project signs release builds with the debug
+  key; the workflow replaces that signature with the production keystore.
 
-Release builds also have no cleartext-HTTP path: `usesCleartextTraffic` is set only by the
-Debug-only manifest overlay. That is why the API must be reachable over HTTPS, which Render's
-subdomain certificate provides for free.
+Release builds also have no cleartext-HTTP path: only the debug manifest allows it. That is why the
+API must be reachable over HTTPS, which Render's subdomain certificate provides for free.
 
 ## Verifying a deploy
 
@@ -317,7 +317,7 @@ the mailbox is no more of an oracle than the response is. Check Brevo's activity
 arrives.
 
 On a device, with **no** `adb reverse` mapping active (unlike the local loop in
-[debug/ANDROID_DEVICE.md](./debug/ANDROID_DEVICE.md)): log in, confirm the list populates, then kill
+[Android/README.md](../Android/README.md)): log in, confirm the list populates, then kill
 wifi and confirm cached rows still render with the cached-data indicator. Watch
 `adb logcat -b crash` throughout.
 

@@ -1,6 +1,6 @@
 # SubVora Material Expressive UI
 
-React Native (Expo SDK 57, Expo Router) client for the same `/api/v1` backend the MAUI app uses. Material 3 Expressive is applied by hand with React Native primitives: tonal surfaces, an expressive shape scale, springy press feedback and system appearance. No UI kit dependency.
+React Native (Expo SDK 57, Expo Router) client for the same `/api/v1` backend the retired MAUI app used. Material 3 Expressive is applied by hand with React Native primitives: tonal surfaces, an expressive shape scale, springy press feedback and system appearance. No UI kit dependency.
 
 ## Shared UI
 

@@ -2,9 +2,9 @@ import * as SecureStore from 'expo-secure-store';
 import type { AuthTokenResponse } from './types';
 
 /**
- * Backend address, baked in at bundle time. Same default as the MAUI Release build; point a dev
+ * Backend address, baked in at bundle time; defaults to the deployed API. Point a dev
  * build at a local API with EXPO_PUBLIC_API_URL=http://localhost:8080 plus `adb reverse tcp:8080
- * tcp:8080` (docs/debug/ANDROID_DEVICE.md).
+ * tcp:8080` (Android/README.md).
  */
 export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'https://subvora-api.onrender.com').replace(/\/+$/, '');
 

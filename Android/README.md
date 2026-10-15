@@ -1,6 +1,6 @@
 # SubVora Android (React Native / Expo)
 
-A Material 3 Expressive Android client for the SubVora API. It uses the same `/api/v1` endpoints, auth flow and rules as the MAUI app in `src/SubVora.Mobile`. Design notes are in [DESIGN.md](DESIGN.md).
+A Material 3 Expressive Android client for the SubVora API. This is the only mobile client. It keeps the API contract and rules of the retired MAUI app (`src/SubVora.Mobile`, reference only). Design notes are in [DESIGN.md](DESIGN.md).
 
 ```
 src/app/          Expo Router screens: (auth) login/register/forgot-password, (tabs) home/subs/categories/payment/settings, subscription/[id]
@@ -19,25 +19,33 @@ npm install
 npx expo run:android          # dev build on a device or emulator (needs a JDK + Android SDK)
 ```
 
-The API defaults to the deployed `https://subvora-api.onrender.com`. To use a local API (see `docs/debug/ANDROID_DEVICE.md`):
+The API defaults to the deployed `https://subvora-api.onrender.com`.
+
+### Against a local API on a physical phone
 
 ```sh
-adb reverse tcp:8080 tcp:8080
+docker compose up -d --build                     # repo root: API :8080, Postgres, Mailpit :8025
+adb reverse tcp:8080 tcp:8080                    # phone's localhost:8080 -> your PC's API
+adb reverse tcp:8081 tcp:8081                    # phone's localhost:8081 -> Metro
 EXPO_PUBLIC_API_URL=http://localhost:8080 npx expo run:android
 ```
 
-Debug builds allow cleartext HTTP. Release builds expect HTTPS.
+- Debug builds allow cleartext HTTP; release builds expect HTTPS.
+- `adb reverse` mappings drop whenever the cable or USB connection resets. The symptom is "You appear to be offline." Re-run both commands.
+- Reset codes and other mail land in Mailpit at <http://localhost:8025>, not a real inbox.
+- `EXPO_PUBLIC_API_URL` is inlined when Metro bundles. After changing it, restart Metro with `--clear`.
+- Xiaomi/MIUI phones refuse `adb install` (`INSTALL_FAILED_USER_RESTRICTED`) until *Developer options → Install via USB* is on, which needs a Mi account. Another option is to `adb push` the APK to `/sdcard/Download` and install it from the file manager.
 
 ## Release
 
-Push a tag `rn-vX.Y.Z` (for example `git tag rn-v1.0.0 && git push origin rn-v1.0.0`). `.github/workflows/release-android-rn.yml` then:
+Push a tag `vX.Y.Z` from `main` (for example `git tag v1.0.0 && git push origin v1.0.0`). `.github/workflows/release-android.yml` then:
 
 1. Generates the native project.
 2. Builds a release APK with the JS bundle embedded, for arm64 and armv7.
 3. Re-signs it with the production keystore.
 4. Attaches it to the GitHub Release.
 
-It reads `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` from the `production` environment. These are the same secrets `release-android.yml` uses.
+It reads `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` from the `production` environment.
 
 ## Check
 

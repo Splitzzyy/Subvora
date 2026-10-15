@@ -1,5 +1,5 @@
 // Mirrors the API's JSON contract (camelCase, enums as strings, DateOnly as "yyyy-MM-dd") by
-// convention, exactly as the MAUI DTOs do - a contract change means editing both sides.
+// convention - there is no shared contract package, so an API change means editing this file.
 import type { BillingCycle } from '@/lib/logic';
 
 export type { BillingCycle };
