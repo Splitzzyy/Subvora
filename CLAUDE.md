@@ -74,7 +74,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 ## Stack (see docs/TECHNICAL_REQUIREMENTS.md for full detail)
 
-- **Mobile:** React Native (Expo SDK 57, Expo Router, TypeScript) in `Android/`, Android-only, `expo-sqlite` kv-store as the offline read cache. `docs/TECHNICAL_REQUIREMENTS.md` still says .NET MAUI — follow the code.
+- **Mobile:** React Native (Expo SDK 57, Expo Router, TypeScript) in `Android/`, Android-only, `expo-sqlite` kv-store as the offline read cache.
 - **Backend:** ASP.NET Core Web API, JWT auth, EF Core + Npgsql. `docs/TECHNICAL_REQUIREMENTS.md` §3 says ".NET 8 LTS"; every `.csproj` actually targets `net10.0` — follow the code.
 - **Database:** PostgreSQL + `pg_trgm` — relational subscription data plus trigram similarity for provider matching
 - **Provider matching:** in-database trigram similarity. There is no AI provider and no API key — see `docs/TECHNICAL_REQUIREMENTS.md` §8 for the scoring and the known gap (rebrands/semantic input fall through to manual entry)

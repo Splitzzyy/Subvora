@@ -6,10 +6,10 @@ SubVora is a cross-platform mobile app that tracks all your subscriptions, warns
 
 ## Download
 
-**[⬇ Get the Android APK — latest release](https://github.com/Splitzzyy/subvora-android-app/releases/latest)**
+**[⬇ Get the Android APK — latest release](https://github.com/Splitzzyy/Subvora/releases/latest)**
 
-[![APK downloads, all releases](https://img.shields.io/github/downloads/Splitzzyy/subvora-android-app/total?label=APK%20downloads)](https://github.com/Splitzzyy/subvora-android-app/releases)
-[![APK downloads, latest release](https://img.shields.io/github/downloads/Splitzzyy/subvora-android-app/latest/total?label=latest%20release)](https://github.com/Splitzzyy/subvora-android-app/releases/latest)
+[![APK downloads, all releases](https://img.shields.io/github/downloads/Splitzzyy/Subvora/total?label=APK%20downloads)](https://github.com/Splitzzyy/Subvora/releases)
+[![APK downloads, latest release](https://img.shields.io/github/downloads/Splitzzyy/Subvora/latest/total?label=latest%20release)](https://github.com/Splitzzyy/Subvora/releases/latest)
 
 Android 7.0 (API 24) or newer. Download the `.apk` on your phone and tap it.
 
@@ -61,7 +61,7 @@ API docs (Swagger UI) are served at `/swagger` when the API runs in the `Develop
 ## Status
 
 **Live.** The API runs on Render against Neon Postgres, and the Android app is published under
-[Releases](https://github.com/Splitzzyy/subvora-android-app/releases/latest). Both sides remain under
+[Releases](https://github.com/Splitzzyy/Subvora/releases/latest). Both sides remain under
 active development.
 
 **Backend:** users, categories, payment sources, subscription catalog, user subscriptions, FX rates,
