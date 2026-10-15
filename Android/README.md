@@ -28,7 +28,16 @@ EXPO_PUBLIC_API_URL=http://localhost:8080 npx expo run:android
 
 Debug builds allow cleartext HTTP. Release builds expect HTTPS.
 
-Cloud builds: `npx eas-cli@latest build:configure`, then `npx eas-cli@latest build -p android`.
+## Release
+
+Push a tag `rn-vX.Y.Z` (for example `git tag rn-v1.0.0 && git push origin rn-v1.0.0`). `.github/workflows/release-android-rn.yml` then:
+
+1. Generates the native project.
+2. Builds a release APK with the JS bundle embedded, for arm64 and armv7.
+3. Re-signs it with the production keystore.
+4. Attaches it to the GitHub Release.
+
+It reads `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD` from the `production` environment. These are the same secrets `release-android.yml` uses.
 
 ## Check
 
