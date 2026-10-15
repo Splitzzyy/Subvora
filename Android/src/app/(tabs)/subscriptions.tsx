@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
-import { subscriptionsApi, writeErrorMessage, type Subscription } from '@/api';
+import { isStatus, subscriptionsApi, writeErrorMessage, type Subscription } from '@/api';
 import { CACHE_KEYS } from '@/lib/cache';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
@@ -47,7 +47,15 @@ export default function Subscriptions() {
     }
   };
 
-  const markPaid = (sub: Subscription) => write(() => subscriptionsApi.markPaid(sub.id));
+  const markPaid = (sub: Subscription) => write(async () => {
+    try {
+      await subscriptionsApi.markPaid(sub.id, sub.nextBillingDate);
+    } catch (e) {
+      // The charge on screen is no longer the one due - settled on another device, or edited. Show
+      // the current state rather than an error about a list that was simply out of date.
+      if (!isStatus(e, 409)) throw e;
+    }
+  });
 
   const remove = (sub: Subscription) => Alert.alert('Delete subscription', `Delete ${sub.customName}? This cannot be undone.`, [
     { text: 'Cancel', style: 'cancel' },

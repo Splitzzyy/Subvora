@@ -24,6 +24,7 @@ using SubVora.Infrastructure.Configuration;
 using SubVora.Infrastructure.Currency;
 using SubVora.Infrastructure.Data;
 using SubVora.Infrastructure.Repositories;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -140,6 +141,14 @@ builder.Services.AddRateLimiter(options =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
 
+        // Tells a well-behaved client when to come back instead of leaving it to guess (and retry
+        // straight into the same window). Fixed-window limiters always supply this metadata.
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+        }
+
         // Otherwise a limiter doing its job is indistinguishable from an endpoint nobody calls -
         // there is no other record that a request was turned away. No partition key here: for the
         // "auth" policy that is the caller's IP, and the request log already carries it.
@@ -168,13 +177,22 @@ builder.Services.AddRateLimiter(options =>
         });
     });
 
-    // Pre-auth endpoints (register/login/refresh) have no user claim yet, so this partitions
-    // on caller IP instead - guards against credential-stuffing/brute-force.
-    options.AddPolicy("auth", httpContext =>
+    // Pre-auth credential endpoints (register/login/forgot/reset) have no user claim yet, so this
+    // partitions on caller IP instead - guards against credential-stuffing/brute-force.
+    options.AddPolicy("auth", httpContext => PerIpFixedWindow(httpContext, "Auth", defaultPermitLimit: 10));
+
+    // Refresh is not a guessing endpoint - a 256-bit token cannot be brute-forced - but every
+    // signed-in client calls it about every 15 minutes, and a carrier NAT puts many of them behind
+    // one IP. Sharing the "auth" bucket meant a few logins from that IP rate-limited everyone's
+    // refresh. Its own, larger bucket still bounds a flood without coupling the two.
+    options.AddPolicy("refresh", httpContext => PerIpFixedWindow(httpContext, "Refresh", defaultPermitLimit: 60));
+
+    static RateLimitPartition<string> PerIpFixedWindow(HttpContext httpContext, string section, int defaultPermitLimit)
     {
+        // Read per request rather than once at startup so tests can override it per host.
         var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
-        var permitLimit = configuration.GetValue("RateLimiting:Auth:PermitLimit", 10);
-        var windowSeconds = configuration.GetValue("RateLimiting:Auth:WindowSeconds", 60);
+        var permitLimit = configuration.GetValue($"RateLimiting:{section}:PermitLimit", defaultPermitLimit);
+        var windowSeconds = configuration.GetValue($"RateLimiting:{section}:WindowSeconds", 60);
         var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
         return RateLimitPartition.GetFixedWindowLimiter(ipAddress, _ => new FixedWindowRateLimiterOptions
@@ -183,7 +201,7 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromSeconds(windowSeconds),
             QueueLimit = 0,
         });
-    });
+    }
 });
 
 builder.Services.AddControllers()

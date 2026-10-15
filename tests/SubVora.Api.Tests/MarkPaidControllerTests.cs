@@ -147,4 +147,129 @@ public class MarkPaidControllerTests : IClassFixture<ApiWebApplicationFactory>
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
+
+    // ---- billingDate: the client names the charge it settles (#244) ------------------------
+
+    private static Task<HttpResponseMessage> MarkPaidAsync(HttpClient client, Guid id, DateOnly billingDate) =>
+        client.PostAsync($"/api/v1/subscriptions/{id}/mark-paid?billingDate={billingDate:yyyy-MM-dd}", null);
+
+    [Fact]
+    public async Task MarkPaid_SameBillingDateTwice_SettlesOnce()
+    {
+        // The retry whose first response was lost: it names the charge it meant, which is now paid.
+        var client = await CreateAuthenticatedClientAsync();
+        var due = new DateOnly(2026, 4, 23);
+        var created = await CreateAsync(client, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), due);
+
+        var first = await MarkPaidAsync(client, created.Id, due);
+        var retry = await MarkPaidAsync(client, created.Id, due);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var settled = await retry.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(due, settled!.LastPaidDate);
+        Assert.Equal(new DateOnly(2026, 5, 23), settled.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task MarkPaid_ConsecutiveDates_SettlesBacklog()
+    {
+        // Clearing a backlog still settles one period per tap: each tap names the date then shown.
+        var client = await CreateAuthenticatedClientAsync();
+        var created = await CreateAsync(client, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), new DateOnly(2026, 4, 23));
+
+        await MarkPaidAsync(client, created.Id, new DateOnly(2026, 4, 23));
+        var second = await MarkPaidAsync(client, created.Id, new DateOnly(2026, 5, 23));
+
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        var settled = await second.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(new DateOnly(2026, 5, 23), settled!.LastPaidDate);
+        Assert.Equal(new DateOnly(2026, 6, 23), settled.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task MarkPaid_ConcurrentSameDate_SettlesOnce()
+    {
+        // Two devices tapping the same overdue charge at the same moment.
+        var client = await CreateAuthenticatedClientAsync();
+        var due = new DateOnly(2026, 4, 23);
+        var created = await CreateAsync(client, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), due);
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => MarkPaidAsync(client, created.Id, due)));
+
+        Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        var current = await client.GetFromJsonAsync<SubscriptionDto>($"/api/v1/subscriptions/{created.Id}", JsonOptions);
+        Assert.Equal(due, current!.LastPaidDate);
+        Assert.Equal(new DateOnly(2026, 5, 23), current.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task MarkPaid_FutureDate_Returns409_AndWritesNothing()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var due = new DateOnly(2026, 4, 23);
+        var created = await CreateAsync(client, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), due);
+
+        var response = await MarkPaidAsync(client, created.Id, new DateOnly(2026, 5, 23));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var current = await client.GetFromJsonAsync<SubscriptionDto>($"/api/v1/subscriptions/{created.Id}", JsonOptions);
+        Assert.Null(current!.LastPaidDate);
+        Assert.Equal(due, current.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task MarkPaid_OneTime_ReplayIsNoOp()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var due = new DateOnly(2026, 4, 23);
+        var created = await CreateAsync(client, BillingCycleType.OneTime, due, due);
+
+        var first = await MarkPaidAsync(client, created.Id, due);
+        var retry = await MarkPaidAsync(client, created.Id, due);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+        var settled = await retry.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(due, settled!.LastPaidDate);
+        Assert.False(settled.IsActive);
+    }
+
+    [Fact]
+    public async Task MarkPaid_DateMovedBackByAnEdit_SettlesItAgain()
+    {
+        // A user who marked a charge paid by mistake moves the date back with an edit; the charge
+        // is due again, so the next tap must settle it rather than read as a replay.
+        var client = await CreateAuthenticatedClientAsync();
+        var due = new DateOnly(2026, 4, 23);
+        var created = await CreateAsync(client, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), due);
+        var paid = await (await MarkPaidAsync(client, created.Id, due)).Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        await client.PutAsJsonAsync($"/api/v1/subscriptions/{created.Id}", new CreateSubscriptionRequest
+        {
+            CustomName = "Netflix",
+            CostAmount = 299m,
+            Currency = "INR",
+            CycleCadence = BillingCycleType.Monthly,
+            PurchaseDate = new DateOnly(2026, 3, 23),
+            NextBillingDate = due,
+            Version = paid!.Version,
+        }, JsonOptions);
+
+        var again = await MarkPaidAsync(client, created.Id, due);
+
+        var settled = await again.Content.ReadFromJsonAsync<SubscriptionDto>(JsonOptions);
+        Assert.Equal(new DateOnly(2026, 5, 23), settled!.NextBillingDate);
+    }
+
+    [Fact]
+    public async Task MarkPaid_WithBillingDate_SomeoneElsesSubscription_Returns404()
+    {
+        var owner = await CreateAuthenticatedClientAsync();
+        var created = await CreateAsync(owner, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), new DateOnly(2026, 4, 23));
+
+        var stranger = await CreateAuthenticatedClientAsync();
+        var response = await MarkPaidAsync(stranger, created.Id, new DateOnly(2026, 4, 23));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
 }

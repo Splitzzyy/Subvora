@@ -4,6 +4,10 @@ public interface IPaymentSourceRepository
 {
     Task<IReadOnlyList<PaymentSourceDto>> GetForUserAsync(Guid userId, CancellationToken cancellationToken = default);
 
+    /// <summary>A payment source this user owns, or null - including when the id belongs to someone else.</summary>
+    Task<PaymentSourceDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Inserts with <see cref="CreatePaymentSourceRequest.Id"/> when the client chose one.</summary>
     Task<PaymentSourceDto> AddAsync(Guid userId, CreatePaymentSourceRequest request, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);

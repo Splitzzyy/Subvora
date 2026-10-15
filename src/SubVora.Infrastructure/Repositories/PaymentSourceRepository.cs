@@ -21,10 +21,18 @@ public class PaymentSourceRepository : IPaymentSourceRepository
             .Select(p => new PaymentSourceDto { Id = p.Id, Label = p.Label, SourceType = p.SourceType })
             .ToListAsync(cancellationToken);
 
+    public Task<PaymentSourceDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.PaymentSources.AsNoTracking()
+            .Where(p => p.Id == id && p.UserId == userId)
+            .Select(p => new PaymentSourceDto { Id = p.Id, Label = p.Label, SourceType = p.SourceType })
+            .SingleOrDefaultAsync(cancellationToken);
+
     public async Task<PaymentSourceDto> AddAsync(Guid userId, CreatePaymentSourceRequest request, CancellationToken cancellationToken = default)
     {
         var paymentSource = new PaymentSource
         {
+            // Guid.Empty leaves the key to the database default, as before.
+            Id = request.Id ?? Guid.Empty,
             UserId = userId,
             Label = request.Label,
             SourceType = request.SourceType,

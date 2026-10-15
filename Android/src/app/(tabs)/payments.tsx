@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { randomUUID } from 'expo-crypto';
+import { useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { paymentSourcesApi, writeErrorMessage, type PaymentSource, type PaymentSourceType } from '@/api';
 import * as haptics from '@/lib/haptics';
@@ -37,8 +38,13 @@ export default function PaymentSources() {
     }
   };
 
+  // One id per payment source being added: a retry after a lost response resends it and gets the
+  // original back instead of a duplicate. Replaced only once the add has gone through.
+  const createId = useRef(randomUUID());
+
   const add = () => write(async () => {
-    await paymentSourcesApi.create(label.trim(), sourceType);
+    await paymentSourcesApi.create(createId.current, label.trim(), sourceType);
+    createId.current = randomUUID();
     setLabel('');
     setSourceType('Card');
   });

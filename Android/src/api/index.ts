@@ -31,8 +31,13 @@ export const subscriptionsApi = {
   create: (request: SubscriptionRequest) => api<Subscription>('POST', '/api/v1/subscriptions', request),
   update: (id: string, request: SubscriptionRequest) => api<Subscription>('PUT', `/api/v1/subscriptions/${id}`, request),
   remove: (id: string) => api('DELETE', `/api/v1/subscriptions/${id}`),
-  /** Settles the outstanding charge; the server moves the date one cycle from the date just paid. */
-  markPaid: (id: string) => api<Subscription>('POST', `/api/v1/subscriptions/${id}/mark-paid`),
+  /**
+   * Settles the charge due on `billingDate` - the date the user was shown - and moves the date one
+   * cycle on from it. Naming the charge makes a retry or a second device a no-op instead of
+   * settling the next period too; a 409 means the list is stale.
+   */
+  markPaid: (id: string, billingDate: string) =>
+    api<Subscription>('POST', `/api/v1/subscriptions/${id}/mark-paid?billingDate=${encodeURIComponent(billingDate)}`),
   resolve: (input: string) => api<ResolveResponse>('POST', '/api/v1/subscriptions/resolve', { input }),
 };
 
@@ -46,8 +51,9 @@ export const categoriesApi = {
 
 export const paymentSourcesApi = {
   list: () => api<PaymentSource[]>('GET', '/api/v1/payment-sources'),
-  create: (label: string, sourceType: PaymentSourceType) =>
-    api<PaymentSource>('POST', '/api/v1/payment-sources', { label, sourceType }),
+  /** `id` is chosen once per create and resent on retry, so a lost response cannot create a duplicate. */
+  create: (id: string, label: string, sourceType: PaymentSourceType) =>
+    api<PaymentSource>('POST', '/api/v1/payment-sources', { id, label, sourceType }),
   /** In place - recreating would detach every subscription that billed to it (FK is SET NULL). */
   update: (id: string, label: string, sourceType: PaymentSourceType) =>
     api<PaymentSource>('PUT', `/api/v1/payment-sources/${id}`, { label, sourceType }),

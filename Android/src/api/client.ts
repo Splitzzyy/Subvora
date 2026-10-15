@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { refreshEndsSession } from '@/lib/logic';
 import type { AuthTokenResponse } from './types';
 
 /**
@@ -96,8 +97,9 @@ export async function api<T = void>(method: string, path: string, body?: unknown
 }
 
 // ---- Single-flight refresh -------------------------------------------------------------------
-// The server rotates refresh tokens and treats a replayed one as theft (revoking the chain), so two
-// requests refreshing off the same token would sign the user out. One refreshes; the rest wait.
+// The server rotates refresh tokens and treats a replayed one as theft (revoking the chain) once
+// its short grace for lost responses has passed, so two requests refreshing off the same token
+// could sign the user out. One refreshes; the rest wait.
 
 let inflight: Promise<string | null> | null = null;
 
@@ -120,8 +122,12 @@ async function refresh(): Promise<string | null> {
     return null;
   }
 
+  // A 429 or 5xx is the server being busy or waking, not a verdict: keep the tokens, fail just
+  // this request, and let the next one try again - the same as being unreachable above.
+  if (!response.ok) return refreshEndsSession(response.status) ? expire() : null;
+
   const refreshed = parse(response.text) as AuthTokenResponse | undefined;
-  if (!response.ok || !refreshed?.accessToken) return expire();
+  if (!refreshed?.accessToken) return expire();
 
   await tokens.save(refreshed);
   return refreshed.accessToken;

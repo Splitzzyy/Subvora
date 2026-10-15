@@ -351,7 +351,10 @@ These are accepted trade-offs of the free tier, not bugs to fix:
 - **512 MB / 0.1 CPU is tight.** Watch Render's logs for OOM restarts under load. The fix is a paid
   instance, not a code change.
 - **The auth rate limit is per-IP and shared-NAT-blind.** Ten login attempts per 60 seconds per
-  client address, keyed on the forwarded address. Users behind one NAT share a bucket.
+  client address, keyed on the forwarded address. Users behind one NAT share a bucket. Token
+  refresh has its own, larger bucket (60 per 60 seconds), so a burst of logins from a carrier NAT
+  no longer rate-limits everyone's refresh, and the app signs out only when the server rejects the
+  token (400/401/403) - never on a 429 or 5xx. Every 429 carries `Retry-After`.
 - **`SCHEDULE_EXACT_ALARM` is declared without a fallback.** Irrelevant for sideloaded APKs; the day
   distribution moves to Play it becomes a declaration form, alongside a target-API floor and a
   privacy policy URL.

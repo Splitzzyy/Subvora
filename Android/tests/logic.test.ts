@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   burnRateWarning, describeRelative, formatMoney, groupSubscriptions, initialOf, isOverdue,
-  nextBillingDate, planReminders, topSpendSummary,
+  nextBillingDate, planReminders, refreshEndsSession, topSpendSummary,
 } from '../src/lib/logic.ts';
 
 test('next billing date steps one period and clamps month ends like .NET AddMonths', () => {
@@ -85,4 +85,10 @@ test('reminders skip the past and inactive, keep the nearest 64, fire at 09:00',
 
   const many = Array.from({ length: 70 }, (_, i) => ({ ...base, customName: `S${i}`, nextBillingDate: `2027-0${1 + (i % 9)}-10` }));
   assert.equal(planReminders(many, now).length, 64);
+});
+
+test('only a rejected refresh token ends the session', () => {
+  for (const status of [400, 401, 403]) assert.equal(refreshEndsSession(status), true, `${status}`);
+  // Rate-limited or a server waking from a cold start: a transient error, not a verdict.
+  for (const status of [429, 500, 502, 503, 504]) assert.equal(refreshEndsSession(status), false, `${status}`);
 });

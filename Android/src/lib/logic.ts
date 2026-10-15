@@ -232,3 +232,11 @@ export function planReminders(subs: RemindableSubscription[], now: Date) {
       };
     });
 }
+
+/**
+ * Whether a failed `/auth/refresh` means the session is over. Only the server rejecting the token
+ * (400/401/403) is a verdict. A 429 (rate limit) or 5xx (a cold start, the database waking) says
+ * nothing about the token: signing out on those wiped the session and the offline mirror over a
+ * transient error. Those leave the tokens alone so the next request can try again.
+ */
+export const refreshEndsSession = (status: number) => status === 400 || status === 401 || status === 403;

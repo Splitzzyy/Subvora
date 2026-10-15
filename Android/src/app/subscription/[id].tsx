@@ -1,3 +1,4 @@
+import { randomUUID } from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, View } from 'react-native';
@@ -53,6 +54,9 @@ export default function SubscriptionDetail() {
   // Not state: nothing renders them. The catalog link and the version this edit started from.
   const catalogId = useRef<string | null>(null);
   const version = useRef<number | null>(null);
+  // Fixed for the life of a create form, so tapping Save again after a timeout replays the create
+  // the server may already have made rather than adding a second copy.
+  const createId = useRef(randomUUID());
   const nameRef = useRef(name);
   useEffect(() => { nameRef.current = name; }, [name]);
 
@@ -158,13 +162,13 @@ export default function SubscriptionDetail() {
     };
     try {
       if (editId) await subscriptionsApi.update(editId, request);
-      else await subscriptionsApi.create(request);
+      else await subscriptionsApi.create({ ...request, id: createId.current });
       haptics.confirm();
       dataChanged();
       router.back();
     } catch (e) {
       haptics.reject();
-      if (isStatus(e, 409)) {
+      if (editId && isStatus(e, 409)) {
         // Changed elsewhere - most likely marked paid on another device. Show the current truth with a
         // fresh version; re-applying the edit is the user's call, not ours.
         await fetchRecord();

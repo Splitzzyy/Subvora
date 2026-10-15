@@ -6,6 +6,7 @@ public class CreatePaymentSourceRequestValidator : AbstractValidator<CreatePayme
 {
     public CreatePaymentSourceRequestValidator()
     {
+        RuleFor(r => r.Id).NotEqual(Guid.Empty);
         RuleFor(r => r.Label).NotEmpty().MaximumLength(100);
         RuleFor(r => r.SourceType).IsInEnum();
     }

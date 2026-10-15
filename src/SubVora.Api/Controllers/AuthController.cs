@@ -90,12 +90,15 @@ public class AuthController : ControllerBase
     /// <summary>Exchanges a valid refresh token for a new access/refresh pair, rotating it.</summary>
     /// <remarks>
     /// Reuse of an already-rotated (stale) refresh token revokes every active refresh token
-    /// for that user, since it signals the token may have been stolen.
+    /// for that user, since it signals the token may have been stolen. The exception is a token
+    /// rotated within the last two minutes: that is a client retrying after losing the response,
+    /// so it gets a fresh pair and only the pair it lost is revoked.
     /// </remarks>
     /// <response code="200">Returns a new access/refresh token pair.</response>
     /// <response code="401">The refresh token is invalid, expired, or was already rotated.</response>
+    /// <response code="429">Too many refreshes from this address; the <c>Retry-After</c> header says when to retry.</response>
     [HttpPost("refresh")]
-    [EnableRateLimiting("auth")]
+    [EnableRateLimiting("refresh")]
     [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken cancellationToken)
@@ -110,7 +113,10 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>Requests a password-reset code by email.</summary>
-    /// <remarks>Always returns 200, even if no account matches the email - this endpoint never reveals whether a given email is registered.</remarks>
+    /// <remarks>
+    /// Always returns 200, even if no account matches the email - this endpoint never reveals whether a given email is registered.
+    /// Repeated requests for the same account within a minute, or beyond five an hour, are accepted and ignored.
+    /// </remarks>
     /// <response code="200">The request was accepted (regardless of whether the email matched an account).</response>
     /// <response code="400">The email failed validation.</response>
     [HttpPost("forgot-password")]

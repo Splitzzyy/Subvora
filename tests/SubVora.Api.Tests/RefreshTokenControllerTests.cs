@@ -51,6 +51,30 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
             .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.ExpiresAt, DateTimeOffset.UtcNow.AddMinutes(-1)));
     }
 
+    /// <summary>
+    /// Moves a rotated token's revocation back past the two-minute reuse grace, so a replay of it
+    /// is judged as theft rather than as a client retrying after a lost response.
+    /// </summary>
+    private async Task AgeRotationPastGraceAsync(string plainRefreshToken)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var jwtTokenService = scope.ServiceProvider.GetRequiredService<IJwtTokenService>();
+        var hash = jwtTokenService.HashRefreshToken(plainRefreshToken);
+
+        await dbContext.RefreshTokens
+            .Where(t => t.TokenHash == hash)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.RevokedAt, t => t.RevokedAt - TimeSpan.FromMinutes(3)));
+    }
+
+    private async Task<int> LiveRefreshTokenCountAsync(string email)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var userId = await dbContext.Users.Where(u => u.Email == email).Select(u => u.Id).SingleAsync();
+        return await dbContext.RefreshTokens.CountAsync(t => t.UserId == userId && t.RevokedAt == null);
+    }
+
     [Fact]
     public async Task Refresh_WithValidToken_ReturnsNewTokenPairAndRevokesOldToken()
     {
@@ -110,7 +134,9 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
         var secondTokens = await rotateResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
         Assert.NotNull(secondTokens);
 
-        // Reuse the now-stale (already rotated) first refresh token.
+        // Reuse the now-stale (already rotated) first refresh token - after the reuse grace, which
+        // would otherwise read an immediate replay as a client that lost the response.
+        await AgeRotationPastGraceAsync(firstTokens.RefreshToken);
         var reuseResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = firstTokens.RefreshToken });
         Assert.Equal(HttpStatusCode.Unauthorized, reuseResponse.StatusCode);
 
@@ -121,19 +147,23 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
     }
 
     [Fact]
-    public async Task Refresh_SameTokenTwiceConcurrently_LetsAtMostOneThrough()
+    public async Task Refresh_SameTokenTwiceConcurrently_LeavesAtMostOneLiveSession()
     {
         // Rotation used to read RevokedAt and set it in two steps, so two callers presenting the
         // same live token could both see null and both mint a pair - the exact concurrent-theft
         // case rotation exists to catch. The compare-and-swap is what makes the database pick one.
+        //
+        // Since the reuse grace a second caller may also get a 200 (it cannot be told apart from a
+        // client that lost the first response), but only by discarding the pair the first one got:
+        // the invariant is one live chain, not one 200.
         var client = _factory.CreateClient();
-        var tokens = await RegisterAndLoginAsync(client, $"refresh-race-{Guid.NewGuid()}@example.com");
+        var email = $"refresh-race-{Guid.NewGuid()}@example.com";
+        var tokens = await RegisterAndLoginAsync(client, email);
 
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
+        await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
             client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = tokens.RefreshToken })));
 
-        var succeeded = attempts.Count(r => r.StatusCode == HttpStatusCode.OK);
-        Assert.True(succeeded <= 1, $"Expected at most one concurrent refresh to succeed, {succeeded} did.");
+        Assert.True(await LiveRefreshTokenCountAsync(email) <= 1);
     }
 
     [Fact]
@@ -146,6 +176,7 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
 
         await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
             client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = tokens.RefreshToken })));
+        await AgeRotationPastGraceAsync(tokens.RefreshToken);
 
         var replay = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = tokens.RefreshToken });
 
@@ -169,5 +200,22 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
 
         var stillValid = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = phoneSession.RefreshToken });
         Assert.Equal(HttpStatusCode.OK, stillValid.StatusCode);
+    }
+
+    [Fact]
+    public async Task Refresh_ReplayedRightAfterRotation_IsTreatedAsALostResponse()
+    {
+        // The phone timed out waiting (a cold start outlasts its refresh timeout) and retries with
+        // the token the server already rotated. It must get a pair, not a sign-out everywhere.
+        var client = _factory.CreateClient();
+        var email = $"refresh-lost-response-{Guid.NewGuid()}@example.com";
+        var tokens = await RegisterAndLoginAsync(client, email);
+        var lost = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = tokens.RefreshToken });
+        Assert.Equal(HttpStatusCode.OK, lost.StatusCode);
+
+        var retried = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = tokens.RefreshToken });
+
+        Assert.Equal(HttpStatusCode.OK, retried.StatusCode);
+        Assert.Equal(1, await LiveRefreshTokenCountAsync(email));
     }
 }

@@ -81,7 +81,7 @@ To see the live schema: `docker compose exec db psql -U subvora -d subvora_dev -
 |---|---|---|
 | `users` | Account and home currency | Home currency is a display preference; it never rewrites what a subscription is billed in |
 | `subscription_catalog` | Canonical provider list, category, logo URL | Matched on `provider_name` by `pg_trgm`. Seeded from `subscription-catalog.json` on start; existing rows are never overwritten |
-| `user_subscriptions` | One row per tracked subscription | Stores its own currency and amount, unconverted. `next_billing_date` moves only when the user marks a charge paid, so a past date means the charge is outstanding — see `last_paid_date` |
+| `user_subscriptions` | One row per tracked subscription | Stores its own currency and amount, unconverted. `next_billing_date` moves only when the user marks a charge paid, so a past date means the charge is outstanding — see `last_paid_date`. The client names the charge it settles (`?billingDate=`), so a retried tap is a no-op rather than a second period paid |
 | `categories` | System and per-user categories | `user_id IS NULL` marks a system default. Deleting a user cascades to theirs |
 | `payment_sources` | A user's cards, accounts and wallets | Optional on a subscription; the burn-rate response groups monthly spend by it so the dashboard can name the account carrying the most |
 | `fx_rates` | Cached conversion rates | Burn-rate totals are converted at read time from this cache, never by mutating a stored amount |
