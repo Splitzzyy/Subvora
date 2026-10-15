@@ -55,9 +55,15 @@ public class CategoriesController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
+        var userId = GetUserId();
+        var name = request.Name.Trim();
+
+        // A name the user already has is not a new row - a retried create whose response was lost,
+        // most likely - so it goes on to the insert and gets the same 409 it would below the cap.
         // ponytail: count-then-insert can overshoot by the number of concurrent creates; a hard
         // DB-side cap needs a trigger, not worth it for an abuse guard.
-        if (await _categoryRepository.CountForUserAsync(GetUserId(), cancellationToken) >= UserQuotas.Categories)
+        if (await _categoryRepository.CountForUserAsync(userId, cancellationToken) >= UserQuotas.Categories
+            && !await _categoryRepository.NameExistsForUserAsync(userId, name, cancellationToken))
         {
             ModelState.AddModelError(string.Empty, $"You can have at most {UserQuotas.Categories} categories of your own.");
             return ValidationProblem(ModelState);
@@ -65,7 +71,7 @@ public class CategoriesController : ControllerBase
 
         try
         {
-            var category = await _categoryRepository.AddAsync(GetUserId(), request.Name.Trim(), cancellationToken);
+            var category = await _categoryRepository.AddAsync(userId, name, cancellationToken);
             return CreatedAtAction(nameof(GetAll), category);
         }
         catch (DbUpdateException ex) when (ex.IsUniqueViolation())

@@ -31,8 +31,8 @@ public class PaymentSourceRepository : IPaymentSourceRepository
     {
         var paymentSource = new PaymentSource
         {
-            // Guid.Empty leaves the key to the database default, as before.
-            Id = request.Id ?? Guid.Empty,
+            // The controller always fills it in; see PaymentSourcesController.Create.
+            Id = request.Id ?? Guid.NewGuid(),
             UserId = userId,
             Label = request.Label,
             SourceType = request.SourceType,
@@ -46,6 +46,9 @@ public class PaymentSourceRepository : IPaymentSourceRepository
 
     public Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
         _dbContext.PaymentSources.CountAsync(p => p.UserId == userId, cancellationToken);
+
+    public Task<bool> ExistsForUserAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.PaymentSources.AnyAsync(p => p.Id == id && p.UserId == userId, cancellationToken);
 
     public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {

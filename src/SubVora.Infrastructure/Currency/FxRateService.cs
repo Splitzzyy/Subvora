@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using SubVora.Application.Currency;
@@ -119,7 +118,7 @@ public class FxRateService : IFxRateService
             var rates = await _exchangeRateClient.GetLatestRatesAsync(baseCurrency, [targetCurrency], cancellationToken);
             fetched = rates.FirstOrDefault(r => r.TargetCurrency == targetCurrency);
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.OK)
+        catch (ExchangeRateLookupException ex)
         {
             // The provider answered, with an error in the body (an unsupported code): only this pair.
             _logger.LogWarning(ex, "On-demand FX fetch failed for {BaseCurrency}->{TargetCurrency}; the scheduled refresh remains the backstop.", baseCurrency, targetCurrency);

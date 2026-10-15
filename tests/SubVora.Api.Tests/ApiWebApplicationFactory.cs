@@ -48,6 +48,7 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
                 // global limiter's per-IP bucket would otherwise trip mid-run. RequestLimitsTests
                 // lowers it on a derived host instead.
                 ["RateLimiting:Global:PermitLimit"] = "100000",
+                ["RateLimiting:Global:AnonymousPermitLimit"] = "100000",
             });
         });
 

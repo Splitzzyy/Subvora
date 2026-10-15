@@ -357,11 +357,13 @@ These are accepted trade-offs of the free tier, not bugs to fix:
   refresh has its own, larger bucket (60 per 60 seconds), so a burst of logins from a carrier NAT
   no longer rate-limits everyone's refresh, and the app signs out only when the server rejects the
   token (400/401/403) - never on a 429 or 5xx. Every 429 carries `Retry-After`.
-- **Every request also passes a global limit**: 120 per minute per signed-in user, or per client
-  address when anonymous - the health probes included, so nobody can hold Neon awake by polling
-  `/health/ready`. Bodies over 64 KB are refused with 413. The per-IP keys are only as good as the
-  forwarded address: `ForwardLimit = 1` reads the one hop Render's proxy appends, which is right
-  for a single proxy. **Not yet verified on Render** - hit `/health/live` from two networks and
+- **Every request also passes a global limit**: 120 per minute per signed-in user, or 600 per
+  client address when anonymous (looser, because carrier NAT puts many phones behind one address).
+  `/health/ready` and `/health` count, so nobody can hold Neon awake by polling them; `/health/live`
+  is exempt, so a drained bucket can never fail Render's health check or the keep-warm ping.
+  Bodies over 64 KB are refused with 413. The per-IP keys are only as good as the forwarded
+  address: `ForwardLimit = 1` reads the one hop Render's proxy appends, which is right for a
+  single proxy (a request with no address at all logs a warning once). **Not yet verified on Render** - hit `/health/live` from two networks and
   check the request log shows two client addresses; if both show the same proxy address, every
   per-IP limit has collapsed into one shared bucket.
 - **Per-account row caps**: 500 subscriptions, 100 own categories, 50 payment sources. One account

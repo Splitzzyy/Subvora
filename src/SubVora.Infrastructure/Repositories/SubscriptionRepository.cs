@@ -32,6 +32,9 @@ public class SubscriptionRepository : ISubscriptionRepository
     public Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
         _dbContext.UserSubscriptions.CountAsync(s => s.UserId == userId, cancellationToken);
 
+    public Task<bool> ExistsForUserAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.UserSubscriptions.AnyAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
+
     public async Task<SubscriptionUpdateResult> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default)
     {
         var subscription = await _dbContext.UserSubscriptions
@@ -146,7 +149,20 @@ public class SubscriptionRepository : ISubscriptionRepository
             subscription.NextBillingDate = BillingCycleAdvancer.AdvanceOneCycle(subscription.NextBillingDate, subscription.CycleCadence);
         }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // The row moved between the read and the write: another device's mark-paid, or this
+            // very write committed with its acknowledgement lost and replayed by the execution
+            // strategy against the new xmin. Without the client's date there is no telling which,
+            // so nothing is advanced a second time and the client is told to look again.
+            _dbContext.Entry(subscription).State = EntityState.Detached;
+            return MarkPaidResult.NotDue;
+        }
+
         return MarkPaidResult.Settled(await GetByIdAsync(id, userId, cancellationToken));
     }
 

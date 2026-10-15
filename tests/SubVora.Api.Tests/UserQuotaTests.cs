@@ -146,6 +146,33 @@ public class UserQuotaTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task CreateCategory_DuplicateNameAtTheCap_Returns409()
+    {
+        // A retried create whose response was lost: the honest answer is the same "already exists"
+        // it gets below the cap, not a quota error for a row that is already there.
+        var (client, userId) = await SignedInAsync();
+        await SeedAsync(i => new Category { UserId = userId, Name = $"Seeded {i}", CreatedAt = DateTimeOffset.UtcNow }, UserQuotas.Categories - 1);
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/categories", new CreateCategoryRequest { Name = "Gym" })).StatusCode);
+
+        var retry = await client.PostAsJsonAsync("/api/v1/categories", new CreateCategoryRequest { Name = "Gym" });
+
+        Assert.Equal(HttpStatusCode.Conflict, retry.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreatePaymentSource_ReplayAtTheCap_StillReturnsTheOriginal()
+    {
+        var (client, userId) = await SignedInAsync();
+        await SeedAsync(i => new PaymentSource { UserId = userId, Label = $"Card {i}", SourceType = PaymentSourceType.Card, CreatedAt = DateTimeOffset.UtcNow }, UserQuotas.PaymentSources - 1);
+        var request = new CreatePaymentSourceRequest { Id = Guid.NewGuid(), Label = "Last one", SourceType = PaymentSourceType.Card };
+        Assert.Equal(HttpStatusCode.Created, (await client.PostAsJsonAsync("/api/v1/payment-sources", request, JsonOptions)).StatusCode);
+
+        var replay = await client.PostAsJsonAsync("/api/v1/payment-sources", request, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
+    }
+
+    [Fact]
     public async Task CreatePaymentSource_AtTheCap_Returns400_AndAnotherUserIsUnaffected()
     {
         var (client, userId) = await SignedInAsync();

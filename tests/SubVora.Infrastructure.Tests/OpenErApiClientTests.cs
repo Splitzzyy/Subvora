@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using SubVora.Application.Currency;
 using SubVora.Infrastructure.Currency;
 
 namespace SubVora.Infrastructure.Tests;
@@ -31,10 +32,19 @@ public class OpenErApiClientTests
         // A 200 carrying a failure is exactly how the previous provider failed silently.
         var client = ClientReturning("""{"result":"error","error-type":"unsupported-code"}""");
 
-        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetLatestRatesAsync("XYZ", ["INR"]));
+        // The type is how FxRateService tells "the provider answered, this base is the problem" from "the provider is down".
+        var ex = await Assert.ThrowsAsync<ExchangeRateLookupException>(() => client.GetLatestRatesAsync("XYZ", ["INR"]));
         Assert.Contains("unsupported-code", ex.Message);
-        // How FxRateService tells "the provider answered, this base is the problem" from "the provider is down".
-        Assert.Equal(System.Net.HttpStatusCode.OK, ex.StatusCode);
+    }
+
+    [Fact]
+    public async Task ABodyThatIsNotJson_CountsAsAnAnswer()
+    {
+        // A CDN or captive error page with a 200 - not an outage, so it must not skip the other bases.
+        var client = ClientReturning("<html><body>Service temporarily unavailable</body></html>");
+
+        var ex = await Assert.ThrowsAsync<ExchangeRateLookupException>(() => client.GetLatestRatesAsync("USD", ["INR"]));
+        Assert.Contains("unreadable response", ex.Message);
     }
 
     private sealed class StubHandler(string json, Action<Uri?>? onRequest) : HttpMessageHandler

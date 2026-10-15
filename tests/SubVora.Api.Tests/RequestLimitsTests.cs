@@ -20,11 +20,12 @@ public class RequestLimitsTests : IClassFixture<ApiWebApplicationFactory>
         _factory = factory;
     }
 
-    private WebApplicationFactory<Program> WithGlobalLimit(int permitLimit) =>
+    private WebApplicationFactory<Program> WithGlobalLimit(int perUser = 100_000, int anonymous = 100_000) =>
         _factory.WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) => config.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["RateLimiting:Global:PermitLimit"] = permitLimit.ToString(),
+                ["RateLimiting:Global:PermitLimit"] = perUser.ToString(),
+                ["RateLimiting:Global:AnonymousPermitLimit"] = anonymous.ToString(),
             })));
 
     private static async Task<HttpClient> SignedInClientAsync(WebApplicationFactory<Program> factory)
@@ -65,7 +66,7 @@ public class RequestLimitsTests : IClassFixture<ApiWebApplicationFactory>
     public async Task GlobalLimit_AppliesToAuthenticatedEndpoints()
     {
         // Register and login spend the IP's tokens, not the user's - the user bucket starts full.
-        var client = await SignedInClientAsync(WithGlobalLimit(3));
+        var client = await SignedInClientAsync(WithGlobalLimit(perUser: 3));
 
         for (var i = 0; i < 3; i++)
         {
@@ -81,8 +82,7 @@ public class RequestLimitsTests : IClassFixture<ApiWebApplicationFactory>
     [Fact]
     public async Task GlobalLimit_IsPerUser()
     {
-        // 4: both sign-ups and logins share the test server's single client address.
-        var factory = WithGlobalLimit(4);
+        var factory = WithGlobalLimit(perUser: 4);
         var first = await SignedInClientAsync(factory);
         var second = await SignedInClientAsync(factory);
         for (var i = 0; i < 5; i++)
@@ -99,7 +99,8 @@ public class RequestLimitsTests : IClassFixture<ApiWebApplicationFactory>
     public async Task GlobalLimit_AppliesToHealthReady()
     {
         // Each hit opens a Postgres connection, and polled anonymously it kept Neon's compute awake.
-        var client = WithGlobalLimit(3).CreateClient();
+        // Anonymous, so the per-address budget applies, not the per-user one.
+        var client = WithGlobalLimit(perUser: 100_000, anonymous: 3).CreateClient();
 
         for (var i = 0; i < 3; i++)
         {
@@ -107,5 +108,33 @@ public class RequestLimitsTests : IClassFixture<ApiWebApplicationFactory>
         }
 
         Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync("/health/ready")).StatusCode);
+    }
+
+    [Fact]
+    public async Task HealthLive_IsExemptEvenWhenTheAddressIsDrained()
+    {
+        // Render's health check and the keep-warm ping hit it; a 429 would read as an unhealthy
+        // instance and get it restarted.
+        var client = WithGlobalLimit(anonymous: 1).CreateClient();
+        await client.GetAsync("/health/ready");
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync("/health/ready")).StatusCode);
+
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/live")).StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task AnonymousTraffic_HasItsOwnBudget()
+    {
+        // Carrier NAT puts many phones behind one address; the per-user limit must not be what
+        // caps them.
+        var client = WithGlobalLimit(perUser: 2, anonymous: 100_000).CreateClient();
+
+        for (var i = 0; i < 5; i++)
+        {
+            Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health/ready")).StatusCode);
+        }
     }
 }

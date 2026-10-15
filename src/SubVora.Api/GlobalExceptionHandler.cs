@@ -9,6 +9,13 @@ namespace SubVora.Api;
 /// <summary>Catches anything not already handled by a controller's own error responses (ValidationProblem, Conflict, etc.) and returns a generic ProblemDetails instead of the framework's default error page.</summary>
 public class GlobalExceptionHandler : IExceptionHandler
 {
+    /// <summary>
+    /// How every foreign key to <c>users</c> is named under the snake-case convention:
+    /// <c>fk_{table}_users_user_id</c>. A test walks the model and fails if one is not, so a
+    /// renamed constraint breaks CI rather than turning a signed-out write into a 500.
+    /// </summary>
+    public const string UsersForeignKeySuffix = "_users_user_id";
+
     private readonly ILogger<GlobalExceptionHandler> _logger;
 
     public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
@@ -78,10 +85,15 @@ public class GlobalExceptionHandler : IExceptionHandler
 
         // An access token outlives its account by up to 15 minutes after DELETE /users/me. A write
         // in that window points at a user row that is gone; the caller is signed out, not hitting a
-        // bug, and 401 sends the app down its existing sign-out path.
-        DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: { } constraint } }
-            when constraint.EndsWith("_users_user_id", StringComparison.Ordinal) => StatusCodes.Status401Unauthorized,
+        // bug, and 401 sends the app down its existing sign-out path. SaveChanges wraps the
+        // database error; ExecuteUpdate and raw SQL throw it bare.
+        DbUpdateException { InnerException: PostgresException postgres } when IsMissingUser(postgres) => StatusCodes.Status401Unauthorized,
+        PostgresException postgres when IsMissingUser(postgres) => StatusCodes.Status401Unauthorized,
 
         _ => null,
     };
+
+    private static bool IsMissingUser(PostgresException exception) =>
+        exception is { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: { } constraint }
+        && constraint.EndsWith(UsersForeignKeySuffix, StringComparison.Ordinal);
 }

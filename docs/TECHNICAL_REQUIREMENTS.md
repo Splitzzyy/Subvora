@@ -58,7 +58,7 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 - Standard CRUD endpoints for subscriptions, categories, currencies, alert preferences.
 - `POST /api/v1/subscriptions/resolve` — accepts free-text subscription name, returns every catalog entry above the similarity floor (logo, category), best first, for the client to offer as a pick list.
 - `GET /api/v1/dashboard/burn-rate` — returns aggregated weekly/monthly/yearly totals in user's home currency, plus monthly spend broken down by category and by the payment source it is charged to.
-- Rate limiting on `/resolve` to bound CPU on an endpoint the client calls on every debounced keystroke pause, and per IP on the credential endpoints; on top of those, a global limit of 120 requests/min per user (per IP when anonymous) and a 64 KB request-body cap on every route.
+- Rate limiting on `/resolve` to bound CPU on an endpoint the client calls on every debounced keystroke pause, and per IP on the credential endpoints; on top of those, a global limit of 120 requests/min per user (600 per IP when anonymous; `/health/live` exempt) and a 64 KB request-body cap on every route.
 - Per-account caps on create: 500 subscriptions, 100 own categories, 50 payment sources (`UserQuotas`). They keep one account from filling the shared database and bound every list, which is why no list endpoint paginates.
 - Input validation via FluentValidation or DataAnnotations; reject malformed currency codes, negative amounts, invalid dates.
 - Centralized error handling middleware returning consistent problem-details responses.

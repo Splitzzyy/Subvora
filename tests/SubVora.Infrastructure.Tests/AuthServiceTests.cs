@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
@@ -407,6 +408,47 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         Assert.True(reset.Succeeded);
     }
 
+    // ---- Commit acknowledgement lost, transaction replayed by the execution strategy ---------
+
+    [Fact]
+    public async Task ForgotPassword_WhenTheCommitReplyIsLost_StillMailsTheLiveCode()
+    {
+        // The replay used to find the code the first attempt had committed, take it for the
+        // cooldown, and send nothing - leaving a live code the user never received.
+        var email = await RegisterAsync("forgot-lost-commit");
+        var interceptor = new LostCommitReplyInterceptor();
+        await using (var dbContext = NewDbContext(interceptor))
+        {
+            await NewAuthService(dbContext).ForgotPasswordAsync(email);
+        }
+
+        Assert.True(interceptor.Tripped);
+        var mailed = Assert.Single(ResetCodesMailedTo(email));
+        var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = mailed, NewPassword = FreshPassword() });
+        Assert.True(reset.Succeeded);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WhenTheCommitReplyIsLost_ReportsTheSuccess()
+    {
+        // The replay found the code already consumed and answered "invalid code" for a reset that
+        // had changed the password.
+        var email = await RegisterAsync("reset-lost-commit");
+        var userId = await UserIdAsync(email);
+        var code = await RequestCodeAsync(email);
+        var newPassword = FreshPassword();
+        var interceptor = new LostCommitReplyInterceptor();
+        ResetPasswordResult result;
+        await using (var dbContext = NewDbContext(interceptor))
+        {
+            result = await NewAuthService(dbContext).ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = code, NewPassword = newPassword });
+        }
+
+        Assert.True(interceptor.Tripped);
+        Assert.True(result.Succeeded);
+        Assert.Equal($"hashed:{newPassword}", await StoredPasswordHashAsync(userId));
+    }
+
     // ---- Forgot-password throttle (#238) ---------------------------------------------------
 
     [Fact]
@@ -608,6 +650,26 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
             {
                 throw new InvalidOperationException($"Simulated failure on {sqlFragment}.");
             }
+        }
+    }
+
+    /// <summary>
+    /// Lets the first commit land, then fails it the way a connection dropped before the reply
+    /// does - a transient error, so the execution strategy retries the whole transaction.
+    /// </summary>
+    private sealed class LostCommitReplyInterceptor : DbTransactionInterceptor
+    {
+        public bool Tripped { get; private set; }
+
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+        {
+            if (Tripped)
+            {
+                return Task.CompletedTask;
+            }
+
+            Tripped = true;
+            throw new NpgsqlException("Simulated lost commit reply.", new IOException("Connection reset by peer."));
         }
     }
 

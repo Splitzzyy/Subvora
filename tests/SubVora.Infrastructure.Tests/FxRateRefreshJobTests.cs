@@ -357,7 +357,7 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
         {
             if (baseCurrency == rejected)
             {
-                throw new HttpRequestException("unsupported-code", null, System.Net.HttpStatusCode.OK);
+                throw new ExchangeRateLookupException(baseCurrency, "unsupported-code");
             }
 
             IReadOnlyList<ExchangeRate> rates = targetCurrencies.Select(target => new ExchangeRate(baseCurrency, target, rate)).ToList();

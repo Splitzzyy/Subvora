@@ -1,5 +1,6 @@
 ﻿using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
@@ -400,7 +401,12 @@ public class AuthService : IAuthService
             });
             await _dbContext.SaveChangesAsync(cancellationToken);
             return true;
-        }, cancellationToken);
+        }, cancellationToken,
+        // A commit whose acknowledgement was lost is retried like any other transient fault, and the
+        // replay would find the code it just inserted, call that the cooldown, and send nothing - a
+        // live code the user never receives. The code's hash says whether this attempt landed.
+        committed: () => _dbContext.PasswordResetCodes.AnyAsync(
+            c => c.UserId == user.Id && c.CodeHash == codeHash && c.UsedAt == null, cancellationToken));
 
         if (!issued)
         {
@@ -438,6 +444,9 @@ public class AuthService : IAuthService
         // code is still usable. Reading AttemptCount and writing back +1 let N parallel guesses all
         // read 0 and all pass the cap, against a code space small enough that the cap is the whole
         // defence. Counting the correct guess too makes the cap "5 submissions per code".
+        // Not exactly-once: a lost acknowledgement replays the increment and costs the user a guess.
+        // Accepted - the miscount only ever errs towards fewer guesses, and a compare-and-swap on
+        // the old count would let parallel guesses share one increment, which is the race above.
         var now = DateTimeOffset.UtcNow;
         var counted = await _dbContext.PasswordResetCodes
             .Where(c => c.Id == resetCode.Id && c.UsedAt == null && c.ExpiresAt > now && c.AttemptCount < MaxPasswordResetAttempts)
@@ -453,6 +462,11 @@ public class AuthService : IAuthService
         // (the client disconnects, the database blips), the code is still there to try again,
         // rather than spent on a password that was never saved. The attempt counted above stays
         // counted either way.
+        //
+        // Hashed once, outside: BCrypt salts every call, and the hash is how a lost commit
+        // acknowledgement is recognised. Replayed, the consume finds the code already used and
+        // would report "invalid code" for a reset that went through.
+        var newPasswordHash = _passwordHasher.Hash(request.NewPassword);
         return await InTransactionAsync(async () =>
         {
             var consumed = await _dbContext.PasswordResetCodes
@@ -463,7 +477,7 @@ public class AuthService : IAuthService
                 return ResetPasswordResult.Failed();
             }
 
-            await SetPasswordAsync(user.Id, request.NewPassword, cancellationToken);
+            await SetPasswordHashAsync(user.Id, newPasswordHash, cancellationToken);
 
             // A reset is what someone does when they believe the account is compromised, so it has
             // to evict whoever is already in - refresh tokens live 30 days and would otherwise keep
@@ -471,7 +485,8 @@ public class AuthService : IAuthService
             // so neither can land without the other.
             await RevokeAllActiveTokensForUserAsync(user.Id, cancellationToken);
             return ResetPasswordResult.Success();
-        }, cancellationToken);
+        }, cancellationToken,
+        committed: () => _dbContext.Users.AnyAsync(u => u.Id == user.Id && u.PasswordHash == newPasswordHash, cancellationToken));
     }
 
     public async Task<AuthResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default)
@@ -495,9 +510,11 @@ public class AuthService : IAuthService
         // together. Saved one after another, a failure after the first left the password changed
         // and every old refresh token still live - for up to 30 days, the very tokens the user was
         // changing their password to kill - behind an error that made a retry fail too.
+        // A replay after a lost acknowledgement needs no check: it re-applies to the same end state.
+        var newPasswordHash = _passwordHasher.Hash(request.NewPassword);
         return await InTransactionAsync(async () =>
         {
-            await SetPasswordAsync(user.Id, request.NewPassword, cancellationToken);
+            await SetPasswordHashAsync(user.Id, newPasswordHash, cancellationToken);
 
             // Every existing session dies, exactly as it does on reset: refresh tokens live 30 days
             // and would otherwise keep minting access tokens off the password that was just replaced.
@@ -541,24 +558,35 @@ public class AuthService : IAuthService
     /// half a unit. The change tracker is cleared first so a retried attempt starts from the
     /// database, not from what the failed attempt had tracked - so entities loaded before the call
     /// are detached, and writes go through statements or entities loaded inside.
+    /// <para>
+    /// A failure on COMMIT is retried too, but the commit may have landed with only its reply lost.
+    /// A unit that a second run would not re-apply to the same end state passes
+    /// <paramref name="committed"/>: asked after a transient failure, it says whether the attempt
+    /// went through, and if so that attempt's result is returned instead of running the unit again.
+    /// </para>
     /// </summary>
-    private Task<T> InTransactionAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken) =>
-        _dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
-        {
-            _dbContext.ChangeTracker.Clear();
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
-            var result = await work();
-            await transaction.CommitAsync(cancellationToken);
-            return result;
-        });
-
-    private Task SetPasswordAsync(Guid userId, string newPassword, CancellationToken cancellationToken)
+    private Task<T> InTransactionAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken, Func<Task<bool>>? committed = null)
     {
-        var hash = _passwordHasher.Hash(newPassword);
-        return _dbContext.Users
-            .Where(u => u.Id == userId)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.PasswordHash, hash), cancellationToken);
+        var result = default(T)!;
+        return _dbContext.Database.CreateExecutionStrategy().ExecuteAsync(
+            0,
+            async (_, _, _) =>
+            {
+                result = default!;
+                _dbContext.ChangeTracker.Clear();
+                await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+                result = await work();
+                await transaction.CommitAsync(cancellationToken);
+                return result;
+            },
+            committed is null ? null : async (_, _, _) => new ExecutionResult<T>(await committed(), result),
+            cancellationToken);
     }
+
+    private Task SetPasswordHashAsync(Guid userId, string passwordHash, CancellationToken cancellationToken) =>
+        _dbContext.Users
+            .Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(u => u.PasswordHash, passwordHash), cancellationToken);
 
     private static string HashResetCode(string plainCode)
     {

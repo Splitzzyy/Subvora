@@ -15,6 +15,20 @@ public static class AppDbContextOptionsFactory
     /// a transaction must run it inside <c>Database.CreateExecutionStrategy().ExecuteAsync(...)</c>,
     /// so the whole unit is retried rather than half of it.
     /// </para>
+    /// <para>
+    /// Every write is retried, not only transactions: each <c>SaveChanges</c> and each
+    /// <c>ExecuteUpdate</c>/<c>ExecuteDelete</c> as well. A fault can land after the server
+    /// committed, with only the reply lost, and the strategy cannot tell that from "never ran" - so
+    /// the write runs a second time. A new write path must be safe to replay: it may answer an
+    /// error for a write that landed (the client re-reads and sees the truth), but must never apply
+    /// twice. Hence a create needs something unique for its replay to collide with instead of
+    /// inserting a second row - a key chosen in the API rather than the database default
+    /// (subscriptions, payment sources) or a unique column (categories, users, refresh tokens) -
+    /// conditional updates are
+    /// compare-and-swaps, and a transaction that would not re-apply cleanly hands the strategy a
+    /// "did it commit?" check (AuthService.InTransactionAsync). The one accepted double-apply is
+    /// the reset-code attempt counter, which errs towards fewer guesses.
+    /// </para>
     /// </summary>
     public static DbContextOptions<AppDbContext> Build(string connectionString)
     {

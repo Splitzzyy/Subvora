@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using SubVora.Application.Currency;
 
 namespace SubVora.Infrastructure.Currency;
@@ -31,18 +32,22 @@ public class OpenErApiClient : IExchangeRateClient
         using var response = await _httpClient.GetAsync($"v6/latest/{Uri.EscapeDataString(baseCurrency)}", cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var payload = await response.Content.ReadFromJsonAsync<OpenErApiResponse>(cancellationToken: cancellationToken);
+        OpenErApiResponse? payload;
+        try
+        {
+            payload = await response.Content.ReadFromJsonAsync<OpenErApiResponse>(cancellationToken: cancellationToken);
+        }
+        catch (JsonException ex)
+        {
+            // A 200 that is not JSON - a CDN or captive error page - is an answer, not an outage.
+            throw new ExchangeRateLookupException(baseCurrency, errorType: null, ex);
+        }
 
         // The API reports failures (unknown base code, quota) in the body with a 200. Throwing lets
         // FxRateRefreshBackgroundService log it, instead of an empty list passing for "no rates".
-        // StatusCode 200 marks it as "the provider answered": FxRateService treats that as a problem
-        // with this one base, and anything else as the provider being down.
         if (payload is not { Result: "success" } || payload.Rates is null)
         {
-            throw new HttpRequestException(
-                $"Exchange rate lookup for {baseCurrency} failed: {payload?.ErrorType ?? "unreadable response"}.",
-                inner: null,
-                statusCode: System.Net.HttpStatusCode.OK);
+            throw new ExchangeRateLookupException(baseCurrency, payload?.ErrorType);
         }
 
         var wanted = targetCurrencies.ToHashSet(StringComparer.OrdinalIgnoreCase);

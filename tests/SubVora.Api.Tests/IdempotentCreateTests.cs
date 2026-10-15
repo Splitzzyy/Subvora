@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc.Testing;
 using SubVora.Application.Auth;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
@@ -29,9 +30,9 @@ public class IdempotentCreateTests : IClassFixture<ApiWebApplicationFactory>
         _factory = factory;
     }
 
-    private async Task<HttpClient> CreateAuthenticatedClientAsync()
+    private async Task<HttpClient> CreateAuthenticatedClientAsync(WebApplicationFactory<Program>? factory = null)
     {
-        var client = _factory.CreateClient();
+        var client = (factory ?? _factory).CreateClient();
         var email = $"idempotent-{Guid.NewGuid()}@example.com";
         const string password = "correct-horse-battery-staple"; // pragma: allowlist secret
 
@@ -150,6 +151,35 @@ public class IdempotentCreateTests : IClassFixture<ApiWebApplicationFactory>
         Assert.Equal(HttpStatusCode.Created, first.StatusCode);
         Assert.Equal(HttpStatusCode.Created, second.StatusCode);
         Assert.Equal(2, await CountSubscriptionsAsync(client));
+    }
+
+    [Fact]
+    public async Task CreateSubscription_WithoutId_WhenTheCommitReplyIsLost_CreatesOne()
+    {
+        // The execution strategy retries the INSERT after a transient fault, including one that
+        // struck after the row was committed. With the key left to the database default the
+        // replay inserted a second row under a fresh id.
+        var interceptor = new LostReplyInterceptor("INSERT INTO user_subscriptions");
+        var client = await CreateAuthenticatedClientAsync(_factory.WithInterceptor(interceptor));
+
+        var response = await client.PostAsJsonAsync("/api/v1/subscriptions", Subscription(null), JsonOptions);
+
+        Assert.True(interceptor.Tripped);
+        Assert.True(response.IsSuccessStatusCode, $"Got {(int)response.StatusCode}.");
+        Assert.Equal(1, await CountSubscriptionsAsync(client));
+    }
+
+    [Fact]
+    public async Task CreatePaymentSource_WithoutId_WhenTheCommitReplyIsLost_CreatesOne()
+    {
+        var interceptor = new LostReplyInterceptor("INSERT INTO payment_sources");
+        var client = await CreateAuthenticatedClientAsync(_factory.WithInterceptor(interceptor));
+
+        var response = await client.PostAsJsonAsync("/api/v1/payment-sources", new CreatePaymentSourceRequest { Label = "HDFC Visa", SourceType = PaymentSourceType.Card }, JsonOptions);
+
+        Assert.True(interceptor.Tripped);
+        Assert.True(response.IsSuccessStatusCode, $"Got {(int)response.StatusCode}.");
+        Assert.Equal(1, await CountPaymentSourcesAsync(client));
     }
 
     [Fact]

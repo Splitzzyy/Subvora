@@ -138,18 +138,42 @@ builder.Services.AddAuthorization();
 
 builder.Services.AddRateLimiter(options =>
 {
-    // Every request, health probes included, on top of whatever endpoint policy applies: per user
-    // when signed in, per IP otherwise. Nothing else bounded CRUD, the dashboard (which may call
-    // the FX provider) or /health/ready, which opens a Postgres connection - anyone polling it kept
-    // Neon's compute awake and burned the free compute allowance. 120/min is far above what the
-    // app sends; configurable so tests can trip it.
+    // Every request except /health/live, on top of whatever endpoint policy applies: per user when
+    // signed in, per IP otherwise. Nothing else bounded CRUD, the dashboard (which may call the FX
+    // provider) or /health/ready, which opens a Postgres connection - anyone polling it kept Neon's
+    // compute awake and burned the free compute allowance. 120/min per user is far above what the
+    // app sends.
+    //
+    // Anonymous traffic gets 600/min per address, deliberately looser: carrier-grade NAT puts many
+    // phones behind one address (the reason the "refresh" policy is per IP at 60), and every
+    // access-token expiry costs each of them about three anonymous requests - the 401, the refresh,
+    // the retry. The expensive anonymous paths already have their own "auth" and "refresh" limits.
+    // Both are configurable so tests can trip them.
+    var missingAddressLogged = 0;
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
         var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
-        var permitLimit = configuration.GetValue("RateLimiting:Global:PermitLimit", 120);
-        var key = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId
-            ? $"user:{userId}"
-            : $"ip:{httpContext.Connection.RemoteIpAddress}";
+        string key;
+        int permitLimit;
+        if (httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId)
+        {
+            key = $"user:{userId}";
+            permitLimit = configuration.GetValue("RateLimiting:Global:PermitLimit", 120);
+        }
+        else
+        {
+            // A missing address means the proxy setup is not what UseForwardedHeaders expects, and
+            // every such caller shares this one bucket. Said once, so it shows up in the log.
+            if (httpContext.Connection.RemoteIpAddress is null && Interlocked.Exchange(ref missingAddressLogged, 1) == 0)
+            {
+                httpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("SubVora.RateLimiting")
+                    .LogWarning("A request arrived with no client address; anonymous callers without one share a single rate-limit bucket.");
+            }
+
+            key = $"ip:{httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"}";
+            permitLimit = configuration.GetValue("RateLimiting:Global:AnonymousPermitLimit", 600);
+        }
 
         return RateLimitPartition.GetTokenBucketLimiter(key, _ => new TokenBucketRateLimiterOptions
         {
@@ -348,7 +372,12 @@ app.Use((context, next) =>
 //
 // It is also the right semantics regardless of host: a failing health check restarts the instance,
 // and a database blip should not restart an app that is running perfectly well.
-app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+//
+// Exempt from the global rate limit: it touches nothing, and a 429 here - say, everyone behind one
+// address sharing a drained anonymous bucket - would read to Render as an unhealthy instance and
+// restart it or block a deploy.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false })
+    .DisableRateLimiting();
 
 // Readiness: can this instance actually serve requests - database included? For deploy
 // verification and manual checks, not for continuous polling.
