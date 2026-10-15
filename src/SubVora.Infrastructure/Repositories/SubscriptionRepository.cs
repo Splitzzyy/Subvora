@@ -29,6 +29,9 @@ public class SubscriptionRepository : ISubscriptionRepository
     public async Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default) =>
         await BuildDtoQuery(userId).SingleOrDefaultAsync(dto => dto.Id == id, cancellationToken);
 
+    public Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.UserSubscriptions.CountAsync(s => s.UserId == userId, cancellationToken);
+
     public async Task<SubscriptionUpdateResult> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default)
     {
         var subscription = await _dbContext.UserSubscriptions

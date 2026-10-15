@@ -87,6 +87,10 @@ To see the live schema: `docker compose exec db psql -U subvora -d subvora_dev -
 | `fx_rates` | Cached conversion rates | Burn-rate totals are converted at read time from this cache, never by mutating a stored amount |
 | `refresh_tokens` | Opaque refresh tokens | Only the SHA-256 hash is persisted, never the plaintext. Access tokens are stateless and not stored at all |
 
+Account deletion (`DELETE /api/v1/users/me`) is one `DELETE FROM users`: every user-owned table
+references `users` with `ON DELETE CASCADE`, and the database removes the rest. A new user-owned
+table must cascade too, or deletion leaves its rows behind - or fails on the foreign key.
+
 There is no `notifications_log` or `device_tokens` table. Renewal reminders are scheduled on-device
 from the client's local mirror, so nothing server-side decides when to notify and there is no push
 token to keep (see the `DropPushNotificationTables` migration).

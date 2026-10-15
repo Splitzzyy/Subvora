@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SubVora.Application;
 using SubVora.Application.PaymentSources;
 using SubVora.Infrastructure.Data;
 
@@ -62,6 +63,17 @@ public class PaymentSourcesController : ControllerBase
         }
 
         var userId = GetUserId();
+
+        // A replay of a create that already went through is not a new row, so it is let through to
+        // the insert, which hands it back.
+        // ponytail: count-then-insert can overshoot by the number of concurrent creates; a hard
+        // DB-side cap needs a trigger, not worth it for an abuse guard.
+        if (await _paymentSourceRepository.CountForUserAsync(userId, cancellationToken) >= UserQuotas.PaymentSources
+            && !(request.Id is Guid replayId && await _paymentSourceRepository.GetByIdAsync(replayId, userId, cancellationToken) is not null))
+        {
+            ModelState.AddModelError(string.Empty, $"You can have at most {UserQuotas.PaymentSources} payment sources.");
+            return ValidationProblem(ModelState);
+        }
 
         PaymentSourceDto paymentSource;
         try

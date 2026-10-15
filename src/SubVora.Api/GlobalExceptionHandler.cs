@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace SubVora.Api;
 
@@ -23,6 +25,13 @@ public class GlobalExceptionHandler : IExceptionHandler
         if (httpContext.RequestAborted.IsCancellationRequested && exception is OperationCanceledException)
         {
             _logger.LogDebug("Request {Method} {Path} was aborted by the client.", httpContext.Request.Method, httpContext.Request.Path);
+            return true;
+        }
+
+        if (!httpContext.Response.HasStarted && ClientFaultStatus(exception) is { } status)
+        {
+            _logger.LogDebug(exception, "Request {Method} {Path} answered {Status}.", httpContext.Request.Method, httpContext.Request.Path, status);
+            httpContext.Response.StatusCode = status;
             return true;
         }
 
@@ -59,4 +68,20 @@ public class GlobalExceptionHandler : IExceptionHandler
 
         return true;
     }
+
+    /// <summary>Exceptions that mean the caller, not the server, is at fault - each with the status it deserves instead of a 500.</summary>
+    private static int? ClientFaultStatus(Exception exception) => exception switch
+    {
+        // A request the server could not read carries its own 4xx - 413 when a chunked body runs
+        // past the size cap in Program.cs, which Kestrel enforces while the body is being read.
+        BadHttpRequestException badRequest => badRequest.StatusCode,
+
+        // An access token outlives its account by up to 15 minutes after DELETE /users/me. A write
+        // in that window points at a user row that is gone; the caller is signed out, not hitting a
+        // bug, and 401 sends the app down its existing sign-out path.
+        DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: { } constraint } }
+            when constraint.EndsWith("_users_user_id", StringComparison.Ordinal) => StatusCodes.Status401Unauthorized,
+
+        _ => null,
+    };
 }

@@ -30,6 +30,21 @@ public class GlobalExceptionHandlerTests
     }
 
     [Fact]
+    public async Task TryHandleAsync_ABodyOverTheSizeCap_Answers413()
+    {
+        // Kestrel enforces the cap on a chunked body while it is read, by throwing; that is the
+        // caller's fault, not a 500.
+        var handler = new GlobalExceptionHandler(NullLogger<GlobalExceptionHandler>.Instance);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Response.Body = new MemoryStream();
+
+        var handled = await handler.TryHandleAsync(httpContext, new BadHttpRequestException("Request body too large.", StatusCodes.Status413PayloadTooLarge), CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, httpContext.Response.StatusCode);
+    }
+
+    [Fact]
     public async Task TryHandleAsync_IncludesTraceIdTheCallerCanQuote()
     {
         var handler = new GlobalExceptionHandler(NullLogger<GlobalExceptionHandler>.Instance);

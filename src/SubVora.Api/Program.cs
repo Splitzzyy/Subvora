@@ -1,6 +1,7 @@
 ﻿using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -88,11 +89,15 @@ builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscr
 builder.Services.AddScoped<BurnRateCalculator>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IValidator<UpdateUserProfileRequest>, UpdateUserProfileRequestValidator>();
+builder.Services.AddScoped<IValidator<DeleteAccountRequest>, DeleteAccountRequestValidator>();
 
 builder.Services.AddScoped<IFxRateService, FxRateService>();
 builder.Services.AddHttpClient<IExchangeRateClient, OpenErApiClient>(client =>
 {
     client.BaseAddress = new Uri("https://open.er-api.com/");
+    // A cache miss fetches inline on the dashboard's request path, so this bounds how long a hanging
+    // provider can hold that screen. HttpClient's 100 s default outlived the app's own 30 s timeout.
+    client.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 
@@ -131,18 +136,36 @@ builder.Services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
-// Bounds the catalog-match endpoint only - not applied globally. Matching is a local pg_trgm
-// scan now, so this caps CPU on a debounced-typing endpoint rather than a third-party bill.
-// Limit/window are configurable so tests can use a small window instead of waiting on the
-// real one; defaults to 30 requests/minute per authenticated user in the absence of config.
 builder.Services.AddRateLimiter(options =>
 {
+    // Every request, health probes included, on top of whatever endpoint policy applies: per user
+    // when signed in, per IP otherwise. Nothing else bounded CRUD, the dashboard (which may call
+    // the FX provider) or /health/ready, which opens a Postgres connection - anyone polling it kept
+    // Neon's compute awake and burned the free compute allowance. 120/min is far above what the
+    // app sends; configurable so tests can trip it.
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
+        var permitLimit = configuration.GetValue("RateLimiting:Global:PermitLimit", 120);
+        var key = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId
+            ? $"user:{userId}"
+            : $"ip:{httpContext.Connection.RemoteIpAddress}";
+
+        return RateLimitPartition.GetTokenBucketLimiter(key, _ => new TokenBucketRateLimiterOptions
+        {
+            TokenLimit = permitLimit,
+            TokensPerPeriod = permitLimit,
+            ReplenishmentPeriod = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        });
+    });
+
     options.OnRejected = (context, _) =>
     {
         context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
 
         // Tells a well-behaved client when to come back instead of leaving it to guess (and retry
-        // straight into the same window). Fixed-window limiters always supply this metadata.
+        // straight into the same window). Fixed-window and token-bucket limiters both supply it.
         if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
         {
             context.HttpContext.Response.Headers.RetryAfter =
@@ -162,6 +185,10 @@ builder.Services.AddRateLimiter(options =>
         return ValueTask.CompletedTask;
     };
 
+    // Bounds the catalog-match endpoint. Matching is a local pg_trgm scan now, so this caps CPU on
+    // a debounced-typing endpoint rather than a third-party bill. Limit/window are configurable so
+    // tests can use a small window instead of waiting on the real one; defaults to 30
+    // requests/minute per authenticated user in the absence of config.
     options.AddPolicy("ai-resolve", httpContext =>
     {
         var configuration = httpContext.RequestServices.GetRequiredService<IConfiguration>();
@@ -284,6 +311,29 @@ app.UseSerilogRequestLogging(options =>
 });
 
 app.UseExceptionHandler();
+
+// The largest real body is a subscription create, well under 1 KB. Kestrel's ~30 MB default let a
+// handful of concurrent oversized bodies - anonymous ones too, on register or login - be buffered
+// and deserialized on a 512 MB instance.
+const long maxRequestBodyBytes = 64 * 1024;
+app.Use((context, next) =>
+{
+    // A declared length over the cap is refused before anything reads it.
+    if (context.Request.ContentLength > maxRequestBodyBytes)
+    {
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        return Task.CompletedTask;
+    }
+
+    // A chunked body declares no length; Kestrel stops reading it at the same cap, and
+    // GlobalExceptionHandler turns that into the same 413.
+    if (context.Features.Get<IHttpMaxRequestBodySizeFeature>() is { IsReadOnly: false } bodySize)
+    {
+        bodySize.MaxRequestBodySize = maxRequestBodyBytes;
+    }
+
+    return next(context);
+});
 
 // Liveness: is this process up and serving? No dependency checks at all, which is what makes it
 // safe for a platform to poll continuously. Render's healthCheckPath points here, and so does the

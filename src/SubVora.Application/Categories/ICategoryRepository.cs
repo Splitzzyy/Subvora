@@ -6,6 +6,9 @@ public interface ICategoryRepository
 
     Task<CategoryDto> AddAsync(Guid userId, string name, CancellationToken cancellationToken = default);
 
+    /// <summary>How many categories the user created - system defaults excluded - for the create quota in <see cref="UserQuotas"/>.</summary>
+    Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Whether the category may be referenced by this user - a system default (user_id IS NULL) or
     /// one they own. Existence alone is not enough: the foreign key accepts any category id, so

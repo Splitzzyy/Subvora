@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SubVora.Application;
 using SubVora.Application.Categories;
 using SubVora.Infrastructure.Data;
 
@@ -52,6 +53,14 @@ public class CategoriesController : ControllerBase
         if (!validationResult.IsValid)
         {
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
+        }
+
+        // ponytail: count-then-insert can overshoot by the number of concurrent creates; a hard
+        // DB-side cap needs a trigger, not worth it for an abuse guard.
+        if (await _categoryRepository.CountForUserAsync(GetUserId(), cancellationToken) >= UserQuotas.Categories)
+        {
+            ModelState.AddModelError(string.Empty, $"You can have at most {UserQuotas.Categories} categories of your own.");
+            return ValidationProblem(ModelState);
         }
 
         try

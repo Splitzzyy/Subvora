@@ -6,6 +6,6 @@ public class ForgotPasswordRequestValidator : AbstractValidator<ForgotPasswordRe
 {
     public ForgotPasswordRequestValidator()
     {
-        RuleFor(r => r.Email).NotEmpty().EmailAddress();
+        RuleFor(r => r.Email).NotEmpty().EmailAddress().MaximumLength(AuthLimits.EmailMaxLength);
     }
 }

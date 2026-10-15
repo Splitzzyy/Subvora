@@ -10,6 +10,9 @@ public interface ISubscriptionRepository
 
     Task<SubscriptionDto?> GetByIdAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
+    /// <summary>How many the user has, for the create quota in <see cref="UserQuotas"/>.</summary>
+    Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
     Task<SubscriptionUpdateResult> UpdateAsync(Guid id, Guid userId, CreateSubscriptionRequest request, CancellationToken cancellationToken = default);
 
     Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);

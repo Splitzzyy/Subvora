@@ -283,6 +283,36 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
         Assert.Empty(rates);
     }
 
+    [Fact]
+    public async Task GetRates_WhenTheProviderTimesOut_AsksOnceAndReturnsWithoutThrowing()
+    {
+        // A hanging provider cost one full HttpClient timeout per missing currency, one after
+        // another, and the timeout itself - a TaskCanceledException - escaped as a 500.
+        var timingOut = new TimingOutExchangeRateClient();
+        OnDemandClient = timingOut;
+
+        var rates = await GetRatesAsync(["TOA", "TOB", "TOC"], "INR");
+
+        Assert.Empty(rates);
+        Assert.Equal(1, timingOut.CallCount);
+
+        // The pairs it skipped are on cooldown too, so the next dashboard load does not ask again.
+        await GetRatesAsync(["TOA", "TOB", "TOC"], "INR");
+        Assert.Equal(1, timingOut.CallCount);
+    }
+
+    [Fact]
+    public async Task GetRates_WhenTheProviderRejectsOneBase_StillFetchesTheOthers()
+    {
+        // A provider that answers, with an error for one code, is up: only that pair is affected.
+        OnDemandClient = new RejectingOneBaseExchangeRateClient(rejected: "RJA", rate: 4m);
+
+        var rates = await GetRatesAsync(["RJA", "RJB"], "INR");
+
+        Assert.False(rates.ContainsKey("RJA"));
+        Assert.Equal(4m, rates["RJB"].Rate);
+    }
+
     private class FakeExchangeRateClient : IExchangeRateClient
     {
         private readonly decimal _rate;
@@ -306,6 +336,33 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
     {
         public Task<IReadOnlyList<ExchangeRate>> GetLatestRatesAsync(string baseCurrency, IReadOnlyCollection<string> targetCurrencies, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Simulated exchange rate API outage.");
+    }
+
+    /// <summary>Behaves like HttpClient hitting its timeout: a TaskCanceledException the caller did not ask for.</summary>
+    private class TimingOutExchangeRateClient : IExchangeRateClient
+    {
+        public int CallCount { get; private set; }
+
+        public Task<IReadOnlyList<ExchangeRate>> GetLatestRatesAsync(string baseCurrency, IReadOnlyCollection<string> targetCurrencies, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            throw new TaskCanceledException("The request was canceled due to the configured HttpClient.Timeout of 10 seconds elapsing.");
+        }
+    }
+
+    /// <summary>Answers with an error body for one base, the way OpenErApiClient reports an unsupported code.</summary>
+    private class RejectingOneBaseExchangeRateClient(string rejected, decimal rate) : IExchangeRateClient
+    {
+        public Task<IReadOnlyList<ExchangeRate>> GetLatestRatesAsync(string baseCurrency, IReadOnlyCollection<string> targetCurrencies, CancellationToken cancellationToken = default)
+        {
+            if (baseCurrency == rejected)
+            {
+                throw new HttpRequestException("unsupported-code", null, System.Net.HttpStatusCode.OK);
+            }
+
+            IReadOnlyList<ExchangeRate> rates = targetCurrencies.Select(target => new ExchangeRate(baseCurrency, target, rate)).ToList();
+            return Task.FromResult(rates);
+        }
     }
 
     /// <summary>Fails for one base currency and succeeds for every other - the partial-failure case.</summary>

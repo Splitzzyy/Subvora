@@ -35,9 +35,14 @@ public class OpenErApiClient : IExchangeRateClient
 
         // The API reports failures (unknown base code, quota) in the body with a 200. Throwing lets
         // FxRateRefreshBackgroundService log it, instead of an empty list passing for "no rates".
+        // StatusCode 200 marks it as "the provider answered": FxRateService treats that as a problem
+        // with this one base, and anything else as the provider being down.
         if (payload is not { Result: "success" } || payload.Rates is null)
         {
-            throw new HttpRequestException($"Exchange rate lookup for {baseCurrency} failed: {payload?.ErrorType ?? "unreadable response"}.");
+            throw new HttpRequestException(
+                $"Exchange rate lookup for {baseCurrency} failed: {payload?.ErrorType ?? "unreadable response"}.",
+                inner: null,
+                statusCode: System.Net.HttpStatusCode.OK);
         }
 
         var wanted = targetCurrencies.ToHashSet(StringComparer.OrdinalIgnoreCase);

@@ -44,6 +44,9 @@ public class PaymentSourceRepository : IPaymentSourceRepository
         return new PaymentSourceDto { Id = paymentSource.Id, Label = paymentSource.Label, SourceType = paymentSource.SourceType };
     }
 
+    public Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.PaymentSources.CountAsync(p => p.UserId == userId, cancellationToken);
+
     public async Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
     {
         var paymentSource = await _dbContext.PaymentSources

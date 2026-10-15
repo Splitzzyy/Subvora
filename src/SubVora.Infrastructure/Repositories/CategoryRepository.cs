@@ -67,6 +67,9 @@ public class CategoryRepository : ICategoryRepository
     }
 
     // Same predicate as GetForUserAsync - what a user may reference is exactly what a user may see.
+    public Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.Categories.CountAsync(c => c.UserId == userId, cancellationToken);
+
     public Task<bool> IsAccessibleToUserAsync(Guid categoryId, Guid userId, CancellationToken cancellationToken = default) =>
         _dbContext.Categories.AsNoTracking()
             .AnyAsync(c => c.Id == categoryId && (c.UserId == null || c.UserId == userId), cancellationToken);

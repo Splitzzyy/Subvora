@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using SubVora.Application;
 using SubVora.Application.Categories;
 using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
@@ -109,6 +110,17 @@ public class SubscriptionsController : ControllerBase
         if (await ValidateReferencesAsync(request, userId, cancellationToken) is { } referenceProblem)
         {
             return referenceProblem;
+        }
+
+        // A replay of a create that already went through is not a new row, so it is let through to
+        // the insert, which hands it back.
+        // ponytail: count-then-insert can overshoot by the number of concurrent creates; a hard
+        // DB-side cap needs a trigger, not worth it for an abuse guard.
+        if (await _subscriptionRepository.CountForUserAsync(userId, cancellationToken) >= UserQuotas.Subscriptions
+            && !(request.Id is Guid replayId && await _subscriptionRepository.GetByIdAsync(replayId, userId, cancellationToken) is not null))
+        {
+            ModelState.AddModelError(string.Empty, $"You can have at most {UserQuotas.Subscriptions} subscriptions.");
+            return ValidationProblem(ModelState);
         }
 
         var subscription = new UserSubscription

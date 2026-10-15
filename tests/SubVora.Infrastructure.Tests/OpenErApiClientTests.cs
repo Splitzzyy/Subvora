@@ -33,6 +33,8 @@ public class OpenErApiClientTests
 
         var ex = await Assert.ThrowsAsync<HttpRequestException>(() => client.GetLatestRatesAsync("XYZ", ["INR"]));
         Assert.Contains("unsupported-code", ex.Message);
+        // How FxRateService tells "the provider answered, this base is the problem" from "the provider is down".
+        Assert.Equal(System.Net.HttpStatusCode.OK, ex.StatusCode);
     }
 
     private sealed class StubHandler(string json, Action<Uri?>? onRequest) : HttpMessageHandler

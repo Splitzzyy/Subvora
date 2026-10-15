@@ -319,8 +319,10 @@ categoryId   : <non-null>      <- system categories seeded, and the sync resolve
 ```
 
 `tier: Manual` means the catalog is empty, which means the container booted **before** step 2
-finished. `SubscriptionCatalogSyncService` runs only at start and swallows its own failure, so
-there is no retry and `/health` stays green throughout — the symptom is silent. Redeploy from the
+finished. `SubscriptionCatalogSyncService` runs at start and retries five times with backoff, for
+about 75 seconds in all, so a boot that merely races the migration or Neon waking up recovers on
+its own. After that it logs an Error and gives up, and `/health` stays green throughout — the
+symptom is silent. If it still says `Manual` a couple of minutes after boot, redeploy from the
 Render dashboard (*Manual Deploy → Deploy latest commit*) and check again.
 
 Then add a subscription and load `/api/v1/dashboard/burn-rate` for the same proof end to end.
@@ -355,6 +357,15 @@ These are accepted trade-offs of the free tier, not bugs to fix:
   refresh has its own, larger bucket (60 per 60 seconds), so a burst of logins from a carrier NAT
   no longer rate-limits everyone's refresh, and the app signs out only when the server rejects the
   token (400/401/403) - never on a 429 or 5xx. Every 429 carries `Retry-After`.
+- **Every request also passes a global limit**: 120 per minute per signed-in user, or per client
+  address when anonymous - the health probes included, so nobody can hold Neon awake by polling
+  `/health/ready`. Bodies over 64 KB are refused with 413. The per-IP keys are only as good as the
+  forwarded address: `ForwardLimit = 1` reads the one hop Render's proxy appends, which is right
+  for a single proxy. **Not yet verified on Render** - hit `/health/live` from two networks and
+  check the request log shows two client addresses; if both show the same proxy address, every
+  per-IP limit has collapsed into one shared bucket.
+- **Per-account row caps**: 500 subscriptions, 100 own categories, 50 payment sources. One account
+  cannot fill the shared 0.5 GB database, and every list stays small enough not to paginate.
 - **`SCHEDULE_EXACT_ALARM` is declared without a fallback.** Irrelevant for sideloaded APKs; the day
   distribution moves to Play it becomes a declaration form, alongside a target-API floor and a
   privacy policy URL.
