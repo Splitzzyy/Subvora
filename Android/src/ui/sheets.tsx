@@ -1,10 +1,11 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Modal, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatLongDate, parseDateOnly, toDateOnly } from '@/lib/logic';
 import { shape, useTheme } from '@/theme';
 import { Button, Icon, IconButton, SelectField, Tap, Text, TextField, type IconName } from '.';
+import { Backdrop } from './blur';
 
 /** Modal bottom sheet. The backdrop is a sibling, so scrolling the content never dismisses it. */
 export function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
@@ -13,7 +14,7 @@ export function Sheet({ visible, title, onClose, children }: { visible: boolean;
   return (
     <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel={`Dismiss ${title}`} />
+        <Backdrop onPress={onClose} label={`Dismiss ${title}`} />
         <View accessibilityViewIsModal style={{
           backgroundColor: colors.surfaceContainerLow, borderTopLeftRadius: shape.xxl, borderTopRightRadius: shape.xxl,
           paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16), maxHeight: '85%',
