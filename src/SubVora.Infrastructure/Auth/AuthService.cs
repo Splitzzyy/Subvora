@@ -1,7 +1,6 @@
 ﻿using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
@@ -13,6 +12,35 @@ public class AuthService : IAuthService
 {
     private static readonly TimeSpan PasswordResetCodeLifetime = TimeSpan.FromMinutes(15);
     private const int MaxPasswordResetAttempts = 5;
+
+    /// <summary>
+    /// A second forgot-password for the same account inside this window is accepted and ignored.
+    /// Every issue retires the code before it, so without a cooldown anyone who knows an address
+    /// can keep killing the code its owner is about to type.
+    /// </summary>
+    private static readonly TimeSpan ResetCodeCooldown = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// At most this many codes per account per rolling hour. Bounds how much of the app-wide mail
+    /// quota (Brevo free: 300/day) one targeted address can burn.
+    /// </summary>
+    private const int MaxResetCodesPerHour = 5;
+
+    /// <summary>
+    /// How long after a rotation the token it replaced may be presented once more. A mobile
+    /// client that times out before the response arrives (a Render cold start takes longer than
+    /// its refresh timeout) still holds the old token while the server has already rotated it;
+    /// without this window its retry reads as theft and signs the user out of every device.
+    ///
+    /// Only applies while the successor has never been used - a client that received it would
+    /// present that, not the old one - and the replay revokes that successor before minting a new
+    /// pair, so there is still one live chain. The cost, accepted deliberately: for two minutes a
+    /// stolen copy of the previous token can take over the session. The victim's next refresh then
+    /// finds its own token discarded and, outside the window, trips the full revoke-all - the same
+    /// end state as without the grace, one refresh later. Hosted identity providers ship the same
+    /// trade-off as a "reuse interval".
+    /// </summary>
+    private static readonly TimeSpan RefreshReuseGrace = TimeSpan.FromMinutes(2);
 
     /// <summary>
     /// Verified against when the email is unknown, so a missing account costs the same ~250ms of
@@ -73,7 +101,7 @@ public class AuthService : IAuthService
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        catch (DbUpdateException ex) when (ex.IsUniqueViolation())
         {
             // The AnyAsync check above is a fast path, not a guarantee: two simultaneous
             // registrations of the same address both pass it and race to the unique index on
@@ -183,22 +211,39 @@ public class AuthService : IAuthService
         // lets two callers presenting the same token both see null and both mint a pair, which is
         // exactly the concurrent-theft case rotation exists to catch. The database decides who
         // wins, and only the winner gets a row back.
+        //
+        // The successor's id is chosen here and recorded on the old row in the same statement, so
+        // a later replay can find exactly the pair this rotation minted (see RefreshReuseGrace).
+        //
+        // One transaction from the rotation to the new pair's insert. Committed separately, a request
+        // aborted in between (the client's refresh timeout cancels RequestAborted) left the old token
+        // rotated with no successor row, so the client's retry - holding the old token, as it should -
+        // found nothing to discard and fell through to revoke-all. Now the rotation either lands with
+        // its successor or not at all. It also means a concurrent loser, whose UPDATE waits on this row
+        // lock, only sees the rotation once the successor is committed too.
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var successorId = Guid.NewGuid();
         var rotated = await _dbContext.RefreshTokens
             .Where(t => t.Id == existingToken.Id && t.RevokedAt == null)
-            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.RevokedAt, now), cancellationToken);
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(t => t.RevokedAt, now)
+                .SetProperty(t => t.ReplacedByTokenId, successorId), cancellationToken);
 
         if (rotated == 0)
         {
+            var reissued = await TryReissueAfterLostResponseAsync(existingToken.Id, now, cancellationToken);
+            if (reissued is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+                return AuthResult.Success(reissued);
+            }
+
             // Either it was already rotated before we looked, or a concurrent caller rotated it
             // between our read and our update. Both mean this token has been presented twice while
-            // still valid - revoke every token for the user rather than just this one.
-            //
-            // Known residual: in the concurrent case the winner may insert its replacement pair
-            // after this sweep has read the table, so that one pair can survive. What is
-            // guaranteed is that at most one caller succeeds and the replayed token is dead - the
-            // previous read-then-write let *both* callers mint a pair and raised no signal at all.
-            // Closing the remainder needs a per-user "sessions valid from" watermark checked at
-            // token validation, which is a schema change and deliberately not done here.
+            // still valid - revoke every token for the user rather than just this one. (Unless the
+            // replay is inside RefreshReuseGrace with an unused successor, handled just above: that
+            // is a lost response, not a second holder.) The winner commits its rotation and its new
+            // pair together, so the sweep below sees that pair and revokes it too.
             //
             // Logged because this is the one branch in the service that means "a credential may
             // have been stolen", and it silently signs the user out of every device. Without a line
@@ -208,12 +253,62 @@ public class AuthService : IAuthService
                 existingToken.UserId);
 
             await RevokeAllActiveTokensForUserAsync(existingToken.UserId, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
             return AuthResult.Failed();
         }
 
         var user = await _dbContext.Users.SingleAsync(u => u.Id == existingToken.UserId, cancellationToken);
-        var tokens = await IssueTokenPairAsync(user, cancellationToken);
+        var tokens = await IssueTokenPairAsync(user, cancellationToken, successorId);
+        await transaction.CommitAsync(cancellationToken);
         return AuthResult.Success(tokens);
+    }
+
+    /// <summary>
+    /// The grace branch of reuse detection: a token rotated moments ago whose successor was never
+    /// used is a client retrying after losing the response, not a thief. Discards that successor
+    /// and mints a replacement. Returns null when the replay does not qualify, leaving the caller
+    /// on the revoke-everything path.
+    /// </summary>
+    private async Task<AuthTokenResponse?> TryReissueAfterLostResponseAsync(
+        Guid presentedTokenId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        // Re-read rather than trusting the copy taken before the compare-and-swap: a concurrent
+        // rotation may have landed in between, and its values are the ones that count.
+        var presented = await _dbContext.RefreshTokens.AsNoTracking()
+            .SingleAsync(t => t.Id == presentedTokenId, cancellationToken);
+
+        // Logout, password change and reuse detection revoke without a successor, so a token
+        // retired by any of those never qualifies.
+        if (presented.ReplacedByTokenId is not { } successorId
+            || presented.RevokedAt is not { } rotatedAt
+            || now - rotatedAt > RefreshReuseGrace)
+        {
+            return null;
+        }
+
+        // Compare-and-swap on the successor: it must still be unused, and of two concurrent
+        // replays only one gets to discard it. The loser falls through to reuse detection.
+        var discarded = await _dbContext.RefreshTokens
+            .Where(t => t.Id == successorId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.RevokedAt, now), cancellationToken);
+        if (discarded == 0)
+        {
+            return null;
+        }
+
+        // Re-pointed so a second lost response inside the same window is recoverable too. The
+        // window itself still runs from the original rotation.
+        var replacementId = Guid.NewGuid();
+        await _dbContext.RefreshTokens
+            .Where(t => t.Id == presentedTokenId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.ReplacedByTokenId, replacementId), cancellationToken);
+
+        _logger.LogInformation(
+            "Refresh token replayed within grace for user {UserId}; treated as a lost response.",
+            presented.UserId);
+
+        var user = await _dbContext.Users.SingleAsync(u => u.Id == presented.UserId, cancellationToken);
+        return await IssueTokenPairAsync(user, cancellationToken, replacementId);
     }
 
     public async Task LogoutAsync(Guid userId, string presentedRefreshToken, CancellationToken cancellationToken = default)
@@ -255,9 +350,9 @@ public class AuthService : IAuthService
             // No enumeration by status or body - the caller gets the same 200 and empty response
             // either way, and the work above is done regardless.
             //
-            // Residual, accepted deliberately: a real account additionally performs a SELECT for
-            // outstanding codes, an UPDATE per code found, an INSERT and a SaveChanges, so a known
-            // address still costs more round trips than an unknown one. Closing that fully would
+            // Residual, accepted deliberately: a real account additionally takes a row lock and
+            // performs the throttle SELECT, an UPDATE retiring outstanding codes and an INSERT, so a known address still
+            // costs more round trips than an unknown one. Closing that fully would
             // mean issuing throwaway writes for addresses with no account - real write load driven
             // by anyone who can reach the endpoint. Judged not worth it: the remaining signal is a
             // few milliseconds of database time rather than the ~250ms BCrypt asymmetry the register
@@ -266,25 +361,46 @@ public class AuthService : IAuthService
             return;
         }
 
-        // Retire any code still outstanding. Without this every request adds another live code,
-        // and since AttemptCount is per row, each one hands out a fresh 5 guesses at the same
-        // six-digit space - so "5 attempts" would only ever have bounded a single code.
-        var supersededCodes = await _dbContext.PasswordResetCodes
-            .Where(c => c.UserId == user.Id && c.UsedAt == null)
+        // The throttle check, the retire and the insert run under a lock on the user row, so requests
+        // for one account go through them one at a time. Without it two requests could both pass
+        // the throttle, and the second one's retire would kill the code the first had just mailed.
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await _dbContext.Database.ExecuteSqlAsync($"SELECT 1 FROM users WHERE id = {user.Id} FOR UPDATE", cancellationToken);
+
+        var now = DateTimeOffset.UtcNow;
+
+        // Per-account throttle, invisible from outside: the caller gets the same empty 200 whether
+        // a code went out or not. Counted over created_at, which includes codes already retired -
+        // a superseded code still spent a mail.
+        var hourAgo = now - TimeSpan.FromHours(1);
+        var recentIssues = await _dbContext.PasswordResetCodes.AsNoTracking()
+            .Where(c => c.UserId == user.Id && c.CreatedAt >= hourAgo)
+            .Select(c => c.CreatedAt)
             .ToListAsync(cancellationToken);
-        foreach (var superseded in supersededCodes)
+        if (recentIssues.Count >= MaxResetCodesPerHour || recentIssues.Any(issuedAt => now - issuedAt < ResetCodeCooldown))
         {
-            superseded.UsedAt = DateTimeOffset.UtcNow;
+            _logger.LogInformation("Password reset throttled for user {UserId}.", user.Id);
+            return;
         }
 
-        _dbContext.PasswordResetCodes.Add(new PasswordResetCode
+        // Retire any code still outstanding. Without this every request adds another live code,
+        // and since AttemptCount is per row, each one hands out a fresh 5 guesses at the same
+        // six-digit space - so "5 attempts" would only ever have bounded a single code. The partial
+        // unique index ux_password_reset_codes_live_per_user enforces the same rule in the schema.
+        await _dbContext.PasswordResetCodes
+            .Where(c => c.UserId == user.Id && c.UsedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.UsedAt, now), cancellationToken);
+
+        var resetCode = new PasswordResetCode
         {
             UserId = user.Id,
             CodeHash = codeHash,
-            ExpiresAt = DateTimeOffset.UtcNow.Add(PasswordResetCodeLifetime),
-            CreatedAt = DateTimeOffset.UtcNow,
-        });
+            ExpiresAt = now.Add(PasswordResetCodeLifetime),
+            CreatedAt = now,
+        };
+        _dbContext.PasswordResetCodes.Add(resetCode);
         await _dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         await _emailSender.SendAsync(
             user.Email,
@@ -303,25 +419,45 @@ public class AuthService : IAuthService
             return ResetPasswordResult.Failed();
         }
 
-        var resetCode = await _dbContext.PasswordResetCodes
+        var resetCode = await _dbContext.PasswordResetCodes.AsNoTracking()
             .Where(c => c.UserId == user.Id && c.UsedAt == null)
             .OrderByDescending(c => c.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (resetCode is null || resetCode.ExpiresAt <= DateTimeOffset.UtcNow || resetCode.AttemptCount >= MaxPasswordResetAttempts)
+        if (resetCode is null)
         {
             return ResetPasswordResult.Failed();
         }
 
-        if (resetCode.CodeHash != HashResetCode(request.Code))
+        // The attempt is counted by the database before the guess is compared, and only while the
+        // code is still usable. Reading AttemptCount and writing back +1 let N parallel guesses all
+        // read 0 and all pass the cap, against a code space small enough that the cap is the whole
+        // defence. Counting the correct guess too makes the cap "5 submissions per code".
+        var now = DateTimeOffset.UtcNow;
+        var counted = await _dbContext.PasswordResetCodes
+            .Where(c => c.Id == resetCode.Id && c.UsedAt == null && c.ExpiresAt > now && c.AttemptCount < MaxPasswordResetAttempts)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.AttemptCount, c => c.AttemptCount + 1), cancellationToken);
+        if (counted == 0 || resetCode.CodeHash != HashResetCode(request.Code))
         {
-            resetCode.AttemptCount++;
-            await _dbContext.SaveChangesAsync(cancellationToken);
+            return ResetPasswordResult.Failed();
+        }
+
+        // Consumed by compare-and-swap, so two concurrent requests carrying the right code cannot
+        // both set a password: only the one that flips used_at goes on. Consuming the code, saving
+        // the password and revoking the sessions commit together - if the request dies part way
+        // (the client disconnects, the database blips), the code is still there to try again,
+        // rather than spent on a password that was never saved. The attempt counted above stays
+        // counted either way.
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        var consumed = await _dbContext.PasswordResetCodes
+            .Where(c => c.Id == resetCode.Id && c.UsedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.UsedAt, now), cancellationToken);
+        if (consumed == 0)
+        {
             return ResetPasswordResult.Failed();
         }
 
         user.PasswordHash = _passwordHasher.Hash(request.NewPassword);
-        resetCode.UsedAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync(cancellationToken);
 
         // A reset is what someone does when they believe the account is compromised, so it has to
@@ -333,6 +469,7 @@ public class AuthService : IAuthService
         // change is the point of the request, and it should not stop persisting because someone
         // later adds an early return to a revocation helper.
         await RevokeAllActiveTokensForUserAsync(user.Id, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
 
         return ResetPasswordResult.Success();
     }
@@ -368,26 +505,21 @@ public class AuthService : IAuthService
         return AuthResult.Success(tokens);
     }
 
-    /// <summary>
-    /// Npgsql surfaces a unique-index violation as SQLSTATE 23505. Matching on the state code
-    /// rather than the message keeps this working across locales and server versions.
-    /// </summary>
-    private static bool IsUniqueViolation(DbUpdateException exception) =>
-        exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };
-
     private static string HashResetCode(string plainCode)
     {
         var hashBytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(plainCode));
         return Convert.ToHexStringLower(hashBytes);
     }
 
-    private async Task<AuthTokenResponse> IssueTokenPairAsync(User user, CancellationToken cancellationToken)
+    private async Task<AuthTokenResponse> IssueTokenPairAsync(User user, CancellationToken cancellationToken, Guid? refreshTokenId = null)
     {
         var accessToken = _jwtTokenService.GenerateAccessToken(user.Id, user.Email);
         var refreshToken = _jwtTokenService.GenerateRefreshToken();
 
         _dbContext.RefreshTokens.Add(new RefreshToken
         {
+            // Guid.Empty leaves the key to the database default, as before.
+            Id = refreshTokenId ?? Guid.Empty,
             UserId = user.Id,
             TokenHash = refreshToken.Hash,
             ExpiresAt = refreshToken.ExpiresAt,

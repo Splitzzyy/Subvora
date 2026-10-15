@@ -3,12 +3,14 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using SubVora.Application.Categories;
 using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
 using SubVora.Domain.Entities;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Controllers;
 
@@ -78,13 +80,22 @@ public class SubscriptionsController : ControllerBase
     }
 
     /// <summary>Creates a subscription for the authenticated user.</summary>
+    /// <remarks>
+    /// Send an <c>Id</c> chosen once per create form and a retry of the same create - after a
+    /// timeout or a lost response - returns the subscription already made (200) instead of making
+    /// a second one, as long as the details match. Without it the server picks the id, as before.
+    /// </remarks>
     /// <response code="201">The subscription was created.</response>
+    /// <response code="200">A replay of a create that already succeeded with the same id and details.</response>
     /// <response code="400">The payload failed validation.</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="409">The id is already in use, by another record or by this create with different details.</response>
     [HttpPost]
     [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreateSubscriptionRequest request, CancellationToken cancellationToken)
     {
         var validationResult = await _createValidator.ValidateAsync(request, cancellationToken);
@@ -102,6 +113,8 @@ public class SubscriptionsController : ControllerBase
 
         var subscription = new UserSubscription
         {
+            // Guid.Empty leaves the key to the database default, as before.
+            Id = request.Id ?? Guid.Empty,
             UserId = userId,
             CustomName = request.CustomName,
             CostAmount = request.CostAmount,
@@ -122,7 +135,22 @@ public class SubscriptionsController : ControllerBase
             CreatedAt = DateTimeOffset.UtcNow,
         };
 
-        var created = await _subscriptionRepository.AddAsync(subscription, cancellationToken);
+        UserSubscription created;
+        try
+        {
+            created = await _subscriptionRepository.AddAsync(subscription, cancellationToken);
+        }
+        catch (DbUpdateException ex) when (request.Id is Guid takenId && ex.IsUniqueViolation())
+        {
+            // The id is taken. A retry of a create that went through with the same details gets that
+            // record back. Different details (the form was changed after the lost response) or
+            // someone else's id, deliberately indistinguishable, are a conflict: handing back the old
+            // record as if it were this one would silently drop the change.
+            var existing = await _subscriptionRepository.GetByIdAsync(takenId, userId, cancellationToken);
+            return existing is not null && IsSameCreate(subscription, existing)
+                ? Ok(existing)
+                : Conflict(new { message = "That id is already in use." });
+        }
 
         // Re-fetch through the joined DTO query so the create response has the same shape
         // (resolved category name/payment source label/catalog logo) as GetById/GetAll.
@@ -202,18 +230,38 @@ public class SubscriptionsController : ControllerBase
     /// A OneTime subscription has nothing further to bill, so it is deactivated instead of advanced.
     /// Nothing else moves next_billing_date - a date in the past means the charge is genuinely
     /// outstanding, which is what lets a client show it as overdue.
+    /// <para>
+    /// Send <c>billingDate</c> - the next billing date the user was looking at when they tapped -
+    /// and the call settles that charge exactly once. A retry whose first response was lost, or a
+    /// second device tapping the same charge, finds it already paid and gets 200 with nothing
+    /// written. Without it every call settles whatever is due and advances one more cycle: the
+    /// server alone cannot tell a deliberate second tap (clearing a backlog one period at a time)
+    /// from an accidental duplicate, which is why #189's server-only fix was withdrawn. Clients
+    /// built before this parameter keep that per-call behaviour.
+    /// </para>
     /// </remarks>
-    /// <response code="200">Returns the updated subscription.</response>
+    /// <param name="id">The subscription.</param>
+    /// <param name="billingDate">The charge being settled (yyyy-MM-dd): the next billing date the client showed.</param>
+    /// <param name="cancellationToken">Request cancellation.</param>
+    /// <response code="200">Returns the updated subscription, or - for a replay of a charge already settled - the subscription unchanged.</response>
     /// <response code="401">The caller is not authenticated.</response>
     /// <response code="404">No such subscription owned by the caller.</response>
+    /// <response code="409"><c>billingDate</c> is neither the charge currently due nor one already settled.</response>
     [HttpPost("{id:guid}/mark-paid")]
     [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> MarkPaid(Guid id, CancellationToken cancellationToken)
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> MarkPaid(Guid id, [FromQuery] DateOnly? billingDate, CancellationToken cancellationToken)
     {
-        var updated = await _subscriptionRepository.MarkPaidAsync(id, GetUserId(), cancellationToken);
-        return updated is null ? NotFound() : Ok(updated);
+        var result = await _subscriptionRepository.MarkPaidAsync(id, GetUserId(), billingDate, cancellationToken);
+
+        return result.Status switch
+        {
+            MarkPaidStatus.Settled or MarkPaidStatus.AlreadySettled => Ok(result.Subscription),
+            MarkPaidStatus.NotDue => Conflict(new { message = "That charge is not the one currently due." }),
+            _ => NotFound(),
+        };
     }
 
     /// <summary>Resolves free-text subscription input (e.g. "nflx mobile plan") to a catalog match by trigram similarity.</summary>
@@ -298,6 +346,20 @@ public class SubscriptionsController : ControllerBase
 
         return errors.Count == 0 ? null : ValidationProblem(new ValidationProblemDetails(errors));
     }
+
+    /// <summary>Whether a replayed create asks for exactly the record the first attempt made.</summary>
+    private static bool IsSameCreate(UserSubscription attempted, SubscriptionDto existing) =>
+        existing.CustomName == attempted.CustomName
+        && existing.CostAmount == attempted.CostAmount
+        && existing.Currency == attempted.Currency
+        && existing.CycleCadence == attempted.CycleCadence
+        && existing.PurchaseDate == attempted.PurchaseDate
+        && existing.NextBillingDate == attempted.NextBillingDate
+        && existing.AlertDaysAdvance == attempted.AlertDaysAdvance
+        && existing.CategoryId == attempted.CategoryId
+        && existing.PaymentSourceId == attempted.PaymentSourceId
+        && existing.CatalogId == attempted.CatalogId
+        && existing.IsFreeTrial == attempted.IsFreeTrial;
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

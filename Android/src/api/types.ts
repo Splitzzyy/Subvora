@@ -49,6 +49,8 @@ export interface Subscription {
 }
 
 export interface SubscriptionRequest {
+  /** Chosen once per create form and resent on retry, so a lost response cannot create a duplicate. Ignored on update. */
+  id?: string;
   customName: string;
   costAmount: number;
   currency: string;

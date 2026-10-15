@@ -28,6 +28,20 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         return Assert.Single(ResetCodesSentTo(email).Except(before));
     }
 
+    /// <summary>
+    /// Ages every code issued to the address past the per-account cooldown, so a test can ask for a
+    /// second code without waiting a real minute.
+    /// </summary>
+    private async Task StepPastResetCooldownAsync(string email)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var userId = await dbContext.Users.Where(u => u.Email == email).Select(u => u.Id).SingleAsync();
+        await dbContext.PasswordResetCodes
+            .Where(c => c.UserId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.CreatedAt, c => c.CreatedAt.AddSeconds(-61)));
+    }
+
     private IReadOnlyCollection<string> ResetCodesSentTo(string email) =>
         _factory.Services.GetRequiredService<FakeEmailSender>().SentEmails
             .Where(e => e.ToEmail == email)
@@ -232,6 +246,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
 
         var firstCode = await RequestResetCodeAsync(client, email);
+        await StepPastResetCooldownAsync(email);
         var secondCode = await RequestResetCodeAsync(client, email);
         Assert.NotEqual(firstCode, secondCode);
 
@@ -254,6 +269,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
 
         await RequestResetCodeAsync(client, email);
+        await StepPastResetCooldownAsync(email);
         await RequestResetCodeAsync(client, email);
 
         using var scope = _factory.Services.CreateScope();
@@ -263,5 +279,26 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
             .CountAsync(c => c.UserId == user.Id && c.UsedAt == null);
 
         Assert.Equal(1, liveCodes);
+    }
+
+    [Fact]
+    public async Task ForgotPassword_RepeatedWithinCooldown_AnswersTheSame_AndKeepsTheFirstCodeAlive()
+    {
+        // The throttle is invisible from outside: same status, same empty body. What it protects is
+        // the code already in the owner's inbox, which a second request used to retire.
+        var client = _factory.CreateClient();
+        var email = $"reset-cooldown-{Guid.NewGuid()}@example.com";
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        var code = await RequestResetCodeAsync(client, email);
+
+        var repeat = await client.PostAsJsonAsync("/api/v1/auth/forgot-password", new ForgotPasswordRequest { Email = email });
+
+        Assert.Equal(HttpStatusCode.OK, repeat.StatusCode);
+        Assert.Equal(string.Empty, await repeat.Content.ReadAsStringAsync());
+        Assert.Single(ResetCodesSentTo(email));
+
+        var reset = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
+            new ResetPasswordRequest { Email = email, Code = code, NewPassword = "first-code-still-works" }); // pragma: allowlist secret
+        Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
     }
 }

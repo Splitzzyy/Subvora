@@ -123,9 +123,10 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
     [Fact]
     public async Task CleanupOnceAsync_DeletesExpiredPasswordResetCodesButKeepsLiveOnes()
     {
-        var userId = await SeedUserAsync();
-        var longExpired = await SeedPasswordResetCodeAsync(userId, DateTimeOffset.UtcNow.AddDays(-3));
-        var live = await SeedPasswordResetCodeAsync(userId, DateTimeOffset.UtcNow.AddMinutes(15));
+        // Two users: ux_password_reset_codes_live_per_user allows one unused code per account, and
+        // forgot-password retires the old code before issuing a new one, so one user never holds both.
+        var longExpired = await SeedPasswordResetCodeAsync(await SeedUserAsync(), DateTimeOffset.UtcNow.AddDays(-3));
+        var live = await SeedPasswordResetCodeAsync(await SeedUserAsync(), DateTimeOffset.UtcNow.AddMinutes(15));
 
         await BuildService().CleanupOnceAsync();
 

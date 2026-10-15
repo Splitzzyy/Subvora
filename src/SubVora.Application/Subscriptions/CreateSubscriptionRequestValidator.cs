@@ -24,6 +24,7 @@ public class CreateSubscriptionRequestValidator : AbstractValidator<CreateSubscr
 
     public CreateSubscriptionRequestValidator()
     {
+        RuleFor(r => r.Id).NotEqual(Guid.Empty);
         RuleFor(r => r.CustomName).NotEmpty().MaximumLength(150);
         RuleFor(r => r.CostAmount)
             .GreaterThan(0)

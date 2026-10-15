@@ -2,7 +2,9 @@
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SubVora.Application.PaymentSources;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Controllers;
 
@@ -35,13 +37,22 @@ public class PaymentSourcesController : ControllerBase
     }
 
     /// <summary>Creates a payment source owned by the authenticated user.</summary>
+    /// <remarks>
+    /// Send an <c>Id</c> chosen once per create form and a retry of the same create returns the
+    /// payment source already made (200) instead of a duplicate, as long as the details match.
+    /// Without it the server picks the id.
+    /// </remarks>
     /// <response code="201">The payment source was created.</response>
+    /// <response code="200">A replay of a create that already succeeded with the same id and details.</response>
     /// <response code="400">The payload failed validation.</response>
     /// <response code="401">The caller is not authenticated.</response>
+    /// <response code="409">The id is already in use, by another record or by this create with different details.</response>
     [HttpPost]
     [ProducesResponseType(typeof(PaymentSourceDto), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(PaymentSourceDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<IActionResult> Create([FromBody] CreatePaymentSourceRequest request, CancellationToken cancellationToken)
     {
         var validationResult = await _createValidator.ValidateAsync(request, cancellationToken);
@@ -50,7 +61,25 @@ public class PaymentSourcesController : ControllerBase
             return ValidationProblem(new ValidationProblemDetails(validationResult.ToDictionary()));
         }
 
-        var paymentSource = await _paymentSourceRepository.AddAsync(GetUserId(), request, cancellationToken);
+        var userId = GetUserId();
+
+        PaymentSourceDto paymentSource;
+        try
+        {
+            paymentSource = await _paymentSourceRepository.AddAsync(userId, request, cancellationToken);
+        }
+        catch (DbUpdateException ex) when (request.Id is Guid takenId && ex.IsUniqueViolation())
+        {
+            // The id is taken. A retry of a create that went through with the same details gets that
+            // record back. Different details (the form was changed after the lost response) or
+            // someone else's id, deliberately indistinguishable, are a conflict: handing back the old
+            // record as if it were this one would silently drop the change.
+            var existing = await _paymentSourceRepository.GetByIdAsync(takenId, userId, cancellationToken);
+            return existing is not null && existing.Label == request.Label && existing.SourceType == request.SourceType
+                ? Ok(existing)
+                : Conflict(new { message = "That id is already in use." });
+        }
+
         return CreatedAtAction(nameof(GetAll), paymentSource);
     }
 

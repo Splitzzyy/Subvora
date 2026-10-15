@@ -42,6 +42,8 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
                 // to a small value on its own WithWebHostBuilder-derived factory instead.
                 ["RateLimiting:Auth:PermitLimit"] = "1000",
                 ["RateLimiting:Auth:WindowSeconds"] = "60",
+                ["RateLimiting:Refresh:PermitLimit"] = "1000",
+                ["RateLimiting:Refresh:WindowSeconds"] = "60",
             });
         });
 

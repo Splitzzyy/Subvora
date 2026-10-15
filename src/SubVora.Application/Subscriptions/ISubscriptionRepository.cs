@@ -15,8 +15,13 @@ public interface ISubscriptionRepository
     Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Records the current billing date as paid and moves the subscription on one cycle. Returns
-    /// null when the subscription does not exist for this user.
+    /// Records the current billing date as paid and moves the subscription on one cycle.
+    /// <para>
+    /// With <paramref name="billingDate"/>, only that charge is settled, and only once: a replay
+    /// for a charge already settled is <see cref="MarkPaidStatus.AlreadySettled"/> and writes
+    /// nothing, and a date that is not the one due is <see cref="MarkPaidStatus.NotDue"/>. Without
+    /// it, whatever is due now is settled - every call advances one cycle.
+    /// </para>
     /// </summary>
-    Task<SubscriptionDto?> MarkPaidAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+    Task<MarkPaidResult> MarkPaidAsync(Guid id, Guid userId, DateOnly? billingDate, CancellationToken cancellationToken = default);
 }

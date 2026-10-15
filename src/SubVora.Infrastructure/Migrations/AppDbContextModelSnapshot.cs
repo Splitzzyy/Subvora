@@ -142,8 +142,13 @@ namespace SubVora.Infrastructure.Migrations
                     b.HasKey("Id")
                         .HasName("pk_password_reset_codes");
 
-                    b.HasIndex("UserId")
+                    b.HasIndex(new[] { "UserId" }, "ix_password_reset_codes_user_id")
                         .HasDatabaseName("ix_password_reset_codes_user_id");
+
+                    b.HasIndex(new[] { "UserId" }, "ux_password_reset_codes_live_per_user")
+                        .IsUnique()
+                        .HasDatabaseName("ux_password_reset_codes_live_per_user")
+                        .HasFilter("used_at IS NULL");
 
                     b.ToTable("password_reset_codes", (string)null);
                 });
@@ -203,6 +208,10 @@ namespace SubVora.Infrastructure.Migrations
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.Property<Guid?>("ReplacedByTokenId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("replaced_by_token_id");
 
                     b.Property<DateTimeOffset?>("RevokedAt")
                         .HasColumnType("timestamp with time zone")

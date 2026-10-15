@@ -114,13 +114,18 @@ public class SubscriptionRepository : ISubscriptionRepository
         return true;
     }
 
-    public async Task<SubscriptionDto?> MarkPaidAsync(Guid id, Guid userId, CancellationToken cancellationToken = default)
+    public async Task<MarkPaidResult> MarkPaidAsync(Guid id, Guid userId, DateOnly? billingDate, CancellationToken cancellationToken = default)
     {
+        if (billingDate is { } date)
+        {
+            return await SettleChargeAsync(id, userId, date, cancellationToken);
+        }
+
         var subscription = await _dbContext.UserSubscriptions
             .SingleOrDefaultAsync(s => s.Id == id && s.UserId == userId, cancellationToken);
         if (subscription is null)
         {
-            return null;
+            return MarkPaidResult.NotFound;
         }
 
         // The date being settled is the one currently outstanding, not today: paying a 23 Apr charge
@@ -139,7 +144,63 @@ public class SubscriptionRepository : ISubscriptionRepository
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
-        return await GetByIdAsync(id, userId, cancellationToken);
+        return MarkPaidResult.Settled(await GetByIdAsync(id, userId, cancellationToken));
+    }
+
+    /// <summary>
+    /// Mark-paid for a charge the client names. The server cannot tell a deliberate second tap
+    /// (clearing a backlog, one period per tap) from a retried one; the billing date the user saw
+    /// on screen can. Each tap carries the date then shown, so a backlog still settles one period
+    /// per tap, while a retry or a second device names a date that is already paid.
+    /// </summary>
+    private async Task<MarkPaidResult> SettleChargeAsync(Guid id, Guid userId, DateOnly date, CancellationToken cancellationToken)
+    {
+        var current = await _dbContext.UserSubscriptions.AsNoTracking()
+            .Where(s => s.Id == id && s.UserId == userId)
+            .Select(s => new { s.NextBillingDate, s.IsActive, s.CycleCadence })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (current is null)
+        {
+            return MarkPaidResult.NotFound;
+        }
+
+        // A OneTime charge is settled by deactivating it, so "active" is what makes it single-use.
+        // A recurring subscription that is paused can still have its charge recorded, as without
+        // a billing date.
+        var isOneTime = current.CycleCadence == BillingCycleType.OneTime;
+        if (current.NextBillingDate == date && (current.IsActive || !isOneTime))
+        {
+            // Compare-and-swap on the date being settled, so two devices tapping the same charge
+            // settle it once. The new date is computed here, not in SQL: BillingCycleAdvancer's
+            // month-end clamping is the rule, and it should not be restated as a SQL expression.
+            var settled = isOneTime
+                ? await _dbContext.UserSubscriptions
+                    .Where(s => s.Id == id && s.UserId == userId && s.NextBillingDate == date && s.IsActive)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(s => s.LastPaidDate, date)
+                        .SetProperty(s => s.IsActive, false), cancellationToken)
+                : await _dbContext.UserSubscriptions
+                    .Where(s => s.Id == id && s.UserId == userId && s.NextBillingDate == date)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(s => s.LastPaidDate, date)
+                        .SetProperty(s => s.NextBillingDate, BillingCycleAdvancer.AdvanceOneCycle(date, current.CycleCadence)), cancellationToken);
+
+            if (settled == 1)
+            {
+                return MarkPaidResult.Settled(await GetByIdAsync(id, userId, cancellationToken));
+            }
+        }
+
+        // Not due (or someone settled it between our read and our write): a replay if that charge
+        // has been paid, otherwise the client is looking at a date the subscription has moved past
+        // some other way, or one it has not reached.
+        var dto = await GetByIdAsync(id, userId, cancellationToken);
+        if (dto is null)
+        {
+            return MarkPaidResult.NotFound;
+        }
+
+        return dto.LastPaidDate >= date ? MarkPaidResult.AlreadySettled(dto) : MarkPaidResult.NotDue;
     }
 
     // The category and payment-source sides are filtered to what this user may see before they are

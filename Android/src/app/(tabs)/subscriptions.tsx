@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, View } from 'react-native';
-import { subscriptionsApi, writeErrorMessage, type Subscription } from '@/api';
+import { isStatus, subscriptionsApi, writeErrorMessage, type Subscription } from '@/api';
 import { CACHE_KEYS } from '@/lib/cache';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
@@ -14,6 +14,8 @@ import {
 } from '@/ui';
 import { Screen } from '@/ui/layout';
 import { ActionSheet } from '@/ui/sheets';
+
+const STALE_CHARGE = 'Not marked paid: this charge changed on another device. The list now shows what is due.';
 
 export default function Subscriptions() {
   const { colors, category } = useTheme();
@@ -41,13 +43,23 @@ export default function Subscriptions() {
     } catch (e) {
       haptics.reject();
       // Nothing is queued for later, so a failed settle must say so or the OVERDUE chip lies.
-      setWriteError(writeErrorMessage(e));
+      setWriteError(isStatus(e, 409) ? STALE_CHARGE : writeErrorMessage(e));
     } finally {
       setBusy(false);
     }
   };
 
-  const markPaid = (sub: Subscription) => write(() => subscriptionsApi.markPaid(sub.id));
+  const markPaid = (sub: Subscription) => write(async () => {
+    try {
+      await subscriptionsApi.markPaid(sub.id, sub.nextBillingDate);
+    } catch (e) {
+      // The charge on screen is no longer the one due - settled on another device, or its date
+      // edited. Nothing was recorded, so it is not a success: reload to show what is due now, and
+      // say why rather than leave the user thinking this tap paid it.
+      if (isStatus(e, 409)) dataChanged();
+      throw e;
+    }
+  });
 
   const remove = (sub: Subscription) => Alert.alert('Delete subscription', `Delete ${sub.customName}? This cannot be undone.`, [
     { text: 'Cancel', style: 'cancel' },
