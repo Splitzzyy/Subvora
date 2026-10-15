@@ -135,17 +135,19 @@ async function expire() {
 
 // ---- Messages --------------------------------------------------------------------------------
 
-/** First field-level message from a ValidationProblemDetails body, if there is one. */
+/**
+ * First field-level message from a ValidationProblemDetails body. With no field errors, the title:
+ * change-password reports a wrong current password that way.
+ */
 function firstValidationMessage(body: unknown): string | null {
-  const errors = (body as { errors?: Record<string, unknown> } | undefined)?.errors;
-  if (!errors || typeof errors !== 'object') return null;
-  for (const messages of Object.values(errors)) {
+  const { errors, title } = (body ?? {}) as { errors?: Record<string, unknown>; title?: unknown };
+  for (const messages of Object.values(errors ?? {})) {
     if (Array.isArray(messages)) {
       const text = messages.find((m) => typeof m === 'string' && m.trim());
       if (text) return text;
     }
   }
-  return null;
+  return typeof title === 'string' && title.trim() ? title : null;
 }
 
 /**

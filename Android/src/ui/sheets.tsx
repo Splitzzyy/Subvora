@@ -143,7 +143,7 @@ export function DateField({ label, value, onChange, disabled }: { label: string;
     DateTimePickerAndroid.open({
       value: parseDateOnly(value),
       mode: 'date',
-      onChange: (event, date) => { if (event.type === 'set' && date) onChange(toDateOnly(date)); },
+      onValueChange: (_, date) => onChange(toDateOnly(date)),
     });
   };
   return (
@@ -152,7 +152,7 @@ export function DateField({ label, value, onChange, disabled }: { label: string;
         leading={<Icon name="calendar-month-outline" size={22} color={colors.onSurfaceVariant} />} />
       {iosOpen ? (
         <DateTimePicker value={parseDateOnly(value)} mode="date" display="inline"
-          onChange={(_, date) => { setIosOpen(false); if (date) onChange(toDateOnly(date)); }} />
+          onValueChange={(_, date) => { setIosOpen(false); onChange(toDateOnly(date)); }} onDismiss={() => setIosOpen(false)} />
       ) : null}
     </>
   );

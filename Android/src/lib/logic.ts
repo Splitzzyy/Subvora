@@ -39,9 +39,10 @@ const dayNumber = (value: string) => {
   return Date.UTC(y, m - 1, d) / 86_400_000;
 };
 
-export const formatShortDate = (value: string) => {
-  const [, m, d] = value.split('-').map(Number);
-  return `${d} ${MONTHS[m - 1]}`;
+/** "15 Oct", or "15 Oct 2027" outside the current year - today is 15 Oct too, possibly. */
+export const formatShortDate = (value: string, today = todayDateOnly()) => {
+  const [y, m, d] = value.split('-').map(Number);
+  return y === Number(today.slice(0, 4)) ? `${d} ${MONTHS[m - 1]}` : `${d} ${MONTHS[m - 1]} ${y}`;
 };
 
 export const formatLongDate = (value: string) => {
@@ -84,11 +85,11 @@ export const isOverdue = (sub: { isActive: boolean; nextBillingDate: string }, t
 /** "in 3 days" answers what is about to be charged; past a fortnight a date is easier to place. */
 export function describeRelative(date: string, today = todayDateOnly()): string {
   const days = dayNumber(date) - dayNumber(today);
-  if (days < 0) return `overdue since ${formatShortDate(date)}`;
+  if (days < 0) return `overdue since ${formatShortDate(date, today)}`;
   if (days === 0) return 'today';
   if (days === 1) return 'tomorrow';
   if (days <= 14) return `in ${days} days`;
-  return formatShortDate(date);
+  return formatShortDate(date, today);
 }
 
 // ---- Money -----------------------------------------------------------------------------------

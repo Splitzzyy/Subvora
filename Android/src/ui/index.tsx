@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Animated, Pressable, Switch, Text as RNText, TextInput, View,
+  AccessibilityInfo, ActivityIndicator, Animated, Keyboard, Pressable, Switch, Text as RNText, TextInput, View,
   type ColorValue, type PressableProps, type StyleProp, type TextInputProps, type TextProps, type ViewStyle,
 } from 'react-native';
 import { shape, typescale, useTheme, type TypeVariant } from '@/theme';
@@ -296,6 +296,13 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(true);
+  const input = useRef<TextInput>(null);
+  // Android keeps the input focused when Back closes the keyboard; blur so the outline matches.
+  useEffect(() => {
+    if (!focused) return;
+    const sub = Keyboard.addListener('keyboardDidHide', () => input.current?.blur());
+    return () => sub.remove();
+  }, [focused]);
   return (
     <View style={[{ gap: 4 }, style]}>
       <View style={{
@@ -306,6 +313,7 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
           <Text variant="labelMedium" color={error ? colors.error : focused ? colors.primary : colors.onSurfaceVariant}>{label}</Text>
           <TextInput
             {...props}
+            ref={input}
             accessibilityLabel={label}
             secureTextEntry={secure && hidden}
             placeholderTextColor={colors.outline as string}

@@ -21,6 +21,8 @@ test('relative dates', () => {
   assert.equal(describeRelative('2026-10-16', today), 'tomorrow');
   assert.equal(describeRelative('2026-10-29', today), 'in 14 days');
   assert.equal(describeRelative('2026-10-30', today), '30 Oct');
+  assert.equal(describeRelative('2027-10-15', today), '15 Oct 2027');
+  assert.equal(describeRelative('2025-12-01', today), 'overdue since 1 Dec 2025');
 });
 
 test('overdue only for active subscriptions with a past date', () => {
