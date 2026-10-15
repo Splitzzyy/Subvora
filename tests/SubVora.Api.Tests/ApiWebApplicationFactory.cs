@@ -44,6 +44,11 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
                 ["RateLimiting:Auth:WindowSeconds"] = "60",
                 ["RateLimiting:Refresh:PermitLimit"] = "1000",
                 ["RateLimiting:Refresh:WindowSeconds"] = "60",
+                // Every test class shares one host and, under TestServer, one client address, so the
+                // global limiter's per-IP bucket would otherwise trip mid-run. RequestLimitsTests
+                // lowers it on a derived host instead.
+                ["RateLimiting:Global:PermitLimit"] = "100000",
+                ["RateLimiting:Global:AnonymousPermitLimit"] = "100000",
             });
         });
 

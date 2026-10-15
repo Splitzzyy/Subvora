@@ -66,6 +66,14 @@ public class CategoryRepository : ICategoryRepository
         return new DeleteCategoryResult(affected);
     }
 
+    // Own categories only - system defaults are shared and do not count toward the quota.
+    public Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default) =>
+        _dbContext.Categories.CountAsync(c => c.UserId == userId, cancellationToken);
+
+    // The same match as the unique index on (user_id, name) that makes a duplicate create a 409.
+    public Task<bool> NameExistsForUserAsync(Guid userId, string name, CancellationToken cancellationToken = default) =>
+        _dbContext.Categories.AnyAsync(c => c.UserId == userId && c.Name == name, cancellationToken);
+
     // Same predicate as GetForUserAsync - what a user may reference is exactly what a user may see.
     public Task<bool> IsAccessibleToUserAsync(Guid categoryId, Guid userId, CancellationToken cancellationToken = default) =>
         _dbContext.Categories.AsNoTracking()

@@ -3,6 +3,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SubVora.Application;
 using SubVora.Application.PaymentSources;
 using SubVora.Infrastructure.Data;
 
@@ -63,18 +64,34 @@ public class PaymentSourcesController : ControllerBase
 
         var userId = GetUserId();
 
+        // A replay of a create that already went through is not a new row, so it is let through to
+        // the insert, which hands it back.
+        // ponytail: count-then-insert can overshoot by the number of concurrent creates; a hard
+        // DB-side cap needs a trigger, not worth it for an abuse guard.
+        if (await _paymentSourceRepository.CountForUserAsync(userId, cancellationToken) >= UserQuotas.PaymentSources
+            && !(request.Id is Guid replayId && await _paymentSourceRepository.ExistsForUserAsync(replayId, userId, cancellationToken)))
+        {
+            ModelState.AddModelError(string.Empty, $"You can have at most {UserQuotas.PaymentSources} payment sources.");
+            return ValidationProblem(ModelState);
+        }
+
+        // Chosen here, never left to the database default: the insert is retried on a transient
+        // fault, and a retry after a commit whose acknowledgement was lost must hit the primary key
+        // below rather than insert a second row under a fresh default id.
+        var id = request.Id ??= Guid.NewGuid();
+
         PaymentSourceDto paymentSource;
         try
         {
             paymentSource = await _paymentSourceRepository.AddAsync(userId, request, cancellationToken);
         }
-        catch (DbUpdateException ex) when (request.Id is Guid takenId && ex.IsUniqueViolation())
+        catch (DbUpdateException ex) when (ex.IsUniqueViolation())
         {
             // The id is taken. A retry of a create that went through with the same details gets that
             // record back. Different details (the form was changed after the lost response) or
             // someone else's id, deliberately indistinguishable, are a conflict: handing back the old
             // record as if it were this one would silently drop the change.
-            var existing = await _paymentSourceRepository.GetByIdAsync(takenId, userId, cancellationToken);
+            var existing = await _paymentSourceRepository.GetByIdAsync(id, userId, cancellationToken);
             return existing is not null && existing.Label == request.Label && existing.SourceType == request.SourceType
                 ? Ok(existing)
                 : Conflict(new { message = "That id is already in use." });

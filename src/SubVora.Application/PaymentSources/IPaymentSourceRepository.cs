@@ -10,6 +10,12 @@ public interface IPaymentSourceRepository
     /// <summary>Inserts with <see cref="CreatePaymentSourceRequest.Id"/> when the client chose one.</summary>
     Task<PaymentSourceDto> AddAsync(Guid userId, CreatePaymentSourceRequest request, CancellationToken cancellationToken = default);
 
+    /// <summary>How many the user has, for the create quota in <see cref="UserQuotas"/>.</summary>
+    Task<int> CountForUserAsync(Guid userId, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether the user owns a row with this id - the cheap check for a replayed create.</summary>
+    Task<bool> ExistsForUserAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
+
     Task<bool> DeleteAsync(Guid id, Guid userId, CancellationToken cancellationToken = default);
 
     /// <summary>

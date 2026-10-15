@@ -1,12 +1,21 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace SubVora.Api;
 
 /// <summary>Catches anything not already handled by a controller's own error responses (ValidationProblem, Conflict, etc.) and returns a generic ProblemDetails instead of the framework's default error page.</summary>
 public class GlobalExceptionHandler : IExceptionHandler
 {
+    /// <summary>
+    /// How every foreign key to <c>users</c> is named under the snake-case convention:
+    /// <c>fk_{table}_users_user_id</c>. A test walks the model and fails if one is not, so a
+    /// renamed constraint breaks CI rather than turning a signed-out write into a 500.
+    /// </summary>
+    public const string UsersForeignKeySuffix = "_users_user_id";
+
     private readonly ILogger<GlobalExceptionHandler> _logger;
 
     public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
@@ -23,6 +32,13 @@ public class GlobalExceptionHandler : IExceptionHandler
         if (httpContext.RequestAborted.IsCancellationRequested && exception is OperationCanceledException)
         {
             _logger.LogDebug("Request {Method} {Path} was aborted by the client.", httpContext.Request.Method, httpContext.Request.Path);
+            return true;
+        }
+
+        if (!httpContext.Response.HasStarted && ClientFaultStatus(exception) is { } status)
+        {
+            _logger.LogDebug(exception, "Request {Method} {Path} answered {Status}.", httpContext.Request.Method, httpContext.Request.Path, status);
+            httpContext.Response.StatusCode = status;
             return true;
         }
 
@@ -59,4 +75,25 @@ public class GlobalExceptionHandler : IExceptionHandler
 
         return true;
     }
+
+    /// <summary>Exceptions that mean the caller, not the server, is at fault - each with the status it deserves instead of a 500.</summary>
+    private static int? ClientFaultStatus(Exception exception) => exception switch
+    {
+        // A request the server could not read carries its own 4xx - 413 when a chunked body runs
+        // past the size cap in Program.cs, which Kestrel enforces while the body is being read.
+        BadHttpRequestException badRequest => badRequest.StatusCode,
+
+        // An access token outlives its account by up to 15 minutes after DELETE /users/me. A write
+        // in that window points at a user row that is gone; the caller is signed out, not hitting a
+        // bug, and 401 sends the app down its existing sign-out path. SaveChanges wraps the
+        // database error; ExecuteUpdate and raw SQL throw it bare.
+        DbUpdateException { InnerException: PostgresException postgres } when IsMissingUser(postgres) => StatusCodes.Status401Unauthorized,
+        PostgresException postgres when IsMissingUser(postgres) => StatusCodes.Status401Unauthorized,
+
+        _ => null,
+    };
+
+    private static bool IsMissingUser(PostgresException exception) =>
+        exception is { SqlState: PostgresErrorCodes.ForeignKeyViolation, ConstraintName: { } constraint }
+        && constraint.EndsWith(UsersForeignKeySuffix, StringComparison.Ordinal);
 }

@@ -1,8 +1,12 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using SubVora.Api;
+using SubVora.Domain.Entities;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Tests;
 
@@ -27,6 +31,61 @@ public class GlobalExceptionHandlerTests
 
         Assert.DoesNotContain("secret internal detail", body);
         Assert.Contains("An unexpected error occurred.", body);
+    }
+
+    [Fact]
+    public async Task TryHandleAsync_ABodyOverTheSizeCap_Answers413()
+    {
+        // Kestrel enforces the cap on a chunked body while it is read, by throwing; that is the
+        // caller's fault, not a 500.
+        var handler = new GlobalExceptionHandler(NullLogger<GlobalExceptionHandler>.Instance);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Response.Body = new MemoryStream();
+
+        var handled = await handler.TryHandleAsync(httpContext, new BadHttpRequestException("Request body too large.", StatusCodes.Status413PayloadTooLarge), CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status413PayloadTooLarge, httpContext.Response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TryHandleAsync_AWriteForADeletedAccount_Answers401(bool wrappedBySaveChanges)
+    {
+        // SaveChanges wraps the database error; ExecuteUpdate and raw SQL surface it bare.
+        var handler = new GlobalExceptionHandler(NullLogger<GlobalExceptionHandler>.Instance);
+        var httpContext = new DefaultHttpContext();
+        httpContext.Response.Body = new MemoryStream();
+        var foreignKeyViolation = new PostgresException(
+            "insert or update violates foreign key constraint", "ERROR", "ERROR", PostgresErrorCodes.ForeignKeyViolation,
+            constraintName: "fk_user_subscriptions" + GlobalExceptionHandler.UsersForeignKeySuffix);
+        Exception exception = wrappedBySaveChanges ? new DbUpdateException("save failed", foreignKeyViolation) : foreignKeyViolation;
+
+        var handled = await handler.TryHandleAsync(httpContext, exception, CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(StatusCodes.Status401Unauthorized, httpContext.Response.StatusCode);
+    }
+
+    [Fact]
+    public void EveryForeignKeyToUsers_CascadesAndCarriesTheNameTheHandlerMatches()
+    {
+        // The handler's 401 for a deleted account's write, and account deletion itself, both depend
+        // on every user-owned table: one by the constraint name, the other by ON DELETE CASCADE.
+        // Building the model needs no database.
+        using var db = new AppDbContext(AppDbContextOptionsFactory.Build("Host=localhost"));
+        var foreignKeys = db.Model.GetEntityTypes()
+            .SelectMany(entity => entity.GetForeignKeys())
+            .Where(fk => fk.PrincipalEntityType.ClrType == typeof(User))
+            .ToList();
+
+        Assert.NotEmpty(foreignKeys);
+        Assert.All(foreignKeys, fk =>
+        {
+            Assert.EndsWith(GlobalExceptionHandler.UsersForeignKeySuffix, fk.GetConstraintName());
+            Assert.Equal(DeleteBehavior.Cascade, fk.DeleteBehavior);
+        });
     }
 
     [Fact]

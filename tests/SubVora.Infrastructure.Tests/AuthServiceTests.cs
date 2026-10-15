@@ -1,6 +1,9 @@
+using System.Data.Common;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
 using SubVora.Domain.Entities;
@@ -325,6 +328,44 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         Assert.True(result.Succeeded);
     }
 
+    // ---- Password change/reset atomicity (#246) --------------------------------------------
+
+    [Fact]
+    public async Task ChangePassword_WhenRevokingSessionsFails_ChangesNothing()
+    {
+        // The password used to commit before the sessions were revoked. A failure in between left
+        // the new password in place and every old refresh token live - the tokens the user was
+        // changing their password to kill.
+        var (userId, tokens) = await RegisterAndLoginAsync("change-atomic");
+        await using (var failing = NewDbContext(new FailingCommandInterceptor("UPDATE refresh_tokens")))
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => NewAuthService(failing).ChangePasswordAsync(userId,
+                new ChangePasswordRequest { CurrentPassword = "correct-horse-battery-staple", NewPassword = FreshPassword() }));
+        }
+
+        Assert.Equal("hashed:correct-horse-battery-staple", await StoredPasswordHashAsync(userId));
+        Assert.Null(await RevokedAtAsync(tokens.RefreshToken));
+    }
+
+    [Fact]
+    public async Task ResetPassword_WhenRevokingSessionsFails_ChangesNothing_AndTheCodeStillWorks()
+    {
+        var email = await RegisterAsync("reset-atomic");
+        var userId = await UserIdAsync(email);
+        var tokens = await LoginAsync(userId);
+        var code = await RequestCodeAsync(email);
+        await using (var failing = NewDbContext(new FailingCommandInterceptor("UPDATE refresh_tokens")))
+        {
+            await Assert.ThrowsAnyAsync<Exception>(() => NewAuthService(failing).ResetPasswordAsync(
+                new ResetPasswordRequest { Email = email, Code = code, NewPassword = FreshPassword() }));
+        }
+
+        Assert.Equal("hashed:correct-horse-battery-staple", await StoredPasswordHashAsync(userId));
+        Assert.Null(await RevokedAtAsync(tokens.RefreshToken));
+        var retry = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = code, NewPassword = FreshPassword() });
+        Assert.True(retry.Succeeded);
+    }
+
     [Fact]
     public async Task ResetPassword_AbortedWhileSavingThePassword_KeepsTheCode()
     {
@@ -365,6 +406,47 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         var mailed = Assert.Single(ResetCodesMailedTo(email));
         var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = mailed, NewPassword = FreshPassword() });
         Assert.True(reset.Succeeded);
+    }
+
+    // ---- Commit acknowledgement lost, transaction replayed by the execution strategy ---------
+
+    [Fact]
+    public async Task ForgotPassword_WhenTheCommitReplyIsLost_StillMailsTheLiveCode()
+    {
+        // The replay used to find the code the first attempt had committed, take it for the
+        // cooldown, and send nothing - leaving a live code the user never received.
+        var email = await RegisterAsync("forgot-lost-commit");
+        var interceptor = new LostCommitReplyInterceptor();
+        await using (var dbContext = NewDbContext(interceptor))
+        {
+            await NewAuthService(dbContext).ForgotPasswordAsync(email);
+        }
+
+        Assert.True(interceptor.Tripped);
+        var mailed = Assert.Single(ResetCodesMailedTo(email));
+        var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = mailed, NewPassword = FreshPassword() });
+        Assert.True(reset.Succeeded);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WhenTheCommitReplyIsLost_ReportsTheSuccess()
+    {
+        // The replay found the code already consumed and answered "invalid code" for a reset that
+        // had changed the password.
+        var email = await RegisterAsync("reset-lost-commit");
+        var userId = await UserIdAsync(email);
+        var code = await RequestCodeAsync(email);
+        var newPassword = FreshPassword();
+        var interceptor = new LostCommitReplyInterceptor();
+        ResetPasswordResult result;
+        await using (var dbContext = NewDbContext(interceptor))
+        {
+            result = await NewAuthService(dbContext).ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = code, NewPassword = newPassword });
+        }
+
+        Assert.True(interceptor.Tripped);
+        Assert.True(result.Succeeded);
+        Assert.Equal($"hashed:{newPassword}", await StoredPasswordHashAsync(userId));
     }
 
     // ---- Forgot-password throttle (#238) ---------------------------------------------------
@@ -414,7 +496,10 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
     // ---- Helpers ---------------------------------------------------------------------------
 
-    private AppDbContext NewDbContext() => new(AppDbContextOptionsFactory.Build(_fixture.ConnectionString));
+    private AppDbContext NewDbContext(params IInterceptor[] interceptors) =>
+        new(new DbContextOptionsBuilder<AppDbContext>(AppDbContextOptionsFactory.Build(_fixture.ConnectionString))
+            .AddInterceptors(interceptors)
+            .Options);
 
     private AuthService NewAuthService(AppDbContext dbContext, IJwtTokenService? jwtTokenService = null, IPasswordHasher? passwordHasher = null) =>
         new(dbContext, passwordHasher ?? _passwordHasher, jwtTokenService ?? new StubJwtTokenService(), _emailSender, NullLogger<AuthService>.Instance);
@@ -460,6 +545,10 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
             .Where(t => t.TokenHash == $"hash:{plainRefreshToken}")
             .Select(t => t.RevokedAt)
             .SingleAsync();
+
+    /// <summary>Read past the change tracker, which still holds the hash from registration.</summary>
+    private Task<string> StoredPasswordHashAsync(Guid userId) =>
+        _dbContext.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.PasswordHash).SingleAsync();
 
     private Task<int> LiveTokenCountAsync(Guid userId) =>
         _dbContext.RefreshTokens.CountAsync(t => t.UserId == userId && t.RevokedAt == null);
@@ -535,6 +624,52 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
             {
                 return [.. Sent];
             }
+        }
+    }
+
+    /// <summary>Fails any command whose SQL contains the fragment, as a dropped connection would mid-request.</summary>
+    private sealed class FailingCommandInterceptor(string sqlFragment) : DbCommandInterceptor
+    {
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            FailIfMatched(command);
+            return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            FailIfMatched(command);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
+
+        private void FailIfMatched(DbCommand command)
+        {
+            if (command.CommandText.Contains(sqlFragment, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException($"Simulated failure on {sqlFragment}.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Lets the first commit land, then fails it the way a connection dropped before the reply
+    /// does - a transient error, so the execution strategy retries the whole transaction.
+    /// </summary>
+    private sealed class LostCommitReplyInterceptor : DbTransactionInterceptor
+    {
+        public bool Tripped { get; private set; }
+
+        public override Task TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken = default)
+        {
+            if (Tripped)
+            {
+                return Task.CompletedTask;
+            }
+
+            Tripped = true;
+            throw new NpgsqlException("Simulated lost commit reply.", new IOException("Connection reset by peer."));
         }
     }
 

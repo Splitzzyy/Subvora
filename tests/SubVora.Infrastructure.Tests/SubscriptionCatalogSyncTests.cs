@@ -1,4 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
+using Npgsql;
 using SubVora.Domain.Entities;
 using SubVora.Infrastructure.Catalog;
 using SubVora.Infrastructure.Data;
@@ -167,5 +170,40 @@ public class SubscriptionCatalogSyncTests : IClassFixture<PostgresContainerFixtu
 
         Assert.NotNull(result);
         Assert.Equal("Disney+", result.ProviderName);
+    }
+
+    [Fact]
+    public async Task HostedSync_FailsOnce_ThenRetriesAndSucceeds()
+    {
+        // It used to try once and give up until the next start, which with autoDeploy off could be
+        // days. The first scope gets a connection that is refused outright (a wrong password, not a
+        // transient error, so EF's own retry stays out of it); the second gets the real database.
+        await _dbContext.SubscriptionCatalog.Where(item => item.ProviderName == "Hulu").ExecuteDeleteAsync();
+        var broken = new NpgsqlConnectionStringBuilder(_fixture.ConnectionString) { Password = "not-the-password" }.ConnectionString;  // pragma: allowlist secret
+        var contextsCreated = 0;
+        var services = new ServiceCollection();
+        services.AddScoped(_ => new AppDbContext(AppDbContextOptionsFactory.Build(
+            Interlocked.Increment(ref contextsCreated) == 1 ? broken : _fixture.ConnectionString)));
+        await using var provider = services.BuildServiceProvider();
+        var service = new SubscriptionCatalogSyncService(provider.GetRequiredService<IServiceScopeFactory>(), NullLogger<SubscriptionCatalogSyncService>.Instance)
+        {
+            RetryBaseDelay = TimeSpan.FromMilliseconds(10),
+        };
+
+        await service.StartAsync(CancellationToken.None);
+        await service.ExecuteTask!;
+
+        Assert.Equal(2, contextsCreated);
+        Assert.True(await _dbContext.SubscriptionCatalog.AnyAsync(item => item.ProviderName == "Hulu"));
+    }
+
+    [Fact]
+    public void ContextOptions_RetryTransientFaults()
+    {
+        // Neon scales to zero and restarts compute on its own schedule; without a retrying strategy
+        // every killed pooled connection surfaced as a 500.
+        using var dbContext = new AppDbContext(AppDbContextOptionsFactory.Build(_fixture.ConnectionString));
+
+        Assert.IsType<Npgsql.EntityFrameworkCore.PostgreSQL.NpgsqlRetryingExecutionStrategy>(dbContext.Database.CreateExecutionStrategy());
     }
 }

@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using SubVora.Application;
 using SubVora.Application.Categories;
 using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
@@ -111,10 +112,23 @@ public class SubscriptionsController : ControllerBase
             return referenceProblem;
         }
 
+        // A replay of a create that already went through is not a new row, so it is let through to
+        // the insert, which hands it back.
+        // ponytail: count-then-insert can overshoot by the number of concurrent creates; a hard
+        // DB-side cap needs a trigger, not worth it for an abuse guard.
+        if (await _subscriptionRepository.CountForUserAsync(userId, cancellationToken) >= UserQuotas.Subscriptions
+            && !(request.Id is Guid replayId && await _subscriptionRepository.ExistsForUserAsync(replayId, userId, cancellationToken)))
+        {
+            ModelState.AddModelError(string.Empty, $"You can have at most {UserQuotas.Subscriptions} subscriptions.");
+            return ValidationProblem(ModelState);
+        }
+
         var subscription = new UserSubscription
         {
-            // Guid.Empty leaves the key to the database default, as before.
-            Id = request.Id ?? Guid.Empty,
+            // Chosen here, never left to the database default: the insert is retried on a transient
+            // fault, and a retry after a commit whose acknowledgement was lost must hit the primary
+            // key below rather than insert a second row under a fresh default id.
+            Id = request.Id ?? Guid.NewGuid(),
             UserId = userId,
             CustomName = request.CustomName,
             CostAmount = request.CostAmount,
@@ -140,13 +154,13 @@ public class SubscriptionsController : ControllerBase
         {
             created = await _subscriptionRepository.AddAsync(subscription, cancellationToken);
         }
-        catch (DbUpdateException ex) when (request.Id is Guid takenId && ex.IsUniqueViolation())
+        catch (DbUpdateException ex) when (ex.IsUniqueViolation())
         {
             // The id is taken. A retry of a create that went through with the same details gets that
             // record back. Different details (the form was changed after the lost response) or
             // someone else's id, deliberately indistinguishable, are a conflict: handing back the old
             // record as if it were this one would silently drop the change.
-            var existing = await _subscriptionRepository.GetByIdAsync(takenId, userId, cancellationToken);
+            var existing = await _subscriptionRepository.GetByIdAsync(subscription.Id, userId, cancellationToken);
             return existing is not null && IsSameCreate(subscription, existing)
                 ? Ok(existing)
                 : Conflict(new { message = "That id is already in use." });

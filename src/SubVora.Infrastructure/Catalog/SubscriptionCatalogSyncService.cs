@@ -15,9 +15,11 @@ namespace SubVora.Infrastructure.Catalog;
 /// matchable the moment it lands. (The embedding era needed a successful backfill pass first,
 /// which is what made this shape painful enough to avoid.)
 ///
-/// Deliberately small: no advisory lock, because ON CONFLICT (provider_name) DO NOTHING already
-/// makes two instances starting together harmless; and no retry loop, because a failure here costs
-/// nothing but a log line and the next start tries again.
+/// No advisory lock, because ON CONFLICT (provider_name) DO NOTHING already makes two instances
+/// starting together harmless. It does retry, a few times with backoff: it used to try once, on the
+/// theory that the next start would try again, but the API deploys with autoDeploy off, so the next
+/// start could be days away - with every resolve answering tier Manual meanwhile. A start that races
+/// Neon waking up, or db-migrate.yml still running, now recovers in about a minute on its own.
 ///
 /// The seed migration stays where it is for databases that already ran it. This file is the living
 /// list; that migration is frozen history, and the two overlap without conflicting - every name it
@@ -34,24 +36,41 @@ public class SubscriptionCatalogSyncService : BackgroundService
         _logger = logger;
     }
 
+    public const int MaxAttempts = 5;
+
+    /// <summary>Wait before the second attempt, doubling after that: 5, 10, 20, 40 s, about 75 s in all. Settable so a test need not wait.</summary>
+    public TimeSpan RetryBaseDelay { get; init; } = TimeSpan.FromSeconds(5);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        try
+        for (var attempt = 1; attempt <= MaxAttempts; attempt++)
         {
-            using var scope = _scopeFactory.CreateScope();
-            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-            var inserted = await SyncAsync(dbContext, stoppingToken);
-            if (inserted > 0)
+            try
             {
-                _logger.LogInformation("Added {InsertedCount} provider(s) to the subscription catalog.", inserted);
+                using var scope = _scopeFactory.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+                var inserted = await SyncAsync(dbContext, stoppingToken);
+                if (inserted > 0)
+                {
+                    _logger.LogInformation("Added {InsertedCount} provider(s) to the subscription catalog.", inserted);
+                }
+
+                return;
             }
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            // A hosted service must never take the host down, and a stale catalog only costs
-            // matches - the app is entirely usable without this having run.
-            _logger.LogError(ex, "Subscription catalog sync failed; the catalog may be missing recently added providers.");
+            catch (Exception ex) when (ex is not OperationCanceledException && attempt < MaxAttempts)
+            {
+                _logger.LogWarning(ex, "Subscription catalog sync attempt {Attempt} of {MaxAttempts} failed; retrying.", attempt, MaxAttempts);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // A hosted service must never take the host down, and a stale catalog only costs
+                // matches - the app is entirely usable without this having run.
+                _logger.LogError(ex, "Subscription catalog sync failed {MaxAttempts} times; the catalog may be missing recently added providers.", MaxAttempts);
+                return;
+            }
+
+            await Task.Delay(RetryBaseDelay * Math.Pow(2, attempt - 1), stoppingToken);
         }
     }
 

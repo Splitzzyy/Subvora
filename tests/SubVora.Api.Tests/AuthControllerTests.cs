@@ -176,6 +176,23 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/api/v1/auth/register")]
+    [InlineData("/api/v1/auth/login")]
+    [InlineData("/api/v1/auth/forgot-password")]
+    [InlineData("/api/v1/auth/reset-password")]
+    public async Task EmailLongerThanTheColumn_Returns400(string path)
+    {
+        // users.email is varchar(255). A longer address used to pass validation, and register then
+        // failed in Postgres with 22001 and answered 500.
+        var client = _factory.CreateClient();
+        var email = new string('a', 250) + "@example.com";
+
+        var response = await client.PostAsJsonAsync(path, new { email, password = "correct-horse-battery-staple", code = "123456", newPassword = "correct-horse-battery-staple" });  // pragma: allowlist secret
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Register_SameEmailConcurrently_CreatesExactlyOneAccountWithoutA500()
     {

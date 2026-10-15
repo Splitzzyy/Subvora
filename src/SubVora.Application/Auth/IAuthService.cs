@@ -26,4 +26,10 @@ public interface IAuthService
     /// the same reason - and returns a fresh pair so the caller's own device stays signed in.
     /// </summary>
     Task<AuthResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Deletes the account and everything it owns, after checking the caller knows the current
+    /// password. False when the password is wrong or the account is already gone.
+    /// </summary>
+    Task<bool> DeleteAccountAsync(Guid userId, string currentPassword, CancellationToken cancellationToken = default);
 }

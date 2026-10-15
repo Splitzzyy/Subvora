@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Mvc.Testing;
 using SubVora.Application.Auth;
 using SubVora.Application.Subscriptions;
 using SubVora.Domain.Enums;
@@ -27,9 +28,9 @@ public class MarkPaidControllerTests : IClassFixture<ApiWebApplicationFactory>
         _factory = factory;
     }
 
-    private async Task<HttpClient> CreateAuthenticatedClientAsync()
+    private async Task<HttpClient> CreateAuthenticatedClientAsync(WebApplicationFactory<Program>? factory = null)
     {
-        var client = _factory.CreateClient();
+        var client = (factory ?? _factory).CreateClient();
         var email = $"markpaid-{Guid.NewGuid()}@example.com";
         // Throwaway literal for a throwaway account in an ephemeral Testcontainers database, the
         // same one every other controller test here registers with.
@@ -77,6 +78,24 @@ public class MarkPaidControllerTests : IClassFixture<ApiWebApplicationFactory>
         // between, which is exactly what the removed nightly job used to do.
         Assert.Equal(new DateOnly(2026, 5, 23), settled.NextBillingDate);
         Assert.True(settled.IsActive);
+    }
+
+    [Fact]
+    public async Task MarkPaid_WithoutADate_WhenTheCommitReplyIsLost_AdvancesOnce_AndAnswers409()
+    {
+        // The execution strategy replays the UPDATE against the xmin the first attempt already
+        // moved on. Without a billing date nothing says it was this tap that landed, so the answer
+        // is "look again" - not a 500, and never a second cycle.
+        var interceptor = new LostReplyInterceptor("UPDATE user_subscriptions");
+        var client = await CreateAuthenticatedClientAsync(_factory.WithInterceptor(interceptor));
+        var created = await CreateAsync(client, BillingCycleType.Monthly, new DateOnly(2026, 3, 23), new DateOnly(2026, 4, 23));
+
+        var response = await client.PostAsync($"/api/v1/subscriptions/{created.Id}/mark-paid", null);
+
+        Assert.True(interceptor.Tripped);
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        var stored = await client.GetFromJsonAsync<SubscriptionDto>($"/api/v1/subscriptions/{created.Id}", JsonOptions);
+        Assert.Equal(new DateOnly(2026, 5, 23), stored!.NextBillingDate);
     }
 
     [Fact]

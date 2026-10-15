@@ -74,18 +74,33 @@ public class FxRateService : IFxRateService
         // in a new currency count toward their totals before the next scheduled refresh - so it
         // stays, cooldown and all, rather than being sacrificed to make the batch a single
         // statement.
-        foreach (var missing in wanted.Where(currency => !resolved.ContainsKey(currency)))
+        var missingPairs = wanted.Where(currency => !resolved.ContainsKey(currency)).ToList();
+        for (var i = 0; i < missingPairs.Count; i++)
         {
-            if (await FetchMissingRateAsync(missing, targetCurrency, cancellationToken) is { } fetched)
+            var (fetched, providerDown) = await FetchMissingRateAsync(missingPairs[i], targetCurrency, cancellationToken);
+            if (fetched is not null)
             {
-                resolved[missing] = fetched;
+                resolved[missingPairs[i]] = fetched;
+            }
+
+            // This is the dashboard's request path. If the provider is unreachable for one base it is
+            // unreachable for all of them, and asking for each in turn made a hanging provider cost one
+            // full timeout per currency. The rest go on cooldown too, so the next load does not ask again.
+            if (providerDown)
+            {
+                foreach (var skipped in missingPairs.Skip(i + 1))
+                {
+                    FailedFetches[(skipped, targetCurrency)] = DateTimeOffset.UtcNow;
+                }
+
+                break;
             }
         }
 
         return resolved;
     }
 
-    private async Task<CachedFxRate?> FetchMissingRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken)
+    private async Task<(CachedFxRate? Rate, bool ProviderDown)> FetchMissingRateAsync(string baseCurrency, string targetCurrency, CancellationToken cancellationToken)
     {
         var pair = (baseCurrency, targetCurrency);
 
@@ -93,28 +108,39 @@ public class FxRateService : IFxRateService
         // load. The scheduled refresh stays the backstop for a pair that starts working later.
         if (FailedFetches.TryGetValue(pair, out var failedAt) && DateTimeOffset.UtcNow - failedAt < FailedFetchCooldown)
         {
-            return null;
+            return (null, false);
         }
 
         ExchangeRate? fetched = null;
+        var providerDown = false;
         try
         {
             var rates = await _exchangeRateClient.GetLatestRatesAsync(baseCurrency, [targetCurrency], cancellationToken);
             fetched = rates.FirstOrDefault(r => r.TargetCurrency == targetCurrency);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (ExchangeRateLookupException ex)
         {
+            // The provider answered, with an error in the body (an unsupported code): only this pair.
             _logger.LogWarning(ex, "On-demand FX fetch failed for {BaseCurrency}->{TargetCurrency}; the scheduled refresh remains the backstop.", baseCurrency, targetCurrency);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Anything else - a timeout, a refused connection, a 5xx - means the provider itself is
+            // not answering. HttpClient reports its timeout as a TaskCanceledException, so the test is
+            // whether the caller cancelled, not the exception type: filtering out every
+            // OperationCanceledException let a timeout escape as a 500.
+            providerDown = true;
+            _logger.LogWarning(ex, "On-demand FX fetch failed for {BaseCurrency}->{TargetCurrency}; the provider looks unavailable, skipping the remaining pairs.", baseCurrency, targetCurrency);
         }
 
         if (fetched is null)
         {
             FailedFetches[pair] = DateTimeOffset.UtcNow;
-            return null;
+            return (null, providerDown);
         }
 
         await UpsertRatesAsync([fetched], cancellationToken);
         FailedFetches.TryRemove(pair, out _);
-        return new CachedFxRate(fetched.Rate, DateTimeOffset.UtcNow);
+        return (new CachedFxRate(fetched.Rate, DateTimeOffset.UtcNow), false);
     }
 }
