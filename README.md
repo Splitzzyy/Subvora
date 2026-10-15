@@ -11,7 +11,7 @@ SubVora is a cross-platform mobile app that tracks all your subscriptions, warns
 [![APK downloads, all releases](https://img.shields.io/github/downloads/Splitzzyy/Subvora/total?label=APK%20downloads)](https://github.com/Splitzzyy/Subvora/releases)
 [![APK downloads, latest release](https://img.shields.io/github/downloads/Splitzzyy/Subvora/latest/total?label=latest%20release)](https://github.com/Splitzzyy/Subvora/releases/latest)
 
-Android 8.0 (API 26) or newer. Download the `.apk` on your phone and tap it.
+Android 7.0 (API 24) or newer. Download the `.apk` on your phone and tap it.
 
 Android blocks the first attempt and offers **Settings → Allow from this source** — that permission
 is granted per app, to whatever opened the file (Chrome, Files, …). Tap Install again afterwards.
@@ -36,7 +36,7 @@ No account is needed to download. Register inside the app.
 
 ## Tech Stack
 
-- **Mobile:** .NET MAUI (single C# codebase, Android + iOS)
+- **Mobile:** React Native (Expo, TypeScript) with a Material 3 Expressive UI, Android — see [Android/README.md](./Android/README.md)
 - **Backend:** ASP.NET Core Web API
 - **Database:** PostgreSQL + `pg_trgm`
 - **Provider matching:** trigram similarity in the database — no AI provider, no API key
@@ -52,15 +52,16 @@ See [docs/Design.md](./docs/Design.md) for the full architecture and database sc
 | [docs/Design.md](./docs/Design.md) | Architecture diagram, DB schema, matching flow |
 | [docs/ADDING_A_PROVIDER.md](./docs/ADDING_A_PROVIDER.md) | How to add, rename, or remove a subscription provider |
 | [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Hosting the API, cutting a release, shipping the Android APK |
-| [docs/debug/ANDROID_DEVICE.md](./docs/debug/ANDROID_DEVICE.md) | Running the app on a physical phone against a local API |
+| [Android/README.md](./Android/README.md) | Running the app on a physical phone against a local API |
+| [Android/DESIGN.md](./Android/DESIGN.md) | Material 3 Expressive UI system |
 | [CLAUDE.md](./CLAUDE.md) | Guidance for Claude Code working in this repo |
 
 API docs (Swagger UI) are served at `/swagger` when the API runs in the `Development` environment.
 
 ## Status
 
-**Live.** The API runs on Render against Neon Postgres, and v1.1.0 of the Android app is published
-under [Releases](https://github.com/Splitzzyy/Subvora/releases/latest). Both sides remain under
+**Live.** The API runs on Render against Neon Postgres, and the Android app is published under
+[Releases](https://github.com/Splitzzyy/Subvora/releases/latest). Both sides remain under
 active development.
 
 **Backend:** users, categories, payment sources, subscription catalog, user subscriptions, FX rates,
@@ -71,9 +72,11 @@ trigram catalog matching; and the burn-rate dashboard.
 Nothing advances a billing date on a timer — a date left in the past is how the app says a charge is
 outstanding, and it moves only when the user marks the charge paid.
 
-**Mobile:** .NET MAUI client covering auth, subscription list and detail, dashboard, categories,
-payment sources and settings, with a read-only offline SQLite mirror and on-device renewal
-reminders. There is no push service: reminders are derived from the subscription list and scheduled
+**Mobile:** React Native (Expo) client in `Android/` covering auth, subscription list and detail,
+dashboard, categories, payment sources and settings, with a read-only offline mirror and on-device
+renewal reminders. It replaces the earlier .NET MAUI client from v2.0.0: same app id and signing key, so
+installing the new APK upgrades the MAUI app in place (sign in once more afterwards). The MAUI code
+(`src/SubVora.Mobile`) is kept for reference only - nothing builds or ships it. There is no push service: reminders are derived from the subscription list and scheduled
 with the OS, which delivers them with the app closed.
 
 ## Getting Started
@@ -117,15 +120,12 @@ Docker creates a directory at the mount path and the API fails on an empty conne
 
 **Tests**
 
-Each project is tested individually rather than via the solution — on Linux `SubVora.Mobile` only
-exposes its `net10.0-android` target, so `SubVora.Mobile.Tests` (Windows-only TFM) cannot resolve its
-project reference there. CI splits them the same way.
-
 ```
 dotnet test tests/SubVora.Api.Tests/SubVora.Api.Tests.csproj -c Release
 dotnet test tests/SubVora.Application.Tests/SubVora.Application.Tests.csproj -c Release
 dotnet test tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.csproj -c Release
-dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj -c Release   # Windows only
+
+cd Android && npm ci && npm run typecheck && npm run lint && npm test
 ```
 
 `SubVora.Api.Tests` and `SubVora.Infrastructure.Tests` start a real `pgvector/pgvector:pg16` container (a stock Postgres 16 plus an extension the app no longer uses — kept so existing dev volumes keep working)

@@ -10,8 +10,8 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
                      ┌───────────────────────────────────┐
                      │       Mobile Client Layer         │
                      │  ┌─────────────────────────────┐  │
-                     │  │      .NET MAUI Mobile       │  │
-                     │  │   (Single C# UI Codebase)   │  │
+                     │  │   React Native (Expo) App   │  │
+                     │  │  (TypeScript, Android/ dir) │  │
                      │  └──────────────┬──────────────┘  │
                      └─────────────────┼─────────────────┘
                                        │
@@ -39,15 +39,15 @@ SubVora is a cross-platform mobile subscription tracker with cancellation remind
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Mobile client | .NET MAUI (C#) | Single codebase targeting Android + iOS |
+| Mobile client | React Native (Expo, TypeScript) in `Android/` | Android-only; Material 3 Expressive UI. The earlier .NET MAUI client (`src/SubVora.Mobile`) is retired - kept for reference, not built |
 | Local cache | SQLite (via `Microsoft.Data.Sqlite` / EF Core) | Offline-first, synced with backend |
 | Backend API | ASP.NET Core Web API (.NET 8 LTS) | REST, JWT auth |
 | ORM | Entity Framework Core + `Npgsql.EntityFrameworkCore.PostgreSQL` | |
 | Database | PostgreSQL 16+ with `pg_trgm` extension | Relational data + fuzzy provider matching in one store |
 | Provider matching | PostgreSQL `pg_trgm` trigram similarity | No AI provider, no API key, no network hop; see §8 |
-| Renewal reminders | Local notifications scheduled on-device by the MAUI client | No push service, no vendor project, no API key; see §6 |
+| Renewal reminders | Local notifications scheduled on-device by the mobile client (`expo-notifications`) | No push service, no vendor project, no API key; see §6 |
 | Background jobs | `.NET BackgroundService` / Hosted Service (or Hangfire/Quartz.NET if scale requires) | Nightly scan for upcoming renewals |
-| Currency conversion | External FX rate API (e.g. exchangerate.host, Open Exchange Rates) cached in DB | Refresh rates on a schedule, not per-request |
+| Currency conversion | External FX rate API (open.er-api.com; exchangerate.host now needs a key) cached in DB | Refresh rates on a schedule, not per-request |
 | Auth | JWT bearer tokens, refresh token rotation | ASP.NET Identity or custom user store |
 | Hosting | Containerized (Docker) API + managed Postgres | Cloud-agnostic; Azure App Service / AWS / Railway all viable |
 

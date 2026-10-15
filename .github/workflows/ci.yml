@@ -15,11 +15,6 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
-      # Test each backend project directly rather than restoring/building the whole
-      # SubVora.slnx: on Linux, SubVora.Mobile only exposes net10.0-android (its ios/
-      # maccatalyst/windows TFMs are conditioned out on this OS), so SubVora.Mobile.Tests
-      # (which targets net10.0-windows unconditionally) can never resolve its ProjectReference
-      # here - that project's tests run on the windows-latest job below instead.
       - name: Test API project
         run: dotnet test tests/SubVora.Api.Tests/SubVora.Api.Tests.csproj -c Release
 
@@ -29,46 +24,24 @@ jobs:
       - name: Test Infrastructure project
         run: dotnet test tests/SubVora.Infrastructure.Tests/SubVora.Infrastructure.Tests.csproj -c Release
 
-  # The Android TFM was previously built nowhere: backend-build-and-test skips the mobile project
-  # entirely, and mobile-test below builds net10.0-windows, which is what SubVora.Mobile.Tests
-  # targets. So the first Android package of any given commit was produced by release-android.yml,
-  # at tag time - the most expensive possible moment to discover a break, and after a tag exists
-  # that has to be deleted to retry.
-  #
-  # Unsigned on purpose. Signing needs the keystore secrets, which are not available to pull
-  # requests from forks, and this job is about whether the app compiles, links, trims and packages
-  # for Android - not about the release credentials. release-android.yml verifies those separately.
-  mobile-android-build:
+  # The React Native client in Android/ - the only mobile client built anywhere. The production JS
+  # bundle (Hermes) is compiled here; the signed native APK comes from release-android.yml.
+  android:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Android
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-node@v4
         with:
-          dotnet-version: "10.0.x"
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: Android/package-lock.json
 
-      # Only the android workload - the full `maui` workload would also pull ios/maccatalyst,
-      # which this job never builds.
-      - name: Install MAUI Android workload
-        run: dotnet workload install maui-android --ignore-failed-sources
-
-      - name: Build Android package
-        run: |
-          dotnet publish src/SubVora.Mobile/SubVora.Mobile.csproj \
-            -f net10.0-android -c Release \
-            -p:AndroidPackageFormat=apk
-
-  mobile-test:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: Install MAUI workload
-        run: dotnet workload install maui --ignore-failed-sources
-
-      - name: Test
-        run: dotnet test tests/SubVora.Mobile.Tests/SubVora.Mobile.Tests.csproj -c Release
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx expo export --platform android --output-dir "$RUNNER_TEMP/export"

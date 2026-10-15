@@ -305,7 +305,7 @@ public class FxRateRefreshJobTests : IClassFixture<PostgresContainerFixture>, IA
     private class ThrowingExchangeRateClient : IExchangeRateClient
     {
         public Task<IReadOnlyList<ExchangeRate>> GetLatestRatesAsync(string baseCurrency, IReadOnlyCollection<string> targetCurrencies, CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Simulated exchangerate.host outage.");
+            throw new InvalidOperationException("Simulated exchange rate API outage.");
     }
 
     /// <summary>Fails for one base currency and succeeds for every other - the partial-failure case.</summary>

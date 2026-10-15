@@ -89,9 +89,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IValidator<UpdateUserProfileRequest>, UpdateUserProfileRequestValidator>();
 
 builder.Services.AddScoped<IFxRateService, FxRateService>();
-builder.Services.AddHttpClient<IExchangeRateClient, ExchangeRateHostClient>(client =>
+builder.Services.AddHttpClient<IExchangeRateClient, OpenErApiClient>(client =>
 {
-    client.BaseAddress = new Uri("https://api.exchangerate.host/");
+    client.BaseAddress = new Uri("https://open.er-api.com/");
 });
 builder.Services.AddHostedService<FxRateRefreshBackgroundService>();
 

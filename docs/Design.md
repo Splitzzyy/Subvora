@@ -1,6 +1,6 @@
 # SubVora 🚀
 ### Your Intelligent Cross-Platform Subscription Tracker & Optimizer
-Built using single-codebase **.NET MAUI** (iOS & Android), backed by a high-performance **ASP.NET Core Web API**, and powered by **PostgreSQL + `pg_trgm`** for in-database fuzzy provider matching.
+Built as a **React Native (Expo)** Android app with a Material 3 Expressive UI, backed by a high-performance **ASP.NET Core Web API**, and powered by **PostgreSQL + `pg_trgm`** for in-database fuzzy provider matching.
 
 ---
 
@@ -17,8 +17,8 @@ The application automates mundane workflows like logo provisioning, smart catego
                      ┌───────────────────────────────────┐
                      │       Mobile Client Layer         │
                      │  ┌─────────────────────────────┐  │
-                     │  │      .NET MAUI Mobile       │  │
-                     │  │   (Single C# UI Codebase)   │  │
+                     │  │   React Native (Expo) App   │  │
+                     │  │  (TypeScript, Android/ dir) │  │
                      │  └──────────────┬──────────────┘  │
                      └─────────────────┼─────────────────┘
                                        │
@@ -54,10 +54,10 @@ The application automates mundane workflows like logo provisioning, smart catego
 6. **Self-Service Exit Execution:** Curated, context-sensitive instructions or deep links targeting the respective provider's cancellation terminal.
 
 ### 💻 System Engineering Architecture (Technical Requirements)
-1. **Cross-Platform Mobile Component (.NET MAUI):**
-   * **Local State Caching:** Embedded `SQLite` context database providing sub-second runtime latency and offline access capabilities.
+1. **Mobile Component (React Native / Expo, `Android/`):** the earlier .NET MAUI client in `src/SubVora.Mobile` is retired and kept only for reference.
+   * **Local State Caching:** `expo-sqlite` kv-store mirror of the last successful reads, for offline access. Read-only - there are no offline writes.
    * **Renewal Reminders:** Local notifications scheduled on-device from the local mirror. The OS delivers them with the app closed, so no push service, vendor project or API key is involved.
-   * **Screens Load Once, Not Per Tab Switch:** Shell raises `OnAppearing` on every tab selection, so each page's `OnAppearing` calls `EnsureLoadedCommand` — a first-visit fetch, then nothing. Freshness comes from invalidation, not repetition: a write publishes `SubscriptionsChangedMessage`, signing out publishes `SessionEndedMessage`, and pull-to-refresh (`LoadCommand`) always fetches. A load that ended with nothing on screen is not "loaded", so an error screen still retries on the next visit.
+   * **Screens Load Once, Not Per Tab Switch:** `useLoader` fetches on first focus, then only after a write somewhere has bumped the session's `dataVersion`. Signing out unmounts the signed-in screens entirely, and pull-to-refresh always fetches. A load that ended with nothing on screen is not "loaded", so an error screen still retries on the next visit.
 2. **Microservice Backend API (ASP.NET Core):**
    * **Authentication Matrix:** Secure stateless JWT (JSON Web Tokens) handling verification flows via industry-grade encryption frameworks.
    * **Background Work:** Only what a client cannot do for itself — refreshing cached FX rates, syncing the provider catalog, and dispatching queued email. Nothing advances a billing date on a timer: that moves when the user marks a charge paid, so a date left in the past means the charge is genuinely outstanding.
