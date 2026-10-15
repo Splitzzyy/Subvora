@@ -79,7 +79,8 @@ const parse = (text: string) => {
 };
 
 /**
- * One request. Authenticated calls attach the bearer token and retry once after a refresh on 401.
+ * One request. Authenticated calls attach the bearer token and retry once after a refresh on 401;
+ * a refresh the server could not answer fails the request with its own status instead.
  * Pass auth:false for login/register/refresh/reset - a 401 there is a verdict, not an expiry.
  */
 export async function api<T = void>(method: string, path: string, body?: unknown, { auth = true } = {}): Promise<T> {
@@ -113,18 +114,24 @@ async function refresh(): Promise<string | null> {
   const refreshToken = await tokens.refreshToken();
   if (!refreshToken) return expire();
 
+  const attempt = () => send('POST', '/api/v1/auth/refresh', { refreshToken }, null, REFRESH_TIMEOUT_MS);
   let response;
   try {
-    response = await send('POST', '/api/v1/auth/refresh', { refreshToken }, null, REFRESH_TIMEOUT_MS);
+    response = await attempt();
   } catch {
-    // Unreachable is not a verdict on the session. Signing out here would wipe the offline mirror
-    // precisely when being offline is the problem; this request keeps its 401 and nothing else.
-    return null;
+    // A refresh that timed out has usually still rotated the token server-side; only the answer
+    // was lost. Asked again now, the server is inside its short grace for exactly this and hands
+    // out a fresh pair. Left for the next request - maybe minutes later - the same token reads as
+    // stolen and signs the user out of every device.
+    response = await attempt();
   }
-
-  // A 429 or 5xx is the server being busy or waking, not a verdict: keep the tokens, fail just
-  // this request, and let the next one try again - the same as being unreachable above.
-  if (!response.ok) return refreshEndsSession(response.status) ? expire() : null;
+  // Still unreachable (the ApiError(0) above), or a 429/5xx: not a verdict on the session. Signing
+  // out would wipe the offline mirror precisely when the server is the problem, so the tokens stay,
+  // and the request fails with the refresh's own status rather than a 401 that says "log in again".
+  if (!response.ok) {
+    if (refreshEndsSession(response.status)) return expire();
+    throw new ApiError(response.status, parse(response.text));
+  }
 
   const refreshed = parse(response.text) as AuthTokenResponse | undefined;
   if (!refreshed?.accessToken) return expire();

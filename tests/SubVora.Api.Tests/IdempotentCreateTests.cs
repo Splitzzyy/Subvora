@@ -80,6 +80,26 @@ public class IdempotentCreateTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task CreateSubscription_SameIdWithChangedDetails_Returns409_AndKeepsTheFirst()
+    {
+        // The first response was lost, the user fixed a typo and saved again. Handing back the
+        // first record as a success would drop the fix without a word.
+        var client = await CreateAuthenticatedClientAsync();
+        var id = Guid.NewGuid();
+        await client.PostAsJsonAsync("/api/v1/subscriptions", Subscription(id), JsonOptions);
+        var corrected = Subscription(id);
+        corrected.CustomName = "Netflix Premium";
+        corrected.CostAmount = 649m;
+
+        var retry = await client.PostAsJsonAsync("/api/v1/subscriptions", corrected, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Conflict, retry.StatusCode);
+        var stored = await client.GetFromJsonAsync<SubscriptionDto>($"/api/v1/subscriptions/{id}", JsonOptions);
+        Assert.Equal("Netflix", stored!.CustomName);
+        Assert.Equal(1, await CountSubscriptionsAsync(client));
+    }
+
+    [Fact]
     public async Task CreateSubscription_SameIdConcurrently_CreatesOne()
     {
         var client = await CreateAuthenticatedClientAsync();
@@ -163,6 +183,20 @@ public class IdempotentCreateTests : IClassFixture<ApiWebApplicationFactory>
         Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
         Assert.Equal(request.Id, (await retry.Content.ReadFromJsonAsync<PaymentSourceDto>(JsonOptions))!.Id);
         Assert.Equal(1, await CountPaymentSourcesAsync(client));
+    }
+
+    [Fact]
+    public async Task CreatePaymentSource_SameIdWithChangedDetails_Returns409_AndKeepsTheFirst()
+    {
+        var client = await CreateAuthenticatedClientAsync();
+        var id = Guid.NewGuid();
+        await client.PostAsJsonAsync("/api/v1/payment-sources", new CreatePaymentSourceRequest { Id = id, Label = "Visa", SourceType = PaymentSourceType.Card }, JsonOptions);
+
+        var retry = await client.PostAsJsonAsync("/api/v1/payment-sources", new CreatePaymentSourceRequest { Id = id, Label = "Mastercard", SourceType = PaymentSourceType.Card }, JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Conflict, retry.StatusCode);
+        var stored = await client.GetFromJsonAsync<List<PaymentSourceDto>>("/api/v1/payment-sources", JsonOptions);
+        Assert.Equal("Visa", Assert.Single(stored!).Label);
     }
 
     [Fact]

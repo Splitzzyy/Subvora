@@ -4,13 +4,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using SubVora.Application.Categories;
 using SubVora.Application.Matching;
 using SubVora.Application.PaymentSources;
 using SubVora.Application.Subscriptions;
 using SubVora.Application.Users;
 using SubVora.Domain.Entities;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Controllers;
 
@@ -83,13 +83,13 @@ public class SubscriptionsController : ControllerBase
     /// <remarks>
     /// Send an <c>Id</c> chosen once per create form and a retry of the same create - after a
     /// timeout or a lost response - returns the subscription already made (200) instead of making
-    /// a second one. Without it the server picks the id, as before.
+    /// a second one, as long as the details match. Without it the server picks the id, as before.
     /// </remarks>
     /// <response code="201">The subscription was created.</response>
-    /// <response code="200">A replay of a create that already succeeded with the same id.</response>
+    /// <response code="200">A replay of a create that already succeeded with the same id and details.</response>
     /// <response code="400">The payload failed validation.</response>
     /// <response code="401">The caller is not authenticated.</response>
-    /// <response code="409">The id is already in use by another record.</response>
+    /// <response code="409">The id is already in use, by another record or by this create with different details.</response>
     [HttpPost]
     [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(SubscriptionDto), StatusCodes.Status200OK)]
@@ -109,13 +109,6 @@ public class SubscriptionsController : ControllerBase
         if (await ValidateReferencesAsync(request, userId, cancellationToken) is { } referenceProblem)
         {
             return referenceProblem;
-        }
-
-        // A replay of a create that already went through: hand back what was made, write nothing.
-        if (request.Id is Guid requestedId
-            && await _subscriptionRepository.GetByIdAsync(requestedId, userId, cancellationToken) is { } existing)
-        {
-            return Ok(existing);
         }
 
         var subscription = new UserSubscription
@@ -147,13 +140,15 @@ public class SubscriptionsController : ControllerBase
         {
             created = await _subscriptionRepository.AddAsync(subscription, cancellationToken);
         }
-        catch (DbUpdateException ex) when (request.Id is Guid racedId
-            && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (request.Id is Guid takenId && ex.IsUniqueViolation())
         {
-            // A concurrent replay inserted the same id between our check and our insert. Theirs
-            // is the record; if the id belongs to someone else, it is simply taken.
-            return await _subscriptionRepository.GetByIdAsync(racedId, userId, cancellationToken) is { } raced
-                ? Ok(raced)
+            // The id is taken. A retry of a create that went through with the same details gets that
+            // record back. Different details (the form was changed after the lost response) or
+            // someone else's id, deliberately indistinguishable, are a conflict: handing back the old
+            // record as if it were this one would silently drop the change.
+            var existing = await _subscriptionRepository.GetByIdAsync(takenId, userId, cancellationToken);
+            return existing is not null && IsSameCreate(subscription, existing)
+                ? Ok(existing)
                 : Conflict(new { message = "That id is already in use." });
         }
 
@@ -351,6 +346,20 @@ public class SubscriptionsController : ControllerBase
 
         return errors.Count == 0 ? null : ValidationProblem(new ValidationProblemDetails(errors));
     }
+
+    /// <summary>Whether a replayed create asks for exactly the record the first attempt made.</summary>
+    private static bool IsSameCreate(UserSubscription attempted, SubscriptionDto existing) =>
+        existing.CustomName == attempted.CustomName
+        && existing.CostAmount == attempted.CostAmount
+        && existing.Currency == attempted.Currency
+        && existing.CycleCadence == attempted.CycleCadence
+        && existing.PurchaseDate == attempted.PurchaseDate
+        && existing.NextBillingDate == attempted.NextBillingDate
+        && existing.AlertDaysAdvance == attempted.AlertDaysAdvance
+        && existing.CategoryId == attempted.CategoryId
+        && existing.PaymentSourceId == attempted.PaymentSourceId
+        && existing.CatalogId == attempted.CatalogId
+        && existing.IsFreeTrial == attempted.IsFreeTrial;
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

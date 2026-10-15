@@ -248,6 +248,25 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         Assert.True(await LiveTokenCountAsync(userId) <= 1);
     }
 
+    [Fact]
+    public async Task Refresh_AbortedBeforeTheNewPairIsSaved_LeavesTheOldTokenUsable()
+    {
+        // The client's refresh timeout cancels the request between the rotation and the insert of
+        // the new pair. Committed apart, that left the old token rotated with no successor row, so
+        // the client's retry found nothing to discard and signed the user out everywhere.
+        var (userId, tokens) = await RegisterAndLoginAsync("refresh-aborted");
+        await using (var dbContext = NewDbContext())
+        {
+            var aborting = NewAuthService(dbContext, new StubJwtTokenService { AbortNextAccessToken = true });
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => aborting.RefreshAsync(tokens.RefreshToken));
+        }
+
+        var retry = await _authService.RefreshAsync(tokens.RefreshToken);
+
+        Assert.True(retry.Succeeded);
+        Assert.Equal(1, await LiveTokenCountAsync(userId));
+    }
+
     // ---- Reset-code races (#237) -----------------------------------------------------------
 
     [Fact]
@@ -307,6 +326,27 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     }
 
     [Fact]
+    public async Task ResetPassword_AbortedWhileSavingThePassword_KeepsTheCode()
+    {
+        // The code used to be consumed in its own committed statement, so a request that died
+        // before the password was saved spent the code and changed nothing.
+        var email = await RegisterAsync("reset-aborted");
+        var code = await RequestCodeAsync(email);
+        using var abort = new CancellationTokenSource();
+        var hasher = new CountingPasswordHasher { OnHash = abort.Cancel };
+        await using (var dbContext = NewDbContext())
+        {
+            var aborting = NewAuthService(dbContext, passwordHasher: hasher);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => aborting.ResetPasswordAsync(
+                new ResetPasswordRequest { Email = email, Code = code, NewPassword = FreshPassword() }, abort.Token));
+        }
+
+        var retry = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = code, NewPassword = FreshPassword() });
+
+        Assert.True(retry.Succeeded);
+    }
+
+    [Fact]
     public async Task ForgotPassword_Concurrent_LeavesOneLiveCode()
     {
         var email = await RegisterAsync("forgot-race");
@@ -319,6 +359,12 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         }));
 
         Assert.Equal(1, await _dbContext.PasswordResetCodes.CountAsync(c => c.UserId == userId && c.UsedAt == null));
+
+        // One mail, and the code in it is the live one. Two requests that both passed the throttle
+        // used to mail two codes, the second request retiring the code the first had just sent.
+        var mailed = Assert.Single(ResetCodesMailedTo(email));
+        var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = mailed, NewPassword = FreshPassword() });
+        Assert.True(reset.Succeeded);
     }
 
     // ---- Forgot-password throttle (#238) ---------------------------------------------------
@@ -370,8 +416,8 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
     private AppDbContext NewDbContext() => new(AppDbContextOptionsFactory.Build(_fixture.ConnectionString));
 
-    private AuthService NewAuthService(AppDbContext dbContext) =>
-        new(dbContext, _passwordHasher, new StubJwtTokenService(), _emailSender, NullLogger<AuthService>.Instance);
+    private AuthService NewAuthService(AppDbContext dbContext, IJwtTokenService? jwtTokenService = null, IPasswordHasher? passwordHasher = null) =>
+        new(dbContext, passwordHasher ?? _passwordHasher, jwtTokenService ?? new StubJwtTokenService(), _emailSender, NullLogger<AuthService>.Instance);
 
     /// <summary>A throwaway new password, generated so no password-shaped literal sits in the source.</summary>
     private static string FreshPassword() => $"pw-{Guid.NewGuid():N}";
@@ -445,7 +491,14 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     {
         public int VerifyCalls { get; set; }
 
-        public string Hash(string password) => $"hashed:{password}";
+        /// <summary>Runs on every hash, so a test can fail a request part way through a reset.</summary>
+        public Action? OnHash { get; init; }
+
+        public string Hash(string password)
+        {
+            OnHash?.Invoke();
+            return $"hashed:{password}";
+        }
 
         public bool Verify(string password, string hash)
         {
@@ -487,8 +540,19 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
     private sealed class StubJwtTokenService : IJwtTokenService
     {
-        public GeneratedAccessToken GenerateAccessToken(Guid userId, string email) =>
-            new($"access-{userId}", DateTimeOffset.UtcNow.AddMinutes(15));
+        /// <summary>Fails the next pair as an aborted request would, after the rotation has run.</summary>
+        public bool AbortNextAccessToken { get; set; }
+
+        public GeneratedAccessToken GenerateAccessToken(Guid userId, string email)
+        {
+            if (AbortNextAccessToken)
+            {
+                AbortNextAccessToken = false;
+                throw new OperationCanceledException();
+            }
+
+            return new($"access-{userId}", DateTimeOffset.UtcNow.AddMinutes(15));
+        }
 
         public GeneratedRefreshToken GenerateRefreshToken()
         {

@@ -3,8 +3,8 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using SubVora.Application.Categories;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Controllers;
 
@@ -59,7 +59,7 @@ public class CategoriesController : ControllerBase
             var category = await _categoryRepository.AddAsync(GetUserId(), request.Name.Trim(), cancellationToken);
             return CreatedAtAction(nameof(GetAll), category);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (ex.IsUniqueViolation())
         {
             return Conflict(new { message = "A category with this name already exists." });
         }
@@ -91,7 +91,7 @@ public class CategoriesController : ControllerBase
             var renamed = await _categoryRepository.RenameAsync(id, GetUserId(), request.Name.Trim(), cancellationToken);
             return renamed is null ? NotFound() : Ok(renamed);
         }
-        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (ex.IsUniqueViolation())
         {
             // Same unique index Create trips over, for the same reason.
             return Conflict(new { message = "A category with this name already exists." });

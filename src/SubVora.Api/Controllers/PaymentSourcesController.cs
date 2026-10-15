@@ -3,8 +3,8 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Npgsql;
 using SubVora.Application.PaymentSources;
+using SubVora.Infrastructure.Data;
 
 namespace SubVora.Api.Controllers;
 
@@ -39,13 +39,14 @@ public class PaymentSourcesController : ControllerBase
     /// <summary>Creates a payment source owned by the authenticated user.</summary>
     /// <remarks>
     /// Send an <c>Id</c> chosen once per create form and a retry of the same create returns the
-    /// payment source already made (200) instead of a duplicate. Without it the server picks the id.
+    /// payment source already made (200) instead of a duplicate, as long as the details match.
+    /// Without it the server picks the id.
     /// </remarks>
     /// <response code="201">The payment source was created.</response>
-    /// <response code="200">A replay of a create that already succeeded with the same id.</response>
+    /// <response code="200">A replay of a create that already succeeded with the same id and details.</response>
     /// <response code="400">The payload failed validation.</response>
     /// <response code="401">The caller is not authenticated.</response>
-    /// <response code="409">The id is already in use by another record.</response>
+    /// <response code="409">The id is already in use, by another record or by this create with different details.</response>
     [HttpPost]
     [ProducesResponseType(typeof(PaymentSourceDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(PaymentSourceDto), StatusCodes.Status200OK)]
@@ -62,25 +63,20 @@ public class PaymentSourcesController : ControllerBase
 
         var userId = GetUserId();
 
-        // A replay of a create that already went through: hand back what was made, write nothing.
-        if (request.Id is Guid requestedId
-            && await _paymentSourceRepository.GetByIdAsync(requestedId, userId, cancellationToken) is { } existing)
-        {
-            return Ok(existing);
-        }
-
         PaymentSourceDto paymentSource;
         try
         {
             paymentSource = await _paymentSourceRepository.AddAsync(userId, request, cancellationToken);
         }
-        catch (DbUpdateException ex) when (request.Id is Guid racedId
-            && ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
+        catch (DbUpdateException ex) when (request.Id is Guid takenId && ex.IsUniqueViolation())
         {
-            // A concurrent replay inserted the same id between our check and our insert. Theirs
-            // is the record; if the id belongs to someone else, it is simply taken.
-            return await _paymentSourceRepository.GetByIdAsync(racedId, userId, cancellationToken) is { } raced
-                ? Ok(raced)
+            // The id is taken. A retry of a create that went through with the same details gets that
+            // record back. Different details (the form was changed after the lost response) or
+            // someone else's id, deliberately indistinguishable, are a conflict: handing back the old
+            // record as if it were this one would silently drop the change.
+            var existing = await _paymentSourceRepository.GetByIdAsync(takenId, userId, cancellationToken);
+            return existing is not null && existing.Label == request.Label && existing.SourceType == request.SourceType
+                ? Ok(existing)
                 : Conflict(new { message = "That id is already in use." });
         }
 

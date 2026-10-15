@@ -1,7 +1,7 @@
 import { randomUUID } from 'expo-crypto';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Alert } from 'react-native';
-import { paymentSourcesApi, writeErrorMessage, type PaymentSource, type PaymentSourceType } from '@/api';
+import { isStatus, paymentSourcesApi, writeErrorMessage, type PaymentSource, type PaymentSourceType } from '@/api';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
 import { useSession } from '@/lib/session';
@@ -11,6 +11,8 @@ import {
 } from '@/ui';
 import { Screen } from '@/ui/layout';
 import { ActionSheet, PromptDialog } from '@/ui/sheets';
+
+const EARLIER_ADD = 'Your earlier add went through before this change - it is in the list. Tap Add again to add this one as well.';
 
 const TYPE_LABEL: Record<PaymentSourceType, string> = { Card: 'Card', BankAccount: 'Bank', Wallet: 'Wallet', Other: 'Other' };
 
@@ -34,17 +36,27 @@ export default function PaymentSources() {
       dataChanged();
     } catch (e) {
       haptics.reject();
-      setWriteError(writeErrorMessage(e));
+      setWriteError(isStatus(e, 409) ? EARLIER_ADD : writeErrorMessage(e));
     }
   };
 
   // One id per payment source being added: a retry after a lost response resends it and gets the
   // original back instead of a duplicate. Replaced only once the add has gone through.
-  const createId = useRef(randomUUID());
+  const [createId, setCreateId] = useState(randomUUID);
 
   const add = () => write(async () => {
-    await paymentSourcesApi.create(createId.current, label.trim(), sourceType);
-    createId.current = randomUUID();
+    try {
+      await paymentSourcesApi.create(createId, label.trim(), sourceType);
+    } catch (e) {
+      // The earlier add went through, but the form has changed since, so the server refused to
+      // pass that record off as this one. Show it, and give the next tap a new id so it adds this.
+      if (isStatus(e, 409)) {
+        setCreateId(randomUUID());
+        dataChanged();
+      }
+      throw e;
+    }
+    setCreateId(randomUUID());
     setLabel('');
     setSourceType('Card');
   });

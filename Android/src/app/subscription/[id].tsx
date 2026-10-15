@@ -56,7 +56,7 @@ export default function SubscriptionDetail() {
   const version = useRef<number | null>(null);
   // Fixed for the life of a create form, so tapping Save again after a timeout replays the create
   // the server may already have made rather than adding a second copy.
-  const createId = useRef(randomUUID());
+  const [createId] = useState(randomUUID);
   const nameRef = useRef(name);
   useEffect(() => { nameRef.current = name; }, [name]);
 
@@ -162,7 +162,7 @@ export default function SubscriptionDetail() {
     };
     try {
       if (editId) await subscriptionsApi.update(editId, request);
-      else await subscriptionsApi.create({ ...request, id: createId.current });
+      else await subscriptionsApi.create({ ...request, id: createId });
       haptics.confirm();
       dataChanged();
       router.back();
@@ -173,6 +173,11 @@ export default function SubscriptionDetail() {
         // fresh version; re-applying the edit is the user's call, not ours.
         await fetchRecord();
         setError((current) => current ?? "This subscription changed somewhere else. We've reloaded it - please check the values and save again.");
+      } else if (isStatus(e, 409)) {
+        // A create replayed with this form's id after it was changed: the earlier save went through
+        // with the old values, and the server will not pass it off as this one.
+        dataChanged();
+        setError('Your earlier save went through before this change. Go back and edit it from the list.');
       } else {
         setError(writeErrorMessage(e));
       }
