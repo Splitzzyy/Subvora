@@ -16,7 +16,7 @@ repo is iOS-specific enough to block adding it later.
 | API (container) | Render, Docker web service | 750 instance-hours/month, 512 MB, 0.1 CPU, HTTPS on `*.onrender.com` |
 | PostgreSQL 16 | Neon | 0.5 GB storage, scale-to-zero compute |
 | Outbound SMTP | Brevo relay | 300 emails/day |
-| Exchange rates | api.exchangerate.host | no key, no account — already hardcoded in `Program.cs` |
+| Exchange rates | open.er-api.com (ExchangeRate-API open access) | no key, no account — already hardcoded in `Program.cs`; terms ask for attribution |
 | Android APK | GitHub Releases | unlimited |
 | Keep-warm ping | cron-job.org | 5-minute interval |
 

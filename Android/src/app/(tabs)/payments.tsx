@@ -40,6 +40,7 @@ export default function PaymentSources() {
   const add = () => write(async () => {
     await paymentSourcesApi.create(label.trim(), sourceType);
     setLabel('');
+    setSourceType('Card');
   });
 
   // In place, not delete-and-recreate: that would detach every subscription that billed to it.

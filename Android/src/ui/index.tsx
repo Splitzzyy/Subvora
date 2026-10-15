@@ -338,7 +338,9 @@ export function SelectField({ label, value, placeholder, onPress, disabled, lead
   const { colors } = useTheme();
   return (
     <Tap
-      onPress={onPress} disabled={disabled} radius={shape.lg} accessibilityRole="button" accessibilityLabel={`${label}: ${value ?? placeholder}`}
+      // Dismissed first: Android hands focus back to the last input when a sheet or dialog closes,
+      // which reopened the keyboard over the form after every pick.
+      onPress={() => { Keyboard.dismiss(); onPress(); }} disabled={disabled} radius={shape.lg} accessibilityRole="button" accessibilityLabel={`${label}: ${value ?? placeholder}`}
       style={{ backgroundColor: colors.surfaceContainerHighest, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: disabled ? 0.5 : 1 }}
     >
       {leading}
