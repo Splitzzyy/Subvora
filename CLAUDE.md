@@ -39,7 +39,7 @@ Backend and mobile client both exist and are under active development. Actual la
 
 There is deliberately **no `SubVora.Shared`** — mobile DTOs mirror the API's JSON contract by convention, so a contract change means editing `Android/src/api/types.ts` too. The client's pure rules (billing dates, grouping, reminders, money formatting) live in `Android/src/lib/logic.ts`, tested with `npm test`.
 
-Don't edit, build or test `src/SubVora.Mobile` / `tests/SubVora.Mobile.Tests`: the MAUI client is retired. They stay in the tree as reference only.
+**All mobile work goes into `Android/` (React Native).** Don't edit, build, test or release `src/SubVora.Mobile` / `tests/SubVora.Mobile.Tests`: the MAUI client is retired and stays in the tree as reference only. A feature or fix that touches the mobile client is done in `Android/`, never ported back to MAUI.
 
 ### Build, test, run
 
@@ -81,6 +81,7 @@ Migrations: `dotnet ef migrations add <Name> --project src/SubVora.Infrastructur
 
 ## Architectural Rules to Preserve
 
+- **The React Native app is the MAUI app's successor on users' phones, not a second app.** It ships as application id `com.subvora.mobile`, signed with the same `production` keystore, so an installed MAUI build (last: v1.3.0, versionCode 7) upgrades to it in place. Never change `android.package` in `Android/app.json` or rotate the keystore - either one strands every existing install. `versionCode` is `release-android.yml`'s run number; the workflow fails if it is not above 7, so don't rename that file without adding an offset. After the upgrade users sign in once more: the RN app keeps tokens in `expo-secure-store`, not where MAUI's `SecureStorage` put them.
 - **Currency conversion is a read-time projection, not a write-time mutation.** Store each subscription's original `currency` + `cost_amount` unchanged; convert to the user's home currency only when computing dashboard/burn-rate totals. Never overwrite stored amounts with converted values.
 - **Burn-rate math is server-side, and counts cycles rather than days.** Each active subscription's annual cost is `cost * charges_per_year` (Weekly 52, Monthly 12, Quarterly 4, Yearly 1); sum those, then derive `Monthly = annual / 12` and `Weekly = annual / 52`. Keep this logic in the API, not duplicated in the mobile client. **Do not reintroduce a daily rate** (`cost / cycle_days`): with a 30-day month and a 365-day year it makes a year 12.17 months long, so 1000/month reported 12166.67/year. A calendar month is a count, not 30 days.
 - **Provider matching is one SQL query, not a service call.** Scoring is `greatest(word_similarity(input, name), word_similarity(name, input))` — both directions are load-bearing. Thresholds are measured, not guessed; `SubscriptionCatalogTrigramMatchTests` pins them.

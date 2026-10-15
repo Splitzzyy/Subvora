@@ -1,7 +1,8 @@
 name: Release Android APK
 
-# The React Native client in Android/. The MAUI client (src/SubVora.Mobile) is retired and no
-# longer built anywhere.
+# The React Native client in Android/ - the successor to the retired MAUI client. It ships under
+# the MAUI app's application id (com.subvora.mobile) and is signed with the same keystore, so a
+# phone with the MAUI app installed upgrades to it in place.
 on:
   push:
     tags: ["v*"]
@@ -53,13 +54,25 @@ jobs:
           done
           echo "$KEYSTORE_PASSWORD" | keytool -list -keystore "$RUNNER_TEMP/subvora-release.keystore" -alias "$KEY_ALIAS"
 
-      # android/ is generated (Continuous Native Generation) and gitignored. Version code must rise
-      # monotonically for in-place upgrades, so it comes from the run number.
+      # android/ is generated (Continuous Native Generation) and gitignored. versionCode is this
+      # workflow's run number, which continued from the MAUI releases (v1.3.0 shipped versionCode 7).
+      # Android refuses an upgrade to an equal or lower versionCode, so the floor is enforced here:
+      # renaming or recreating this workflow file restarts run_number at 1, and that must fail the
+      # build, not users' upgrades.
       - name: Generate native project
+        env:
+          LAST_MAUI_VERSION_CODE: 7
         run: |
+          if [ "$GITHUB_RUN_NUMBER" -le "$LAST_MAUI_VERSION_CODE" ]; then
+            echo "::error::versionCode $GITHUB_RUN_NUMBER would not upgrade MAUI installs (last: $LAST_MAUI_VERSION_CODE). Add an offset."
+            exit 1
+          fi
           npx expo prebuild --platform android --no-install
-          sed -i -e "s/versionCode 1$/versionCode ${GITHUB_RUN_NUMBER}/" \
-                 -e "s/versionName \"1.0.0\"/versionName \"${GITHUB_REF_NAME#v}\"/" android/app/build.gradle
+          sed -i -e "s/versionCode [0-9]*$/versionCode ${GITHUB_RUN_NUMBER}/" \
+                 -e "s/versionName \"[^\"]*\"/versionName \"${GITHUB_REF_NAME#v}\"/" android/app/build.gradle
+          grep -q "versionCode ${GITHUB_RUN_NUMBER}$" android/app/build.gradle \
+            && grep -q "applicationId 'com.subvora.mobile'" android/app/build.gradle \
+            || { echo "::error::Generated build.gradle lacks the expected applicationId/versionCode."; grep -n "applicationId\|versionCode\|versionName" android/app/build.gradle; exit 1; }
 
       # EXPO_PUBLIC_API_URL is left unset on purpose: the client defaults to the deployed API.
       # Phones only - the emulator ABIs would roughly double the APK.

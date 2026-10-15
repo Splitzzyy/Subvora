@@ -210,13 +210,28 @@ deploy-hook step.
 ```
 git checkout main
 git pull
-git tag v1.1.0
-git push origin v1.1.0
+git tag v2.0.0
+git push origin v2.0.0
 ```
 
 `.github/workflows/release-android.yml` builds the React Native app in `Android/` into a signed APK
 (arm64 + armv7, JS bundle embedded) and attaches it to a GitHub Release. The retired MAUI client in
 `src/SubVora.Mobile` is not built or released any more.
+
+### Upgrading from the MAUI app
+
+v2.0.0 is the first React Native release. It keeps the MAUI app's identity on purpose, so an installed
+MAUI build (v1.x) upgrades in place instead of leaving users with two apps:
+
+| Must match the MAUI releases | Where it is set |
+|---|---|
+| Application id `com.subvora.mobile` | `android.package` in `Android/app.json` |
+| Signing key | the same four `ANDROID_KEY*` secrets in the `production` environment |
+| `versionCode` above 7 (v1.3.0) | `release-android.yml` run number; the workflow refuses to build otherwise |
+
+What users notice: the app is new, and they **sign in once** (tokens moved from MAUI's `SecureStorage`
+to `expo-secure-store`). Their data is on the server, so nothing is lost. The offline cache rebuilds
+on the first load, and reminders are rescheduled once the subscription list loads.
 Users download it and sideload; `adb install -r <apk>` for a device on your desk.
 
 ### Tag from `main` or you will have to start over

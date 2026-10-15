@@ -74,8 +74,9 @@ outstanding, and it moves only when the user marks the charge paid.
 
 **Mobile:** React Native (Expo) client in `Android/` covering auth, subscription list and detail,
 dashboard, categories, payment sources and settings, with a read-only offline mirror and on-device
-renewal reminders. The earlier .NET MAUI client (`src/SubVora.Mobile`) is retired: its code is kept
-for reference but nothing builds or ships it. There is no push service: reminders are derived from the subscription list and scheduled
+renewal reminders. It replaces the earlier .NET MAUI client from v2.0.0: same app id and signing key, so
+installing the new APK upgrades the MAUI app in place (sign in once more afterwards). The MAUI code
+(`src/SubVora.Mobile`) is kept for reference only - nothing builds or ships it. There is no push service: reminders are derived from the subscription list and scheduled
 with the OS, which delivers them with the app closed.
 
 ## Getting Started

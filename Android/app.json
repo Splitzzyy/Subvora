@@ -3,16 +3,16 @@
     "name": "SubVora",
     "slug": "subvora",
     "scheme": "subvora",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.subvora.app"
+      "bundleIdentifier": "com.subvora.mobile"
     },
     "android": {
-      "package": "com.subvora.app",
+      "package": "com.subvora.mobile",
       "adaptiveIcon": {
         "backgroundColor": "#5A3FC0",
         "foregroundImage": "./assets/android-icon-foreground.png",
