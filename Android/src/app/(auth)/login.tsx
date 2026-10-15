@@ -35,7 +35,7 @@ export default function Login() {
   return (
     <AuthScaffold title="Welcome back" subtitle="Every renewal, before it lands.">
       {error ? <Banner tone="error" text={error} /> : null}
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
+      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
       <TextField label="Password" value={password} onChangeText={setPassword} secure autoComplete="current-password" onSubmitEditing={login} />
       <Button label="Sign in" size="lg" onPress={login} loading={busy} disabled={!email.trim() || !password} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' }}>

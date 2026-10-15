@@ -54,7 +54,7 @@ export default function ForgotPassword() {
       {offline ? <OfflineBanner /> : null}
       {info ? <Banner tone="info" text={info} /> : null}
       {error ? <Banner tone="error" text={error} /> : null}
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" editable={!codeSent} />
+      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!codeSent} />
       {codeSent ? (
         <>
           <TextField label="6-digit code" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" autoComplete="one-time-code" />

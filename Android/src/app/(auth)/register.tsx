@@ -39,7 +39,7 @@ export default function Register() {
   return (
     <AuthScaffold title="Create account" subtitle="Track subscriptions, see your burn rate, never miss a renewal.">
       {error ? <Banner tone="error" text={error} actionLabel={error === 'Please log in to continue.' ? 'Sign in' : undefined} onAction={() => router.back()} /> : null}
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" />
+      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" />
       <TextField label="Password" value={password} onChangeText={setPassword} secure autoComplete="new-password" />
       <TextField label="Confirm password" value={confirm} onChangeText={setConfirm} secure autoComplete="new-password" onSubmitEditing={register} />
       <Button label="Create account" size="lg" onPress={register} loading={busy} disabled={!email.trim() || !password || !confirm} />

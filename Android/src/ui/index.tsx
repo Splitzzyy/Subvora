@@ -315,6 +315,9 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
             {...props}
             ref={input}
             accessibilityLabel={label}
+            // Password fields never get keyboard help: with the eye toggled to "show", Android would
+            // otherwise capitalise and autocorrect them, silently storing a different password.
+            {...(secure ? { autoCapitalize: 'none', autoCorrect: false, spellCheck: false } as const : {})}
             secureTextEntry={secure && hidden}
             placeholderTextColor={colors.outline as string}
             cursorColor={colors.primary}
