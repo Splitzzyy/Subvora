@@ -1,7 +1,7 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
-  Animated, Easing, Keyboard, Pressable, Switch, Text as RNText, TextInput, View,
+  Animated, Easing, Keyboard, Pressable, Switch, Text as RNText, TextInput, useWindowDimensions, View,
   type ColorValue, type PressableProps, type StyleProp, type TextInputProps, type TextProps, type ViewStyle,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -20,9 +20,27 @@ export const RAIL_MIN_WIDTH = 600;
 
 // ---- Text ------------------------------------------------------------------------------------
 
+/**
+ * Display and headline sizes are already large, so they scale with the system font size only up to
+ * 1.3x (as Android 14's non-linear scaling does): at 200% a 32sp "Subscriptions" split mid-word.
+ */
+const LARGE_TEXT_CAP = 1.3;
+
 export function Text({ variant = 'bodyLarge', color, style, ...props }: TextProps & { variant?: TypeVariant; color?: ColorValue }) {
   const { colors } = useTheme();
-  return <RNText {...props} style={[typescale[variant], { color: color ?? colors.onSurface }, style]} />;
+  const { fontScale } = useWindowDimensions();
+  const base = typescale[variant];
+  // Scaled here rather than by maxFontSizeMultiplier, which caps the glyphs but not the line height.
+  const capped = (variant.startsWith('display') || variant.startsWith('headline')) && fontScale > LARGE_TEXT_CAP
+    ? { fontSize: (base.fontSize ?? 0) * LARGE_TEXT_CAP, lineHeight: (base.lineHeight ?? 0) * LARGE_TEXT_CAP }
+    : null;
+  return (
+    <RNText
+      {...props}
+      allowFontScaling={capped ? false : props.allowFontScaling}
+      style={[base, capped, { color: color ?? colors.onSurface }, style]}
+    />
+  );
 }
 
 // ---- Press feedback --------------------------------------------------------------------------
@@ -180,9 +198,11 @@ export function ScreenHeader({ title, subtitle, actions }: { title: string; subt
 export function SectionHeader({ title, summary }: { title: string; summary?: string }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: space.xl, paddingBottom: space.sm, paddingHorizontal: space.xs, gap: space.sm }}>
+    // Wraps rather than squeezing: with large text the summary drops below the title instead of
+    // breaking mid-word in a sliver of width.
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: space.xl, paddingBottom: space.sm, paddingHorizontal: space.xs, columnGap: space.sm }}>
       <Text variant="titleMediumEmphasized" color={colors.primary} accessibilityRole="header">{title}</Text>
-      {summary ? <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ flexShrink: 1, textAlign: 'right' }}>{summary}</Text> : null}
+      {summary ? <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ marginLeft: 'auto', textAlign: 'right' }}>{summary}</Text> : null}
     </View>
   );
 }
@@ -356,7 +376,8 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
   }, [focused]);
   return (
     <View style={[{ gap: space.xs }, style]}>
-      <View style={{
+      {/* The whole field focuses the input, label included, as an M3 text field does. */}
+      <Pressable accessible={false} importantForAccessibility="no" onPress={() => input.current?.focus()} style={{
         backgroundColor: colors.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: space.lg, paddingTop: space.sm,
         borderWidth: 2, borderColor: error ? colors.error : focused ? colors.primary : 'transparent', flexDirection: 'row', alignItems: 'center',
       }}>
@@ -379,7 +400,7 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
           />
         </View>
         {secure ? <IconButton icon={hidden ? 'eye-outline' : 'eye-off-outline'} label={hidden ? 'Show password' : 'Hide password'} onPress={() => setHidden((h) => !h)} /> : null}
-      </View>
+      </Pressable>
       {error ? <Text variant="labelMedium" color={colors.error} style={{ paddingHorizontal: space.lg }}>{error}</Text> : null}
     </View>
   );
@@ -475,7 +496,9 @@ export function Chip({ label, selected, onPress, icon, disabled }: { label: stri
       hitSlop={{ top: (TOUCH - 36) / 2, bottom: (TOUCH - 36) / 2 }}
       style={{
         minHeight: 36, paddingHorizontal: space.md + space.xxs, flexDirection: 'row', alignItems: 'center', gap: space.xs + space.xxs,
-        backgroundColor: selected ? colors.secondaryContainer : 'transparent', borderWidth: selected ? 0 : 1, borderColor: colors.outline,
+        // Unselected sits on the card colour rather than 'transparent': Android drops the corner radius
+        // when a background first appears on a view, which squared the chip on selection.
+        backgroundColor: selected ? colors.secondaryContainer : colors.surfaceContainerLow, borderWidth: selected ? 0 : 1, borderColor: colors.outline,
       }}
     >
       {selected ? <Icon name="check" size={18} color={colors.onSecondaryContainer} /> : icon ? <Icon name={icon} size={18} color={colors.onSurfaceVariant} /> : null}

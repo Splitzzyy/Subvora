@@ -3,7 +3,7 @@ import type { BottomTabBarProps } from 'expo-router/tabs';
 import { useEffect, useState } from 'react';
 import { Keyboard, Pressable, useWindowDimensions, View } from 'react-native';
 import * as haptics from '@/lib/haptics';
-import { shape, space, useTheme } from '@/theme';
+import { space, useTheme } from '@/theme';
 import { Icon, RAIL_MIN_WIDTH, Text, TOUCH, type IconName } from '@/ui';
 import { SubVoraMark } from '@/ui/brand';
 
@@ -14,6 +14,8 @@ const DESTINATIONS: Record<string, { title: string; icon: IconName; selected: Ic
   payments: { title: 'Payment', icon: 'credit-card-outline', selected: 'credit-card' },
   settings: { title: 'Settings', icon: 'cog-outline', selected: 'cog' },
 };
+
+const INDICATOR_HEIGHT = 32;
 
 /** Hidden while the keyboard is up, as the stock bar's tabBarHideOnKeyboard did. */
 function useKeyboardVisible() {
@@ -49,10 +51,18 @@ function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & 
         android_ripple={{ color: colors.outlineVariant, borderless: true, radius: TOUCH / 2 + space.sm }}
         style={{ flex: rail ? undefined : 1, minHeight: TOUCH + space.lg, alignItems: 'center', justifyContent: 'center', gap: space.xs, paddingVertical: space.xs }}
       >
-        <View style={{ width: 56, height: 32, borderRadius: shape.full, alignItems: 'center', justifyContent: 'center', backgroundColor: focused ? colors.secondaryContainer : 'transparent' }}>
+        <View style={{ width: 56, height: INDICATOR_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
+          {/* The pill always has its colour and fades in, rather than its background switching on:
+              Android dropped the corner radius when a background appeared on an existing view. */}
+          <View style={{
+            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: INDICATOR_HEIGHT / 2,
+            backgroundColor: colors.secondaryContainer, opacity: focused ? 1 : 0,
+          }} />
           <Icon name={focused ? d.selected : d.icon} size={24} color={focused ? colors.onSecondaryContainer : colors.onSurfaceVariant} />
         </View>
-        <Text variant={focused ? 'labelMediumEmphasized' : 'labelMedium'} color={focused ? colors.onSurface : colors.onSurfaceVariant} numberOfLines={1}>{d.title}</Text>
+        <Text variant={focused ? 'labelMediumEmphasized' : 'labelMedium'} color={focused ? colors.onSurface : colors.onSurfaceVariant}
+          // Five labels share a phone's width; with large text they shrink to fit rather than truncate.
+          numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{d.title}</Text>
       </Pressable>
     );
   });

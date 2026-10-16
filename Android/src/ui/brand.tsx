@@ -83,7 +83,7 @@ export function RingMark({ size, progress = 0.75, tone = 'themed', color, center
               <Defs>
                 <RadialGradient id={`orb${id}`} cx="0.35" cy="0.3" r="0.75">
                   <Stop offset="0" stopColor={brand.orbLight} />
-                  <Stop offset="1" stopColor={tone === 'brand' ? brand.orbDark : hex.tertiary} />
+                  <Stop offset="1" stopColor={brand.orbDark} />
                 </RadialGradient>
               </Defs>
               <Circle cx={orbAt.x} cy={orbAt.y} r={54} fill={tone === 'mono' ? ink : `url(#orb${id})`} />

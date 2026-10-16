@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { authApi, errorMessage } from '@/api';
 import * as haptics from '@/lib/haptics';
+import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { Banner, Button, TextField } from '@/ui';
 import { AuthScaffold } from '@/ui/layout';
@@ -25,6 +26,8 @@ export default function Register() {
       try {
         await signIn(await authApi.login(email.trim(), password));
         haptics.confirm();
+        // Same moment as after login: signed in, so the reminder offer makes sense.
+        void requestReminderPermission();
         return;
       } catch {
         setError('Please log in to continue.');

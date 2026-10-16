@@ -25,6 +25,9 @@ React Native (Expo SDK 57, Expo Router) client for the same `/api/v1` backend th
 - `src/ui/sheets.tsx`: `Sheet`, `ActionSheet`, `PickerSheet`, `PromptDialog`, `DateField`.
 - Approximations: stack transitions use native-stack `fade_from_bottom`/`slide_from_right` in place of shared-axis (a fade with reduced motion). The pull-to-refresh indicator is the native Android one, tinted from tokens. The dashboard ring shows the biggest category's share of monthly spend; the orb is decorative, because the dashboard has no next-billing data without an extra load.
 - `src/lib/haptics.ts`: semantic Android haptics, best effort.
+- Two Android quirks the components work around:
+  - **Lost corner radius.** A view whose background switches from none to a colour loses its corner radius, so it draws square. The nav indicator keeps its colour and fades in, and unselected chips sit on the card colour instead of `transparent`. Follow the same pattern for any new toggle.
+  - **Large text.** Display and headline styles scale with the system font size only up to 1.3x, glyphs and line height together. Nav labels shrink to fit, and section headers wrap.
 
 ## Preserved behaviour (from the MAUI client)
 

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Alert } from 'react-native';
 import { authApi, isStatus, writeErrorMessage } from '@/api';
 import { useOffline } from '@/lib/hooks';
+import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { Banner, Button, OfflineBanner, TextField } from '@/ui';
 import { AuthScaffold } from '@/ui/layout';
@@ -45,6 +46,7 @@ export default function ForgotPassword() {
       // address may be keeping locked. The session change routes to the app on its own.
       if (session?.accessToken) {
         await signIn(session);
+        void requestReminderPermission();
         return;
       }
       Alert.alert('Password reset', 'Sign in with your new password.');

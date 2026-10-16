@@ -40,23 +40,24 @@ export function Screen({ children, refreshing, onRefresh, overlay, title, subtit
             {children}
           </Animated.ScrollView>
         </KeyboardAvoidingView>
-        {title ? (
-          <Animated.View
-            pointerEvents="none"
-            // The large headline is the one TalkBack reads; this is its visual echo.
-            importantForAccessibility="no-hide-descendants"
-            accessibilityElementsHidden
-            style={{
-              position: 'absolute', top: 0, left: 0, right: 0, minHeight: 56, justifyContent: 'center', paddingHorizontal: space.lg,
-              backgroundColor: colors.surfaceContainer,
-              opacity: scrollY.interpolate({ inputRange: [COLLAPSE_FROM, COLLAPSE_TO], outputRange: [0, 1], extrapolate: 'clamp' }),
-            }}
-          >
-            <Text variant="titleLarge" numberOfLines={1}>{title}</Text>
-          </Animated.View>
-        ) : null}
         {overlay}
       </View>
+      {title ? (
+        <Animated.View
+          pointerEvents="none"
+          // The large headline is the one TalkBack reads; this is its visual echo. It covers the
+          // status bar strip too, so the bar colour runs to the top edge.
+          importantForAccessibility="no-hide-descendants"
+          accessibilityElementsHidden
+          style={{
+            position: 'absolute', top: 0, left: 0, right: 0, minHeight: 56 + insets.top, paddingTop: insets.top, justifyContent: 'center', paddingHorizontal: space.lg,
+            backgroundColor: colors.surfaceContainer,
+            opacity: scrollY.interpolate({ inputRange: [COLLAPSE_FROM, COLLAPSE_TO], outputRange: [0, 1], extrapolate: 'clamp' }),
+          }}
+        >
+          <Text variant="titleLarge" numberOfLines={1}>{title}</Text>
+        </Animated.View>
+      ) : null}
     </View>
   );
 }

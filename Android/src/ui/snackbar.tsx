@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, useWindowDimensions, View } from 'react-native';
+import { AccessibilityInfo, Animated, Keyboard, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from '@/lib/motion';
 import { motion, shape, space, useTheme } from '@/theme';
@@ -41,7 +41,18 @@ function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessag
   const { width } = useWindowDimensions();
   const reduced = useReducedMotion();
   const [enter] = useState(() => new Animated.Value(0));
+  const [keyboard, setKeyboard] = useState(() => (Keyboard.isVisible() ? Keyboard.metrics()?.height ?? 0 : 0));
   const error = message.tone === 'error';
+
+  // Above the keyboard when it is up, or a result raised from a form would land behind it.
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardDidShow', (e) => setKeyboard(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboard(0));
+    // A keyboard already closing when this mounted (a dialog's Save) can hide before the listener
+    // exists; check again once it has settled.
+    const settle = setTimeout(() => setKeyboard(Keyboard.isVisible() ? Keyboard.metrics()?.height ?? 0 : 0), 400);
+    return () => { show.remove(); hide.remove(); clearTimeout(settle); };
+  }, []);
   const onDismiss = useCallback(() => dismissById(message.id), [dismissById, message.id]);
 
   useEffect(() => {
@@ -55,7 +66,8 @@ function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessag
   }, [enter, reduced, error, message, onDismiss]);
 
   // Clear of the navigation bar and of a FAB above it; with the side rail there is no bottom bar.
-  const bottom = insets.bottom + (width >= RAIL_MIN_WIDTH ? space.lg : 88 + 56 + space.xxl);
+  const clear = insets.bottom + (width >= RAIL_MIN_WIDTH ? space.lg : 88 + 56 + space.xxl);
+  const bottom = keyboard > 0 ? keyboard + space.lg : clear;
   return (
     <Animated.View
       accessibilityLiveRegion={error ? 'assertive' : 'polite'}
