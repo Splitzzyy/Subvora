@@ -131,13 +131,13 @@ function usePulse(low: number) {
  * Brand loader for full-screen and first-load waits: the arc sweeps round, the orb pulses, the V
  * stays still. With reduced motion it is a still ring with a gentle opacity pulse.
  */
-export function SubVoraLoader({ size = 72, label = 'Loading' }: { size?: number; label?: string }) {
+export function SubVoraLoader({ size = 72, label = 'Loading', tone = 'themed' }: { size?: number; label?: string; tone?: Tone }) {
   const reduced = useReducedMotion();
   const rotate = useSpin(1400, !reduced);
   const pulse = usePulse(reduced ? 0.6 : 0.45);
   return (
     <Animated.View accessible accessibilityRole="progressbar" accessibilityLabel={label} style={reduced ? { opacity: pulse } : undefined}>
-      <RingMark size={size} arcStyle={reduced ? undefined : { transform: [{ rotate }] }} orbStyle={reduced ? undefined : { opacity: pulse }} />
+      <RingMark size={size} tone={tone} arcStyle={reduced ? undefined : { transform: [{ rotate }] }} orbStyle={reduced ? undefined : { opacity: pulse }} />
     </Animated.View>
   );
 }

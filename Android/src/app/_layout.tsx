@@ -2,34 +2,57 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from '@/lib/session';
 import { useReducedMotion } from '@/lib/motion';
-import { ThemeProvider, useTheme } from '@/theme';
+import { brand, ThemeProvider, useTheme } from '@/theme';
+import { LaunchHandoff, SPLASH_MARK_SIZE, SubVoraLoader } from '@/ui/brand';
 import { SnackbarProvider } from '@/ui/snackbar';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
+
+/** Past this the splash goes and the brand loader waits instead, so a slow keystore never looks frozen. */
+const SPLASH_TIMEOUT_MS = 3000;
 
 function RootStack() {
   const { status } = useSession();
   const { colors, isDark, surfaceHex } = useTheme();
   const reduced = useReducedMotion();
+  const [timedOut, setTimedOut] = useState(false);
+  const [handingOff, setHandingOff] = useState(true);
+  const endHandoff = useCallback(() => setHandingOff(false), []);
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(surfaceHex).catch(() => undefined);
   }, [surfaceHex]);
 
   useEffect(() => {
-    if (status !== 'loading') SplashScreen.hideAsync().catch(() => undefined);
-  }, [status]);
+    const timer = setTimeout(() => setTimedOut(true), SPLASH_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
-  if (status === 'loading') return null;
+  // Ready means the stored tokens have been read. Fonts are embedded and theme preferences are read
+  // synchronously, so neither needs waiting for; the dashboard fetch deliberately does not hold the splash.
+  const ready = status !== 'loading';
+  useEffect(() => {
+    if (ready || timedOut) SplashScreen.hideAsync().catch(() => undefined);
+  }, [ready, timedOut]);
+
+  if (!ready) {
+    return timedOut ? (
+      <View style={{ flex: 1, backgroundColor: brand.night, alignItems: 'center', justifyContent: 'center' }}>
+        <StatusBar style="light" />
+        <SubVoraLoader size={SPLASH_MARK_SIZE} tone="brand" />
+      </View>
+    ) : null;
+  }
 
   const signedIn = status === 'signedIn';
   return (
     <>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style={handingOff || isDark ? 'light' : 'dark'} />
       {/* Protected groups redirect on their own when the session starts or ends - including a
           refresh the server refused, which flips status to signedOut from inside the API client. */}
       {/* Native-stack approximations of M3 shared-axis transitions: list -> add/edit rises on the
@@ -43,6 +66,8 @@ function RootStack() {
           <Stack.Screen name="(auth)" />
         </Stack.Protected>
       </Stack>
+      {/* Same background and mark as the native splash, so its exit is invisible. */}
+      {handingOff ? <LaunchHandoff onDone={endHandoff} /> : null}
     </>
   );
 }
