@@ -122,6 +122,29 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     }
 
     [Fact]
+    public async Task ResetPassword_ValidCode_SignsTheCallerIn_EvenWhileLoginIsLocked()
+    {
+        // Recovery must not run through login: a stranger who keeps the address locked out of login
+        // would otherwise leave the user with no session anywhere straight after the reset.
+        var client = _factory.CreateClient();
+        var email = $"reset-signs-in-{Guid.NewGuid()}@example.com";
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        for (var i = 0; i < 10; i++)
+        {
+            await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "wrong-password" });  // pragma: allowlist secret
+        }
+
+        var code = await RequestResetCodeAsync(client, email);
+        var resetResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "new-correct-horse-battery-staple" });
+
+        Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
+        var session = await resetResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
+        Assert.False(string.IsNullOrEmpty(session?.AccessToken));
+        var refreshResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = session!.RefreshToken });
+        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task ResetPassword_ValidCode_RevokesEverySessionOpenBeforeTheReset()
     {
         var client = _factory.CreateClient();

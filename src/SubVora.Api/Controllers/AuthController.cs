@@ -62,7 +62,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>Signs in with email and password.</summary>
-    /// <remarks>After 10 failed attempts in 15 minutes the address is refused for 15 minutes, with the same 401, whether or not it has an account; a password reset lifts the lock.</remarks>
+    /// <remarks>After 10 attempts without a success, the address is refused until 15 minutes pass with no attempt, with the same 401 whether or not it has an account. A password reset signs the user in directly and clears the count.</remarks>
     /// <response code="200">Returns a new access/refresh token pair.</response>
     /// <response code="400">The email or password failed validation.</response>
     /// <response code="401">Invalid email or password.</response>
@@ -136,12 +136,13 @@ public class AuthController : ControllerBase
         return Ok();
     }
 
-    /// <summary>Sets a new password using a code obtained from <c>forgot-password</c>.</summary>
-    /// <response code="200">The password was updated.</response>
+    /// <summary>Sets a new password using a code obtained from <c>forgot-password</c>, and signs the caller in.</summary>
+    /// <remarks>Every existing session is revoked, and a new access/refresh token pair is returned for this device. Signing in here rather than through login keeps recovery working while the address is locked out of login.</remarks>
+    /// <response code="200">The password was updated; returns a new access/refresh token pair.</response>
     /// <response code="400">The payload failed validation, or the code is wrong, expired, already used, or over the attempt limit.</response>
     [HttpPost("reset-password")]
     [EnableRateLimiting("auth")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(AuthTokenResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ValidationProblemDetails), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
     {
@@ -161,7 +162,7 @@ public class AuthController : ControllerBase
             });
         }
 
-        return Ok();
+        return Ok(result.Tokens);
     }
 
     /// <summary>Changes the signed-in user's password.</summary>

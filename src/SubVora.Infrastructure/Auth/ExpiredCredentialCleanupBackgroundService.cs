@@ -27,17 +27,17 @@ public class ExpiredCredentialCleanupBackgroundService : BackgroundService
     private const int DefaultCleanupUtcHour = 3;
 
     /// <summary>
-    /// Expired refresh tokens are kept this long before deletion. Deleting one the moment it expires
-    /// would make it indistinguishable from a token that never existed, and RefreshAsync treats those
-    /// two cases differently: a known-but-expired token fails quietly, while an unknown one - and, on
-    /// the rotated path, a replayed one - is what drives reuse detection. The window keeps recent
-    /// history around for that decision.
+    /// Expired refresh tokens are kept this long before deletion. No auth decision reads them:
+    /// RefreshAsync answers an unknown token and an expired one with the same quiet failure, before
+    /// any reuse check. The week is history for diagnosing a sign-out, nothing more.
     /// <para>
-    /// Counted from expiry, not from revocation, on purpose. A rotated token is dead, but it is the
+    /// What matters is the other end: a token must not be deleted before it expires, which is why
+    /// the window counts from expiry and not from revocation. A rotated token is dead, but it is the
     /// one the real device still holds if an attacker rotated a stolen copy first; presenting it is
-    /// what trips revoke-all and ends the attacker's chain, and that has to work however long the
-    /// device sat idle - up to the token's own expiry. Deleting it a week after rotation would let
-    /// an idle phone fail quietly instead, leaving the attacker signed in (#249).
+    /// what trips revoke-all and ends the attacker's chain. Deleting it a week after rotation would
+    /// let a phone idle for longer fail quietly instead, leaving the attacker signed in (#249).
+    /// Detection still ends at that token's own expiry - past it, the replay fails quietly too. An
+    /// absolute session lifetime is what would bound a stolen chain beyond that (#257).
     /// </para>
     /// </summary>
     private static readonly TimeSpan RefreshTokenRetention = TimeSpan.FromDays(7);

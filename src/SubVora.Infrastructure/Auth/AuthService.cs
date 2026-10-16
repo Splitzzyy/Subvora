@@ -172,9 +172,12 @@ public class AuthService : IAuthService
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
-        // Before the lookup, so a locked address answers the same whether or not it has an account:
-        // same 401, same dummy BCrypt, and no query to time.
-        if (_loginThrottle.IsLocked(normalizedEmail))
+        // Reserved before the password is checked, so a parallel burst cannot all pass a check that
+        // only the finished attempts would have updated (see LoginThrottle). Before the lookup, so a
+        // locked address answers the same whether or not it has an account: same 401, same dummy
+        // BCrypt, and no query to time.
+        var attempt = _loginThrottle.BeginAttempt(normalizedEmail);
+        if (attempt > LoginThrottle.MaxAttempts)
         {
             _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
             return AuthResult.Failed();
@@ -185,13 +188,13 @@ public class AuthService : IAuthService
         {
             // Deliberately does the work anyway - see DummyPasswordHash.
             _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
-            RecordLoginFailure(normalizedEmail, userId: null);
+            LogIfLockEngaged(attempt, userId: null);
             return AuthResult.Failed();
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
-            RecordLoginFailure(normalizedEmail, user.Id);
+            LogIfLockEngaged(attempt, user.Id);
             return AuthResult.Failed();
         }
 
@@ -200,15 +203,16 @@ public class AuthService : IAuthService
         return AuthResult.Success(tokens);
     }
 
-    private void RecordLoginFailure(string normalizedEmail, Guid? userId)
+    /// <summary>The last allowed attempt failed, so the next one is refused: said once, per lock.</summary>
+    private void LogIfLockEngaged(int attempt, Guid? userId)
     {
-        if (_loginThrottle.RecordFailure(normalizedEmail))
+        if (attempt == LoginThrottle.MaxAttempts)
         {
             // Never the address: logs must not carry email addresses. An unknown address has no id.
             _logger.LogWarning(
-                "Login locked for {LockMinutes} minutes after {MaxFailures} failed attempts (user {UserId}).",
+                "Login locked for {LockMinutes} minutes after {MaxAttempts} failed attempts (user {UserId}).",
                 LoginThrottle.Window.TotalMinutes,
-                LoginThrottle.MaxFailures,
+                LoginThrottle.MaxAttempts,
                 userId?.ToString() ?? "unknown");
         }
     }
@@ -447,14 +451,14 @@ public class AuthService : IAuthService
             cancellationToken);
     }
 
-    public async Task<ResetPasswordResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default)
+    public async Task<AuthResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
         var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
         if (user is null)
         {
-            return ResetPasswordResult.Failed();
+            return AuthResult.Failed();
         }
 
         var resetCode = await _dbContext.PasswordResetCodes.AsNoTracking()
@@ -464,7 +468,7 @@ public class AuthService : IAuthService
 
         if (resetCode is null)
         {
-            return ResetPasswordResult.Failed();
+            return AuthResult.Failed();
         }
 
         // The attempt is counted by the database before the guess is compared, and only while the
@@ -480,7 +484,7 @@ public class AuthService : IAuthService
             .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.AttemptCount, c => c.AttemptCount + 1), cancellationToken);
         if (counted == 0 || resetCode.CodeHash != HashResetCode(request.Code))
         {
-            return ResetPasswordResult.Failed();
+            return AuthResult.Failed();
         }
 
         // Consumed by compare-and-swap, so two concurrent requests carrying the right code cannot
@@ -501,7 +505,7 @@ public class AuthService : IAuthService
                 .ExecuteUpdateAsync(setters => setters.SetProperty(c => c.UsedAt, now), cancellationToken);
             if (consumed == 0)
             {
-                return ResetPasswordResult.Failed();
+                return AuthResult.Failed();
             }
 
             await SetPasswordHashAsync(user.Id, newPasswordHash, cancellationToken);
@@ -511,7 +515,12 @@ public class AuthService : IAuthService
             // minting access tokens off the old password. In the same transaction as the password,
             // so neither can land without the other.
             await RevokeAllActiveTokensForUserAsync(user.Id, cancellationToken);
-            return ResetPasswordResult.Success();
+
+            // Then a pair for the device that proved control of the inbox - a stronger credential
+            // than the password. Recovery must not run through login: a stranger who locked this
+            // address out of login could otherwise keep it locked straight after the reset, leaving
+            // the user with no session anywhere (the reset has just revoked them all).
+            return AuthResult.Success(await IssueTokenPairAsync(user, cancellationToken));
         }, cancellationToken,
         committed: () => _dbContext.Users.AnyAsync(u => u.Id == user.Id && u.PasswordHash == newPasswordHash, cancellationToken));
 

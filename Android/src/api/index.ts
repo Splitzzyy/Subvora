@@ -16,9 +16,12 @@ export const authApi = {
     api<AuthTokenResponse>('POST', '/api/v1/auth/login', { email, password }, anonymous),
   /** 200 whether or not the address has an account. */
   forgotPassword: (email: string) => api('POST', '/api/v1/auth/forgot-password', { email }, anonymous),
-  /** 400 covers wrong, expired, used and over-limit codes alike. */
+  /**
+   * 400 covers wrong, expired, used and over-limit codes alike. On success every other session is
+   * revoked and this device is signed in with the returned pair (undefined from an older API).
+   */
   resetPassword: (email: string, code: string, newPassword: string) =>
-    api('POST', '/api/v1/auth/reset-password', { email, code, newPassword }, anonymous),
+    api<AuthTokenResponse | undefined>('POST', '/api/v1/auth/reset-password', { email, code, newPassword }, anonymous),
   /** Revokes every refresh token on the account, this device's included - store the new pair. */
   changePassword: (currentPassword: string, newPassword: string) =>
     api<AuthTokenResponse>('POST', '/api/v1/auth/change-password', { currentPassword, newPassword }),

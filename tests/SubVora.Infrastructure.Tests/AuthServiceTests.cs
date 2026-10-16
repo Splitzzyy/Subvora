@@ -441,7 +441,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         var code = await RequestCodeAsync(email);
         var newPassword = FreshPassword();
         var interceptor = new LostCommitReplyInterceptor();
-        ResetPasswordResult result;
+        AuthResult result;
         await using (var dbContext = NewDbContext(interceptor))
         {
             result = await NewAuthService(dbContext).ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = code, NewPassword = newPassword });
@@ -449,6 +449,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
         Assert.True(interceptor.Tripped);
         Assert.True(result.Succeeded);
+        Assert.NotNull(result.Tokens);
         Assert.Equal($"hashed:{newPassword}", await StoredPasswordHashAsync(userId));
     }
 
@@ -504,7 +505,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     {
         // The IP limit sees one IP at a time; guesses spread across many IPs met nothing per account.
         var email = await RegisterAsync("lockout");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts);
 
         var result = await _authService.LoginAsync(new LoginRequest { Email = email, Password = "correct-horse-battery-staple" });
 
@@ -515,7 +516,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     public async Task Login_NineFailures_DoNotLock()
     {
         var email = await RegisterAsync("lockout-nine");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures - 1);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts - 1);
 
         var result = await _authService.LoginAsync(new LoginRequest { Email = email, Password = "correct-horse-battery-staple" });
 
@@ -526,10 +527,10 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     public async Task Login_ASuccess_ResetsTheFailureCount()
     {
         var email = await RegisterAsync("lockout-success-clears");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures - 1);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts - 1);
         Assert.True((await _authService.LoginAsync(new LoginRequest { Email = email, Password = "correct-horse-battery-staple" })).Succeeded);
 
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures - 1);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts - 1);
 
         Assert.True((await _authService.LoginAsync(new LoginRequest { Email = email, Password = "correct-horse-battery-staple" })).Succeeded);
     }
@@ -538,7 +539,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     public async Task Login_Locked_UnlocksOnceTheWindowHasPassed()
     {
         var email = await RegisterAsync("lockout-expiry");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts);
 
         _clock.Advance(LoginThrottle.Window);
 
@@ -549,7 +550,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     public async Task Login_FailuresOutsideTheWindow_DoNotAddUp()
     {
         var email = await RegisterAsync("lockout-spread");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures - 1);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts - 1);
         _clock.Advance(LoginThrottle.Window);
         await FailLoginsAsync(email, 1);
 
@@ -561,7 +562,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     {
         // The way back in for a user locked out by someone guessing at their address on purpose.
         var email = await RegisterAsync("lockout-reset");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts);
         var code = await RequestCodeAsync(email);
         var newPassword = FreshPassword();
 
@@ -572,10 +573,87 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     }
 
     [Fact]
+    public async Task ResetPassword_SignsTheUserIn_EvenWhileSomeoneKeepsTheAddressLocked()
+    {
+        // The reset revokes every session, so if recovery ran through login, a stranger re-locking
+        // the address straight after it would leave the user signed out everywhere.
+        var (userId, oldTokens) = await RegisterAndLoginAsync("lockout-relocked");
+        var email = await _dbContext.Users.Where(u => u.Id == userId).Select(u => u.Email).SingleAsync();
+        var code = await RequestCodeAsync(email);
+
+        var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = code, NewPassword = FreshPassword() });
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts);
+
+        Assert.True(reset.Succeeded);
+        Assert.NotNull(reset.Tokens);
+        Assert.NotNull(await RevokedAtAsync(oldTokens.RefreshToken));
+        Assert.Null(await RevokedAtAsync(reset.Tokens!.RefreshToken));
+        Assert.True((await _authService.RefreshAsync(reset.Tokens.RefreshToken)).Succeeded);
+    }
+
+    [Fact]
+    public async Task ResetPassword_WithAWrongCode_IssuesNoTokens()
+    {
+        var email = await RegisterAsync("reset-no-tokens");
+        var code = await RequestCodeAsync(email);
+
+        var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = WrongCode(code), NewPassword = FreshPassword() });
+
+        Assert.False(reset.Succeeded);
+        Assert.Null(reset.Tokens);
+    }
+
+    [Fact]
+    public async Task Login_AParallelBurst_GetsNoMoreThanTheCapOfRealVerifies()
+    {
+        // Check-then-record let every request that arrived while the first BCrypt verifies were still
+        // running pass the check; the attempt is now reserved before the password is looked at.
+        var email = await RegisterAsync("lockout-burst");
+        var hasher = new CountingPasswordHasher();
+
+        await Task.WhenAll(Enumerable.Range(0, 3 * LoginThrottle.MaxAttempts).Select(async _ =>
+        {
+            await using var dbContext = NewDbContext();
+            await NewAuthService(dbContext, passwordHasher: hasher).LoginAsync(new LoginRequest { Email = email, Password = "not-the-password" });
+        }));
+
+        Assert.Equal(LoginThrottle.MaxAttempts, hasher.RealVerifyCalls);
+        Assert.Equal(3 * LoginThrottle.MaxAttempts, hasher.VerifyCalls);
+    }
+
+    [Fact]
+    public async Task Login_TheWindowSlides_SoAttemptsEitherSideOfItsStartStillAddUp()
+    {
+        // A fixed window from the first failure let nine just before it closed and nine just after
+        // add up to eighteen with no lock.
+        var email = await RegisterAsync("lockout-sliding");
+        await FailLoginsAsync(email, 1);
+        _clock.Advance(LoginThrottle.Window - TimeSpan.FromMinutes(1));
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts - 2);
+        _clock.Advance(TimeSpan.FromMinutes(2));
+        await FailLoginsAsync(email, 1);
+
+        Assert.False((await _authService.LoginAsync(new LoginRequest { Email = email, Password = "correct-horse-battery-staple" })).Succeeded);
+    }
+
+    [Fact]
+    public async Task Login_RefusedAttempts_DoNotExtendTheLock()
+    {
+        // Otherwise a guesser could hold an address locked by the rate of their own refusals alone.
+        var email = await RegisterAsync("lockout-no-extend");
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts);
+        _clock.Advance(LoginThrottle.Window - TimeSpan.FromMinutes(1));
+        await FailLoginsAsync(email, 5);
+        _clock.Advance(TimeSpan.FromMinutes(1));
+
+        Assert.True((await _authService.LoginAsync(new LoginRequest { Email = email, Password = "correct-horse-battery-staple" })).Succeeded);
+    }
+
+    [Fact]
     public async Task Login_Locked_AFailedResetLeavesTheLock()
     {
         var email = await RegisterAsync("lockout-failed-reset");
-        await FailLoginsAsync(email, LoginThrottle.MaxFailures);
+        await FailLoginsAsync(email, LoginThrottle.MaxAttempts);
         var code = await RequestCodeAsync(email);
 
         var reset = await _authService.ResetPasswordAsync(new ResetPasswordRequest { Email = email, Code = WrongCode(code), NewPassword = FreshPassword() });
@@ -591,8 +669,8 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         // account locks too, and a locked address costs one BCrypt verify either way.
         var known = await RegisterAsync("lockout-known");
         var unknown = $"lockout-unknown-{Guid.NewGuid()}@example.com";
-        await FailLoginsAsync(known, LoginThrottle.MaxFailures);
-        await FailLoginsAsync(unknown, LoginThrottle.MaxFailures);
+        await FailLoginsAsync(known, LoginThrottle.MaxAttempts);
+        await FailLoginsAsync(unknown, LoginThrottle.MaxAttempts);
 
         _passwordHasher.VerifyCalls = 0;
         var knownResult = await _authService.LoginAsync(new LoginRequest { Email = known, Password = "correct-horse-battery-staple" });
@@ -603,7 +681,6 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         Assert.Equal(knownResult, unknownResult);
         Assert.Equal(1, knownCalls);
         Assert.Equal(1, _passwordHasher.VerifyCalls);
-        Assert.True(_loginThrottle.IsLocked(unknown));
     }
 
     [Fact]
@@ -611,7 +688,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     {
         var locked = await RegisterAsync("lockout-target");
         var bystander = await RegisterAsync("lockout-bystander");
-        await FailLoginsAsync(locked.ToUpperInvariant(), LoginThrottle.MaxFailures);
+        await FailLoginsAsync(locked.ToUpperInvariant(), LoginThrottle.MaxAttempts);
 
         Assert.False((await _authService.LoginAsync(new LoginRequest { Email = locked, Password = "correct-horse-battery-staple" })).Succeeded);
         Assert.True((await _authService.LoginAsync(new LoginRequest { Email = bystander, Password = "correct-horse-battery-staple" })).Succeeded);
@@ -719,7 +796,13 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
     private sealed class CountingPasswordHasher : IPasswordHasher
     {
-        public int VerifyCalls { get; set; }
+        private int _verifyCalls;
+        private int _realVerifyCalls;
+
+        public int VerifyCalls { get => _verifyCalls; set => _verifyCalls = value; }
+
+        /// <summary>Verifies against a stored account hash, as opposed to the dummy one.</summary>
+        public int RealVerifyCalls => _realVerifyCalls;
 
         /// <summary>Runs on every hash, so a test can fail a request part way through a reset.</summary>
         public Action? OnHash { get; init; }
@@ -732,7 +815,12 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
 
         public bool Verify(string password, string hash)
         {
-            VerifyCalls++;
+            Interlocked.Increment(ref _verifyCalls);
+            if (hash.StartsWith("hashed:", StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _realVerifyCalls);
+            }
+
             return hash == $"hashed:{password}";
         }
     }
