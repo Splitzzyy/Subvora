@@ -32,6 +32,13 @@ public class ExpiredCredentialCleanupBackgroundService : BackgroundService
     /// two cases differently: a known-but-expired token fails quietly, while an unknown one - and, on
     /// the rotated path, a replayed one - is what drives reuse detection. The window keeps recent
     /// history around for that decision.
+    /// <para>
+    /// Counted from expiry, not from revocation, on purpose. A rotated token is dead, but it is the
+    /// one the real device still holds if an attacker rotated a stolen copy first; presenting it is
+    /// what trips revoke-all and ends the attacker's chain, and that has to work however long the
+    /// device sat idle - up to the token's own expiry. Deleting it a week after rotation would let
+    /// an idle phone fail quietly instead, leaving the attacker signed in (#249).
+    /// </para>
     /// </summary>
     private static readonly TimeSpan RefreshTokenRetention = TimeSpan.FromDays(7);
 
