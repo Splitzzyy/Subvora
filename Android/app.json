@@ -5,8 +5,9 @@
     "scheme": "subvora",
     "version": "2.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/brand/icon.png",
     "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0B0A1F",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.subvora.mobile"
@@ -14,9 +15,10 @@
     "android": {
       "package": "com.subvora.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#512BD4",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "monochromeImage": "./assets/android-icon-foreground.png"
+        "backgroundColor": "#0B0A1F",
+        "backgroundImage": "./assets/brand/adaptive-background.png",
+        "foregroundImage": "./assets/brand/adaptive-foreground.png",
+        "monochromeImage": "./assets/brand/adaptive-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -25,16 +27,23 @@
       "expo-secure-store",
       "expo-sqlite",
       "@react-native-community/datetimepicker",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/brand/notification-icon.png",
+          "color": "#7B5CFF"
+        }
+      ],
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash-icon.png",
-          "imageWidth": 160,
+          "image": "./assets/brand/splash-icon.png",
+          "imageWidth": 288,
           "resizeMode": "contain",
-          "backgroundColor": "#FDF8FF",
+          "backgroundColor": "#0B0A1F",
           "dark": {
-            "backgroundColor": "#141318"
+            "image": "./assets/brand/splash-icon.png",
+            "backgroundColor": "#0B0A1F"
           }
         }
       ]
