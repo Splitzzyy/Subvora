@@ -50,18 +50,18 @@ There is no separate AI or matching service: provider matching is one SQL query 
 | Renewal reminders | Local notifications scheduled on-device by the mobile client (`expo-notifications`) | No push service, no vendor project, no API key; see §6 |
 | Background jobs | `.NET BackgroundService` / Hosted Service | FX rate refresh, provider catalog sync, expired-credential cleanup and email dispatch. No renewal scan: reminders are scheduled on-device (§6.5) |
 | Currency conversion | External FX rate API (open.er-api.com; exchangerate.host now needs a key) cached in DB | Refresh rates on a schedule, not per-request |
-| Auth | JWT bearer tokens, refresh token rotation | ASP.NET Identity or custom user store |
-| Hosting | Containerized (Docker) API + managed Postgres | Cloud-agnostic; Azure App Service / AWS / Railway all viable |
+| Auth | JWT bearer tokens, refresh token rotation | Custom user store (`AuthService` + `users`, BCrypt); no ASP.NET Identity |
+| Hosting | Containerized (Docker) API + managed Postgres | Render (API) + Neon (Postgres) + Brevo (SMTP) today, all free tier (`docs/DEPLOYMENT.md`); any container host works |
 
 ## 4. Backend API Requirements
 
-- Stateless REST API, versioned (`/api/v1/...`).
+- REST API, versioned (`/api/v1/...`). Requests carry no server-side session (JWT bearer), but the process holds some in-memory state - see Scalability in §9.
 - JWT bearer authentication on all endpoints except `/auth/*`.
 - Standard CRUD endpoints for subscriptions, categories, currencies, alert preferences.
 - `POST /api/v1/subscriptions/resolve` — accepts free-text subscription name, returns every catalog entry above the similarity floor (logo, category), best first, for the client to offer as a pick list.
 - `GET /api/v1/dashboard/burn-rate` — returns aggregated weekly/monthly/yearly totals in user's home currency, plus monthly spend broken down by category and by the payment source it is charged to.
 - Rate limiting on `/resolve` to bound CPU on an endpoint the client calls on every debounced keystroke pause, and per IP on the credential endpoints (`auth` 10/min, `refresh` 60/min); on top of those, a global limit of 120 requests/min per user (600 per IP when anonymous; `/health/live` exempt) and a 64 KB request-body cap on every route.
-- Per-account login lockout: 10 failed logins in 15 minutes refuse that address for 15 minutes, whether or not it has an account; a password reset lifts it (`LoginThrottle`, in-process).
+- Per-account login lockout (`LoginThrottle`, in-process): each address gets 10 attempts, reserved before the password is checked so a parallel burst cannot exceed it; after that it is refused until 15 minutes pass with no counted attempt, with the same 401 whether or not it has an account. A successful login clears the count. A successful password reset clears it too and returns a token pair, so recovery never runs through a login a stranger can lock. This bounds guessing against one account, not credential stuffing across many (#258).
 - Per-account caps on create: 500 subscriptions, 100 own categories, 50 payment sources (`UserQuotas`). They keep one account from filling the shared database and bound every list, which is why no list endpoint paginates.
 - Input validation via FluentValidation or DataAnnotations; reject malformed currency codes, negative amounts, invalid dates.
 - Centralized error handling middleware returning consistent problem-details responses.
@@ -113,8 +113,8 @@ Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigra
 - **Security:** JWT auth, password hashing (bcrypt/Argon2), HTTPS-only, secrets in a vault/managed config (not source control).
 - **Performance:** Dashboard burn-rate query < 300ms p95 for typical user (<100 subscriptions); mobile UI must remain readable offline via the local read cache.
 - **Offline support:** Read-only. The mobile app shows its cached copy of the last successful reads when offline; writes need a connection and fail visibly without one. There is no outbox, replay or conflict resolution (decided in #144; revisit that decision before adding any).
-- **Reliability:** Background jobs (FX refresh, catalog sync, credential cleanup) must be safe to re-run. There is no server-side renewal scan and no `notifications_log` (dropped by `DropPushNotificationTables`); reminders are scheduled on-device. Writes a client may retry are idempotent: creates accept a client-supplied id, and mark-paid names the billing date it settles.
-- **Scalability:** Stateless API instances behind a load balancer; Postgres connection pooling (Npgsql pooling or PgBouncer) as user base grows.
+- **Reliability:** Background jobs (FX refresh, catalog sync, credential cleanup) must be safe to re-run. There is no server-side renewal scan and no `notifications_log` (dropped by `DropPushNotificationTables`); reminders are scheduled on-device. Writes a client may retry: subscription and payment-source creates accept a client-supplied id, so a retry returns the original row (older clients that omit the id still duplicate on retry); category creates are deduplicated by name (a retry gets 409); mark-paid names the billing date it settles.
+- **Scalability:** Single API instance by design (Render free tier). These hold in-process state and must move to Postgres (or a shared store) before scaling out, or each silently becomes per-instance: the login lockout (`LoginThrottle`), the outbound email queue (`QueuedEmailSender`, which also loses queued mail on restart), the FX failed-fetch cooldown (`FxRateService`) and the rate-limiter partitions. Postgres connection pooling (Npgsql pooling or PgBouncer) as the user base grows.
 - **Observability:** Structured logging (Serilog), health-check endpoint, basic metrics on job success/failure.
 - **Testability:** Unit tests for burn-rate math and currency conversion; integration tests for auth and CRUD endpoints.
 
