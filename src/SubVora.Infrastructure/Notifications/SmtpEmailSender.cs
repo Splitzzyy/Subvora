@@ -30,7 +30,7 @@ public class SmtpEmailSender : IEmailSender
     // AuthController, for every one of its actions) depends on IEmailSender, so throwing at
     // construction time would break login/register/etc too whenever SMTP isn't configured yet,
     // not just the one code path that actually needs to send an email.
-    public async Task SendAsync(string toEmail, string subject, string body, CancellationToken cancellationToken = default)
+    public virtual async Task SendAsync(string toEmail, string subject, string body, CancellationToken cancellationToken = default)
     {
         var host = _configuration["Smtp:Host"]
             ?? throw new InvalidOperationException("Smtp:Host is not configured.");
