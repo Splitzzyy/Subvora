@@ -13,7 +13,7 @@ import { CYCLE_LABEL, CYCLES_ORDERED, nextBillingDate, todayDateOnly, type Billi
 import { useSession } from '@/lib/session';
 import { shape, useTheme } from '@/theme';
 import { Banner, Button, Card, Chip, Icon, IconButton, OfflineBanner, SelectField, Spinner, SwitchRow, Tap, Text, TextField, Tile } from '@/ui';
-import { Screen } from '@/ui/layout';
+import { ModalScreen, Screen } from '@/ui/layout';
 import { DateField, PickerSheet, type PickerOption } from '@/ui/sheets';
 
 const MIN_RESOLVE_LENGTH = 3;
@@ -231,7 +231,8 @@ export default function SubscriptionDetail() {
   const categoryTile = categoryIdentity(selectedCategory?.name);
 
   return (
-    <Screen>
+    <ModalScreen>
+    <Screen inset={false}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, paddingBottom: 8 }}>
         <IconButton icon="close" label="Close" onPress={() => router.back()} />
         <Text variant="titleLarge" accessibilityRole="header" style={{ flex: 1 }}>{editId ? 'Edit subscription' : 'Add subscription'}</Text>
@@ -315,5 +316,6 @@ export default function SubscriptionDetail() {
       <PickerSheet visible={picker === 'currency'} title="Currency" options={currencyOptions} selected={currency}
         onSelect={setCurrency} onClose={() => setPicker(null)} searchable custom={customCurrency} />
     </Screen>
+    </ModalScreen>
   );
 }

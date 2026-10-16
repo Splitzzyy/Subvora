@@ -32,7 +32,8 @@ function RootStack() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface }, animation: 'fade_from_bottom' }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="subscription/[id]" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
+          {/* Transparent so the tabs stay drawn underneath for ModalScreen to blur. */}
+          <Stack.Screen name="subscription/[id]" options={{ presentation: 'transparentModal', animation: 'fade_from_bottom', contentStyle: { backgroundColor: 'transparent' } }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="(auth)" />
