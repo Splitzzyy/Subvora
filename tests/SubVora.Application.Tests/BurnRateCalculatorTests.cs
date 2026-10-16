@@ -15,7 +15,7 @@ public class BurnRateCalculatorTests
         _calculator = new BurnRateCalculator(_fxRateService);
     }
 
-    private static SubscriptionDto RecurringSubscription(decimal cost, BillingCycleType cycle, bool isFreeTrial = false, bool isActive = true, string currency = "USD", Guid? categoryId = null, string? categoryName = null, Guid? paymentSourceId = null, string? paymentSourceLabel = null) => new()
+    private static SubscriptionDto RecurringSubscription(decimal cost, BillingCycleType cycle, bool isFreeTrial = false, bool isActive = true, string currency = "USD", Guid? categoryId = null, string? categoryName = null, Guid? paymentSourceId = null, string? paymentSourceLabel = null, PaymentSourceType? paymentSourceType = null) => new()
     {
         Id = Guid.NewGuid(),
         CustomName = "Test Subscription",
@@ -29,6 +29,7 @@ public class BurnRateCalculatorTests
         CategoryName = categoryName,
         PaymentSourceId = paymentSourceId,
         PaymentSourceLabel = paymentSourceLabel,
+        PaymentSourceType = paymentSourceType,
         IsFreeTrial = isFreeTrial,
         IsActive = isActive,
         CreatedAt = DateTimeOffset.UtcNow,
@@ -367,6 +368,23 @@ public class BurnRateCalculatorTests
         Assert.Equal(90m, result.ByPaymentSource[0].MonthlyAmount);
         Assert.Equal("UPI", result.ByPaymentSource[1].PaymentSourceLabel);
         Assert.Equal(30m, result.ByPaymentSource[1].MonthlyAmount);
+    }
+
+    [Fact]
+    public async Task PaymentSourceBreakdown_CarriesEachSourcesType()
+    {
+        // The dashboard draws a card, bank or wallet from this; without it every row wore a card.
+        var walletId = Guid.NewGuid();
+        var subscriptions = new[]
+        {
+            RecurringSubscription(30m, BillingCycleType.Monthly, paymentSourceId: walletId, paymentSourceLabel: "Paytm", paymentSourceType: PaymentSourceType.Wallet),
+            RecurringSubscription(10m, BillingCycleType.Monthly),
+        };
+
+        var result = await _calculator.CalculateAsync(subscriptions, "USD");
+
+        Assert.Equal(PaymentSourceType.Wallet, result.ByPaymentSource[0].PaymentSourceType);
+        Assert.Null(result.ByPaymentSource[1].PaymentSourceType);
     }
 
     [Fact]

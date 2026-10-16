@@ -26,8 +26,11 @@ export default function Login() {
       void requestReminderPermission();
     } catch (e) {
       haptics.reject();
-      // Login's own 401 is bad credentials, not an expired session.
-      setError(isStatus(e, 401) ? 'Invalid email or password.' : errorMessage(e));
+      // Login's own 401 is bad credentials, not an expired session. The lockout hint is shown on
+      // every 401, locked or not, so it cannot tell anyone whether this address is locked.
+      setError(isStatus(e, 401)
+        ? "Invalid email or password. If you're sure the password is right, wait 15 minutes or reset it."
+        : errorMessage(e));
       setBusy(false);
     }
   };

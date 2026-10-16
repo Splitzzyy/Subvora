@@ -18,7 +18,7 @@ public interface IAuthService
     /// <summary>Always completes successfully regardless of whether the email matches an account - callers must never be able to tell the two cases apart (no account enumeration).</summary>
     Task ForgotPasswordAsync(string email, CancellationToken cancellationToken = default);
 
-    Task<ResetPasswordResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default);
+    Task<AuthResult> ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Changes the password of an already-authenticated user, after checking they know the current

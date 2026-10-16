@@ -39,6 +39,25 @@ public class QueuedEmailSenderTests
     }
 
     [Fact]
+    public async Task SendAsync_WhenTheQueueIsFull_LogsTheDropWithoutTheAddress()
+    {
+        // Logs must not carry email addresses: through forgot-password, an address in the log pairs
+        // it with "a reset was requested", which the endpoint goes out of its way not to reveal.
+        var logger = new CapturingLogger<QueuedEmailSender>();
+        var sender = new QueuedEmailSender(logger);
+        for (var i = 0; i < 1_000; i++)
+        {
+            await sender.SendAsync($"user{i}@example.com", "Subject", "Body");
+        }
+
+        await sender.SendAsync("overflow@example.com", "Your SubVora password reset code", "Body");
+
+        var entry = Assert.Single(logger.Entries);
+        Assert.Contains("Your SubVora password reset code", entry);
+        Assert.DoesNotContain("@", entry);
+    }
+
+    [Fact]
     public async Task SendAsync_PreservesOrderForASingleReader()
     {
         var sender = CreateSender();

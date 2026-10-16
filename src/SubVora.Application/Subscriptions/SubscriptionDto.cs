@@ -24,6 +24,7 @@ public class SubscriptionDto
     public string? CategoryName { get; set; }
     public Guid? PaymentSourceId { get; set; }
     public string? PaymentSourceLabel { get; set; }
+    public PaymentSourceType? PaymentSourceType { get; set; }
 
     /// <summary>Returned so a client editing this subscription can round-trip the link back on save instead of silently stripping it.</summary>
     public Guid? CatalogId { get; set; }

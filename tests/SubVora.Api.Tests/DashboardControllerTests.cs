@@ -122,9 +122,11 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
         Assert.Equal(2, result!.ByPaymentSource.Count);
         Assert.Equal("HDFC Card", result.ByPaymentSource[0].PaymentSourceLabel);
         Assert.Equal(card.Id, result.ByPaymentSource[0].PaymentSourceId);
+        Assert.Equal(PaymentSourceType.Card, result.ByPaymentSource[0].PaymentSourceType);
         Assert.Equal(50m, result.ByPaymentSource[0].MonthlyAmount);
         Assert.Equal("Unassigned", result.ByPaymentSource[1].PaymentSourceLabel);
         Assert.Null(result.ByPaymentSource[1].PaymentSourceId);
+        Assert.Null(result.ByPaymentSource[1].PaymentSourceType);
         Assert.Equal(10m, result.ByPaymentSource[1].MonthlyAmount);
     }
 

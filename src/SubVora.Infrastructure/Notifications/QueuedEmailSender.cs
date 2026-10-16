@@ -23,31 +23,29 @@ public class QueuedEmailSender : IEmailSender
     /// </summary>
     private const int QueueCapacity = 1_000;
 
-    private readonly Channel<QueuedEmail> _queue = Channel.CreateBounded<QueuedEmail>(
-        new BoundedChannelOptions(QueueCapacity)
-        {
-            SingleReader = true,
-            FullMode = BoundedChannelFullMode.DropWrite,
-        });
-
-    private readonly ILogger<QueuedEmailSender> _logger;
+    private readonly Channel<QueuedEmail> _queue;
 
     public QueuedEmailSender(ILogger<QueuedEmailSender> logger)
     {
-        _logger = logger;
+        // DropWrite makes TryWrite report success for the message it discards, so the drop is only
+        // visible through this callback - a check on TryWrite's result never fires. Never thrown back
+        // at the caller: a failure to enqueue must look exactly like a success from the outside, or
+        // it becomes the same oracle by another route. The subject, not the address: logs must not
+        // carry email addresses, and the subject is fixed text.
+        _queue = Channel.CreateBounded<QueuedEmail>(
+            new BoundedChannelOptions(QueueCapacity)
+            {
+                SingleReader = true,
+                FullMode = BoundedChannelFullMode.DropWrite,
+            },
+            dropped => logger.LogError("Outbound email queue is full; dropped a message ({Subject}).", dropped.Subject));
     }
 
     public ChannelReader<QueuedEmail> Reader => _queue.Reader;
 
     public Task SendAsync(string toEmail, string subject, string body, CancellationToken cancellationToken = default)
     {
-        if (!_queue.Writer.TryWrite(new QueuedEmail(toEmail, subject, body)))
-        {
-            // Never thrown back at the caller - a failure to enqueue must look exactly like a
-            // success from the outside, or it becomes the same oracle by another route.
-            _logger.LogError("Outbound email queue is full; dropped a message to {Recipient}.", toEmail);
-        }
-
+        _queue.Writer.TryWrite(new QueuedEmail(toEmail, subject, body));
         return Task.CompletedTask;
     }
 }

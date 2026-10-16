@@ -121,6 +121,24 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
     }
 
     [Fact]
+    public async Task CleanupOnceAsync_KeepsARotatedTokenUntilItWouldHaveExpired()
+    {
+        // Rotated long ago but still inside its lifetime. If an attacker rotated a stolen copy first,
+        // this is the token the real phone still holds, and presenting it is what trips revoke-all
+        // and ends the attacker's chain - however long the phone sat idle. Deleted early, it would
+        // look like a token that never existed, fail quietly, and leave the attacker signed in.
+        var userId = await SeedUserAsync();
+        var rotated = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(22));
+        await _dbContext.RefreshTokens
+            .Where(t => t.Id == rotated)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow.AddDays(-8)));
+
+        await BuildService().CleanupOnceAsync();
+
+        Assert.True(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == rotated));
+    }
+
+    [Fact]
     public async Task CleanupOnceAsync_DeletesExpiredPasswordResetCodesButKeepsLiveOnes()
     {
         // Two users: ux_password_reset_codes_live_per_user allows one unused code per account, and

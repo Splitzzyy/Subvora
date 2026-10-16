@@ -11,7 +11,7 @@ namespace SubVora.Infrastructure.Currency;
 
 public class FxRateRefreshBackgroundService : BackgroundService
 {
-    /// <summary>An hour before the renewal scan, so the day's alerts and totals use rates fetched the same morning.</summary>
+    /// <summary>Early in the UTC day, so the day's dashboard totals use rates fetched that morning. (There is no server-side renewal scan to run ahead of; reminders are scheduled on-device.)</summary>
     private const int DefaultRefreshUtcHour = 1;
 
     private readonly IServiceScopeFactory _scopeFactory;

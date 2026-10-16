@@ -253,6 +253,7 @@ public class SubscriptionRepository : ISubscriptionRepository
             CategoryName = category != null ? category.Name : null,
             PaymentSourceId = s.PaymentSourceId,
             PaymentSourceLabel = paymentSource != null ? paymentSource.Label : null,
+            PaymentSourceType = paymentSource != null ? paymentSource.SourceType : null,
             CatalogId = s.CatalogId,
             CatalogLogoUrl = catalogItem != null ? catalogItem.LogoUrl : null,
             IsFreeTrial = s.IsFreeTrial,
