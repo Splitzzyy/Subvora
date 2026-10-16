@@ -165,7 +165,11 @@ function readPrefs(): { mode: ThemeMode; wallpaper: boolean } {
 
 interface Theme {
   colors: Palette;
-  /** Plain-string surfaces for APIs that cannot take a native colour (system UI, status bar). */
+  /**
+   * The explicit palette as plain strings, ignoring wallpaper colours: for APIs that cannot take a
+   * native colour (system UI, RefreshControl, SVG gradients) and for brand drawings.
+   */
+  hex: Record<Role | Alias, string>;
   surfaceHex: string;
   isDark: boolean;
   mode: ThemeMode;
@@ -197,6 +201,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const payments = generated.paymentHues[scheme];
     return {
       colors: { ...base, ...(prefs.wallpaper && supportsDynamicColor ? dynamicAccents(isDark) : {}) },
+      hex: base,
       surfaceHex: base.surface,
       isDark,
       mode: prefs.mode,

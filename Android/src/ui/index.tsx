@@ -1,18 +1,22 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
-  AccessibilityInfo, ActivityIndicator, Animated, Keyboard, Pressable, Switch, Text as RNText, TextInput, View,
+  Animated, Easing, Keyboard, Pressable, Switch, Text as RNText, TextInput, View,
   type ColorValue, type PressableProps, type StyleProp, type TextInputProps, type TextProps, type ViewStyle,
 } from 'react-native';
-import { shape, typescale, useTheme, type TypeVariant } from '@/theme';
+import Svg, { Path } from 'react-native-svg';
+import { reduceMotionEnabled, useReducedMotion } from '@/lib/motion';
+import { motion, shape, space, typescale, useTheme, type TypeVariant } from '@/theme';
 import * as haptics from '@/lib/haptics';
+import { ExpressiveLoadingIndicator, RingMark } from './brand';
 
 export type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 export const Icon = MaterialCommunityIcons;
 
-let reduceMotion = false;
-AccessibilityInfo.isReduceMotionEnabled().then((v) => { reduceMotion = v; }).catch(() => undefined);
-AccessibilityInfo.addEventListener('reduceMotionChanged', (v) => { reduceMotion = v; });
+/** Minimum touch target (dp). Smaller visuals reach it with hitSlop. */
+export const TOUCH = 48;
+/** From this window width (tablets, unfolded foldables) the tab bar becomes a navigation rail. */
+export const RAIL_MIN_WIDTH = 600;
 
 // ---- Text ------------------------------------------------------------------------------------
 
@@ -33,16 +37,19 @@ interface TapProps extends Omit<PressableProps, 'style' | 'children'> {
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-/** Native ripple plus a small spring; shape morph where a radius pair is given. Honours reduced motion. */
+/**
+ * Native ripple plus a spring on the fast spatial token; shape morph where a radius pair is given.
+ * Buttons and the FAB use this one morph. Reduced motion: ripple only.
+ */
 export function Tap({ style, children, radius = 0, pressedRadius, onPressIn, onPressOut, ...props }: TapProps) {
   const { colors } = useTheme();
   const [scale] = useState(() => new Animated.Value(1));
   const [corner] = useState(() => new Animated.Value(radius));
   const spring = (to: number, r: number) => {
-    if (reduceMotion) return;
+    if (reduceMotionEnabled()) return;
     Animated.parallel([
-      Animated.spring(scale, { toValue: to, useNativeDriver: false, speed: 40, bounciness: 6 }),
-      Animated.spring(corner, { toValue: r, useNativeDriver: false, speed: 30, bounciness: 8 }),
+      Animated.spring(scale, { toValue: to, ...motion.spatialFast, useNativeDriver: false }),
+      Animated.spring(corner, { toValue: r, ...motion.spatialFast, useNativeDriver: false }),
     ]).start();
   };
   return (
@@ -62,16 +69,20 @@ export function Tap({ style, children, radius = 0, pressedRadius, onPressIn, onP
 
 type ButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text' | 'danger';
 
+/**
+ * `loading` disables the button and shows an inline indicator while keeping the label, so the
+ * button does not change size or meaning mid-write. Wire it to the screen's busy flag.
+ */
 export function Button({ label, onPress, variant = 'filled', icon, loading, disabled, size = 'md', style }: {
   label: string; onPress?: () => void; variant?: ButtonVariant; icon?: IconName; loading?: boolean;
   disabled?: boolean; size?: 'md' | 'lg'; style?: StyleProp<ViewStyle>;
 }) {
   const { colors } = useTheme();
-  const height = size === 'lg' ? 56 : 44;
+  const height = size === 'lg' ? 56 : TOUCH;
   const palette: Record<ButtonVariant, { bg: ColorValue; fg: ColorValue; border?: ColorValue }> = {
     filled: { bg: colors.primary, fg: colors.onPrimary },
     tonal: { bg: colors.secondaryContainer, fg: colors.onSecondaryContainer },
-    outlined: { bg: 'transparent', fg: colors.primary, border: colors.outlineVariant },
+    outlined: { bg: 'transparent', fg: colors.primary, border: colors.outline },
     text: { bg: 'transparent', fg: colors.primary },
     danger: { bg: colors.errorContainer, fg: colors.onErrorContainer },
   };
@@ -89,50 +100,52 @@ export function Button({ label, onPress, variant = 'filled', icon, loading, disa
       radius={height / 2}
       pressedRadius={shape.small}
       style={[{
-        height, paddingHorizontal: size === 'lg' ? 28 : 20, backgroundColor: bg,
+        minHeight: height, paddingHorizontal: size === 'lg' ? space.xxl + space.xs : space.xl, paddingVertical: space.sm, backgroundColor: bg,
         borderWidth: border ? 1 : 0, borderColor: border, opacity: inactive && variant === 'text' ? 0.5 : 1,
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm,
       }, style]}
     >
-      {loading ? <ActivityIndicator color={fg} size="small" /> : icon ? <Icon name={icon} size={20} color={fg} /> : null}
-      <Text variant={size === 'lg' ? 'titleMedium' : 'labelLarge'} color={fg}>{label}</Text>
+      {loading ? <ExpressiveLoadingIndicator size={22} color={fg} label={`${label}, in progress`} />
+        : icon ? <Icon name={icon} size={20} color={fg} /> : null}
+      <Text variant={size === 'lg' ? 'titleMediumEmphasized' : 'labelLarge'} color={fg} style={{ textAlign: 'center', flexShrink: 1 }}>{label}</Text>
     </Tap>
   );
 }
 
 export function IconButton({ icon, onPress, label, tone = 'standard', disabled }: {
-  icon: IconName; onPress?: () => void; label: string; tone?: 'standard' | 'tonal'; disabled?: boolean;
+  icon: IconName; onPress?: () => void; label: string; tone?: 'standard' | 'tonal' | 'inverse'; disabled?: boolean;
 }) {
   const { colors } = useTheme();
+  const ink = tone === 'tonal' ? colors.onSecondaryContainer : tone === 'inverse' ? colors.inverseOnSurface : colors.onSurfaceVariant;
   return (
     <Tap
-      accessibilityRole="button" accessibilityLabel={label} disabled={disabled} onPress={onPress}
-      radius={20} pressedRadius={12} hitSlop={4}
+      accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} disabled={disabled} onPress={onPress}
+      radius={20} pressedRadius={shape.small} hitSlop={(TOUCH - 40) / 2}
       style={{
         width: 40, height: 40, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.4 : 1,
         backgroundColor: tone === 'tonal' ? colors.secondaryContainer : 'transparent',
       }}
     >
-      <Icon name={icon} size={22} color={tone === 'tonal' ? colors.onSecondaryContainer : colors.onSurfaceVariant} />
+      <Icon name={icon} size={22} color={ink} />
     </Tap>
   );
 }
 
-/** Extended FAB, bottom-right. */
+/** Extended FAB, bottom-right. Squarer when pressed, through Tap's morph. */
 export function Fab({ icon, label, onPress, disabled }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
   const { colors } = useTheme();
   return (
-    <View style={{ position: 'absolute', right: 16, bottom: 16 }}>
+    <View style={{ position: 'absolute', right: space.lg, bottom: space.lg }}>
       <Tap
-        accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled}
+        accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} onPress={onPress} disabled={disabled}
         radius={shape.medium} pressedRadius={shape.large}
         style={{
-          height: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 12,
+          minHeight: 56, paddingHorizontal: space.xl, flexDirection: 'row', alignItems: 'center', gap: space.md,
           backgroundColor: colors.primaryContainer, elevation: 3, opacity: disabled ? 0.6 : 1,
         }}
       >
         <Icon name={icon} size={24} color={colors.onPrimaryContainer} />
-        <Text variant="titleMedium" color={colors.onPrimaryContainer}>{label}</Text>
+        <Text variant="titleMediumEmphasized" color={colors.onPrimaryContainer}>{label}</Text>
       </Tap>
     </View>
   );
@@ -148,13 +161,13 @@ export function Card({ children, tone = 'low', style }: { children: React.ReactN
     low: colors.surfaceContainerLow, default: colors.surfaceContainer, high: colors.surfaceContainerHigh,
     primary: colors.primaryContainer, tertiary: colors.tertiaryContainer,
   };
-  return <View style={[{ backgroundColor: bg[tone], borderRadius: shape.large, padding: 20, gap: 12 }, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: bg[tone], borderRadius: shape.large, padding: space.xl, gap: space.md }, style]}>{children}</View>;
 }
 
 export function ScreenHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingTop: 24, paddingBottom: 16, gap: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'flex-end', paddingTop: space.xxl, paddingBottom: space.lg, gap: space.sm }}>
       <View style={{ flex: 1 }}>
         {subtitle ? <Text variant="labelLarge" color={colors.primary}>{subtitle}</Text> : null}
         <Text variant="headlineLarge" accessibilityRole="header">{title}</Text>
@@ -167,8 +180,8 @@ export function ScreenHeader({ title, subtitle, actions }: { title: string; subt
 export function SectionHeader({ title, summary }: { title: string; summary?: string }) {
   const { colors } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: 20, paddingBottom: 8, paddingHorizontal: 4, gap: 8 }}>
-      <Text variant="titleMedium" color={colors.primary} accessibilityRole="header">{title}</Text>
+    <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingTop: space.xl, paddingBottom: space.sm, paddingHorizontal: space.xs, gap: space.sm }}>
+      <Text variant="titleMediumEmphasized" color={colors.primary} accessibilityRole="header">{title}</Text>
       {summary ? <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ flexShrink: 1, textAlign: 'right' }}>{summary}</Text> : null}
     </View>
   );
@@ -186,12 +199,12 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
   onPress?: () => void; onLongPress?: () => void; position?: ListPosition; children?: React.ReactNode; accessibilityLabel?: string;
 }) {
   const { colors } = useTheme();
-  const top = position === 'single' || position === 'first' ? 24 : 6;
-  const bottom = position === 'single' || position === 'last' ? 24 : 6;
+  const top = position === 'single' || position === 'first' ? shape.large : shape.listInner;
+  const bottom = position === 'single' || position === 'last' ? shape.large : shape.listInner;
   const body = (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 14 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.md + space.xxs, minHeight: 64 }}>
       {leading}
-      <View style={{ flex: 1, gap: 2 }}>
+      <View style={{ flex: 1, gap: space.xxs }}>
         {typeof title === 'string' ? <Text variant="titleMedium" numberOfLines={1}>{title}</Text> : title}
         {typeof subtitle === 'string' ? <Text variant="bodyMedium" color={colors.onSurfaceVariant} numberOfLines={2}>{subtitle}</Text> : subtitle}
       </View>
@@ -199,7 +212,7 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
     </View>
   );
   const style: ViewStyle = {
-    backgroundColor: colors.surfaceContainer, marginBottom: 2,
+    backgroundColor: colors.surfaceContainer, marginBottom: shape.listGap,
     borderTopLeftRadius: top, borderTopRightRadius: top, borderBottomLeftRadius: bottom, borderBottomRightRadius: bottom,
   };
   if (!onPress && !onLongPress) return <View style={[style, { overflow: 'hidden' }]}>{body}{children}</View>;
@@ -211,11 +224,14 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
   );
 }
 
-/** Squircle tile behind an icon or letter - the stand-in for a provider logo. */
+/**
+ * Squircle tile behind an icon or letter - the monogram that stands in for a provider logo. Logos
+ * are not loaded (the catalog's are remote SVGs); if they ever are, fade them in over this.
+ */
 export function Tile({ icon, letter, color, background, size = 44 }: { icon?: IconName; letter?: string; color: ColorValue; background: ColorValue; size?: number }) {
   return (
-    <View style={{ width: size, height: size, borderRadius: size * 0.34, backgroundColor: background, alignItems: 'center', justifyContent: 'center' }}>
-      {icon ? <Icon name={icon} size={size * 0.5} color={color} /> : <Text variant="titleLarge" color={color}>{letter}</Text>}
+    <View accessible={false} style={{ width: size, height: size, borderRadius: size * 0.34, backgroundColor: background, alignItems: 'center', justifyContent: 'center' }}>
+      {icon ? <Icon name={icon} size={size * 0.5} color={color} /> : <Text variant="titleLargeEmphasized" color={color} allowFontScaling={false}>{letter}</Text>}
     </View>
   );
 }
@@ -234,11 +250,12 @@ export function Banner({ tone, text, actionLabel, onAction }: { tone: BannerTone
   };
   const { bg, fg, icon } = map[tone];
   return (
-    <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: bg, borderRadius: shape.medium, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12 }}>
-      <Icon name={icon} size={22} color={fg} />
+    <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: bg, borderRadius: shape.medium, paddingVertical: space.md, paddingHorizontal: space.lg, marginBottom: space.md }}>
+      <Icon name={icon} size={22} color={fg} accessibilityElementsHidden importantForAccessibility="no" />
       <Text variant="bodyMedium" color={fg} style={{ flex: 1 }}>{text}</Text>
       {actionLabel ? (
-        <Tap onPress={onAction} radius={16} accessibilityRole="button" style={{ paddingHorizontal: 12, paddingVertical: 6 }}>
+        <Tap onPress={onAction} radius={shape.medium} accessibilityRole="button" accessibilityLabel={actionLabel}
+          style={{ paddingHorizontal: space.md, minHeight: TOUCH, justifyContent: 'center' }}>
           <Text variant="labelLarge" color={fg}>{actionLabel}</Text>
         </Tap>
       ) : null}
@@ -249,7 +266,7 @@ export function Banner({ tone, text, actionLabel, onAction }: { tone: BannerTone
 /** Shown wherever writes are closed because the phone has no network. */
 export const OfflineBanner = () => <Banner tone="warning" text="You're offline. Changes are disabled until you reconnect." />;
 
-export function Pill({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'error' | 'warning' | 'tertiary' | 'success' }) {
+export function Pill({ label, tone = 'neutral', icon }: { label: string; tone?: 'neutral' | 'error' | 'warning' | 'tertiary' | 'success'; icon?: IconName }) {
   const { colors } = useTheme();
   const map = {
     neutral: [colors.surfaceContainerHighest, colors.onSurfaceVariant],
@@ -260,35 +277,72 @@ export function Pill({ label, tone = 'neutral' }: { label: string; tone?: 'neutr
   } as const;
   const [bg, fg] = map[tone];
   return (
-    <View style={{ backgroundColor: bg, borderRadius: shape.full, paddingHorizontal: 8, paddingVertical: 2 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.xs, backgroundColor: bg, borderRadius: shape.full, paddingHorizontal: space.sm, paddingVertical: space.xxs }}>
+      {icon ? <Icon name={icon} size={14} color={fg} accessibilityElementsHidden importantForAccessibility="no" /> : null}
       <Text variant="labelMedium" color={fg}>{label}</Text>
     </View>
   );
 }
 
+/** Empty screens: the ring motif around the screen's own icon, one sentence, and the next step. */
 export function EmptyState({ icon, title, body, action }: { icon: IconName; title: string; body: string; action?: React.ReactNode }) {
   const { colors } = useTheme();
   return (
-    <View style={{ alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24, gap: 12 }}>
-      <View style={{ width: 96, height: 96, borderRadius: 32, backgroundColor: colors.tertiaryContainer, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-8deg' }] }}>
-        <Icon name={icon} size={44} color={colors.onTertiaryContainer} style={{ transform: [{ rotate: '8deg' }] }} />
-      </View>
-      <Text variant="titleLarge" style={{ textAlign: 'center' }}>{title}</Text>
+    <View style={{ alignItems: 'center', paddingVertical: space.huge, paddingHorizontal: space.xxl, gap: space.md }}>
+      <RingMark size={120} progress={0.62} center={<Icon name={icon} size={40} color={colors.primary} />} />
+      <Text variant="titleLargeEmphasized" style={{ textAlign: 'center' }} accessibilityRole="header">{title}</Text>
       <Text variant="bodyMedium" color={colors.onSurfaceVariant} style={{ textAlign: 'center' }}>{body}</Text>
       {action}
     </View>
   );
 }
 
-export function ProgressBar({ value, color }: { value: number; color: ColorValue }) {
+/**
+ * Rounded bar with a gap before its track. Without a value it is the wavy indeterminate variant,
+ * for short waits that have no figure to show (the wave stands still with reduced motion).
+ */
+export function ProgressBar({ value, color }: { value?: number; color?: ColorValue }) {
   const { colors } = useTheme();
+  if (value === undefined) return <WavyProgress />;
   const pct = Math.max(0, Math.min(1, value));
   return (
-    <View style={{ height: 8, flexDirection: 'row', gap: 4 }}>
-      <View style={{ flex: pct || 0.0001, backgroundColor: color, borderRadius: 4 }} />
-      <View style={{ flex: 1 - pct || 0.0001, backgroundColor: colors.surfaceContainerHighest, borderRadius: 4 }} />
+    <View style={{ height: space.sm, flexDirection: 'row', gap: space.xs }}>
+      <View style={{ flex: pct || 0.0001, backgroundColor: color ?? colors.primary, borderRadius: space.xs }} />
+      <View style={{ flex: 1 - pct || 0.0001, backgroundColor: colors.surfaceContainerHighest, borderRadius: space.xs }} />
     </View>
   );
+}
+
+const WAVELENGTH = 24;
+function WavyProgress() {
+  const { hex } = useTheme();
+  const reduced = useReducedMotion();
+  const [width, setWidth] = useState(0);
+  const [shift] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    if (reduced) return;
+    const loop = Animated.loop(Animated.timing(shift, { toValue: -WAVELENGTH, duration: 700, easing: Easing.linear, useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [shift, reduced]);
+  const span = width + WAVELENGTH;
+  let d = 'M2 5';
+  for (let x = 0; x < span; x += WAVELENGTH) d += ` q${WAVELENGTH / 4} -4 ${WAVELENGTH / 2} 0 t${WAVELENGTH / 2} 0`;
+  return (
+    <View accessible accessibilityRole="progressbar" accessibilityLabel="Loading" style={{ height: 10, overflow: 'hidden' }}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+      {width > 0 ? (
+        <Animated.View style={{ width: span, transform: [{ translateX: shift }] }}>
+          <Svg width={span} height={10}><Path d={d} fill="none" stroke={hex.primary} strokeWidth={4} strokeLinecap="round" /></Svg>
+        </Animated.View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Short indeterminate wait inside a section. Full-screen and first-load waits use skeletons or SubVoraLoader. */
+export function Spinner() {
+  return <View style={{ alignItems: 'center', paddingVertical: space.xxxl }}><ExpressiveLoadingIndicator size={48} /></View>;
 }
 
 // ---- Inputs ----------------------------------------------------------------------------------
@@ -305,9 +359,9 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
     return () => sub.remove();
   }, [focused]);
   return (
-    <View style={[{ gap: 4 }, style]}>
+    <View style={[{ gap: space.xs }, style]}>
       <View style={{
-        backgroundColor: colors.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: 16, paddingTop: 8,
+        backgroundColor: colors.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: space.lg, paddingTop: space.sm,
         borderWidth: 2, borderColor: error ? colors.error : focused ? colors.primary : 'transparent', flexDirection: 'row', alignItems: 'center',
       }}>
         <View style={{ flex: 1 }}>
@@ -320,17 +374,17 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
             // otherwise capitalise and autocorrect them, silently storing a different password.
             {...(secure ? { autoCapitalize: 'none', autoCorrect: false, spellCheck: false } as const : {})}
             secureTextEntry={secure && hidden}
-            placeholderTextColor={colors.outline as string}
+            placeholderTextColor={colors.onSurfaceVariant}
             cursorColor={colors.primary}
             selectionColor={colors.primary}
             onFocus={(e) => { setFocused(true); props.onFocus?.(e); }}
             onBlur={(e) => { setFocused(false); props.onBlur?.(e); }}
-            style={[typescale.bodyLarge, { color: colors.onSurface, paddingVertical: 6, paddingHorizontal: 0 }]}
+            style={[typescale.bodyLarge, { color: colors.onSurface, paddingVertical: space.xs + space.xxs, paddingHorizontal: 0 }]}
           />
         </View>
         {secure ? <IconButton icon={hidden ? 'eye-outline' : 'eye-off-outline'} label={hidden ? 'Show password' : 'Hide password'} onPress={() => setHidden((h) => !h)} /> : null}
       </View>
-      {error ? <Text variant="labelMedium" color={colors.error} style={{ paddingHorizontal: 16 }}>{error}</Text> : null}
+      {error ? <Text variant="labelMedium" color={colors.error} style={{ paddingHorizontal: space.lg }}>{error}</Text> : null}
     </View>
   );
 }
@@ -344,15 +398,16 @@ export function SelectField({ label, value, placeholder, onPress, disabled, lead
     <Tap
       // Dismissed first: Android hands focus back to the last input when a sheet or dialog closes,
       // which reopened the keyboard over the form after every pick.
-      onPress={() => { Keyboard.dismiss(); onPress(); }} disabled={disabled} radius={shape.medium} accessibilityRole="button" accessibilityLabel={`${label}: ${value ?? placeholder}`}
-      style={{ backgroundColor: colors.surfaceContainerHighest, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: disabled ? 0.5 : 1 }}
+      onPress={() => { Keyboard.dismiss(); onPress(); }} disabled={disabled} radius={shape.medium} accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value ?? placeholder}`} accessibilityState={{ disabled: !!disabled }}
+      style={{ backgroundColor: colors.surfaceContainerHighest, paddingHorizontal: space.lg, paddingVertical: space.sm + space.xxs, minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: space.md, opacity: disabled ? 0.5 : 1 }}
     >
       {leading}
       <View style={{ flex: 1 }}>
         <Text variant="labelMedium" color={colors.onSurfaceVariant}>{label}</Text>
-        <Text variant="bodyLarge" color={value ? colors.onSurface : colors.outline} numberOfLines={1}>{value ?? placeholder}</Text>
+        <Text variant="bodyLarge" color={value ? colors.onSurface : colors.onSurfaceVariant} numberOfLines={1}>{value ?? placeholder}</Text>
       </View>
-      <Icon name="menu-down" size={24} color={colors.onSurfaceVariant} />
+      <Icon name="menu-down" size={24} color={colors.onSurfaceVariant} accessibilityElementsHidden importantForAccessibility="no" />
     </Tap>
   );
 }
@@ -360,9 +415,9 @@ export function SelectField({ label, value, placeholder, onPress, disabled, lead
 export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
   label: string; caption?: string; value: boolean; onValueChange: (v: boolean) => void; disabled?: boolean;
 }) {
-  const { colors } = useTheme();
+  const { colors, hex } = useTheme();
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, opacity: disabled ? 0.5 : 1 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, opacity: disabled ? 0.5 : 1 }}>
       <View style={{ flex: 1 }}>
         <Text variant="bodyLarge">{label}</Text>
         {caption ? <Text variant="bodyMedium" color={colors.onSurfaceVariant}>{caption}</Text> : null}
@@ -371,7 +426,7 @@ export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
         value={value} disabled={disabled} accessibilityLabel={label}
         onValueChange={(v) => { haptics.tick(); onValueChange(v); }}
         trackColor={{ true: colors.primary, false: colors.surfaceContainerHighest }}
-        thumbColor={(value ? colors.onPrimary : colors.outline) as string}
+        thumbColor={value ? hex.onPrimary : hex.outline}
       />
     </View>
   );
@@ -386,21 +441,21 @@ export function ButtonGroup<T extends string>({ options, value, onChange, disabl
 }) {
   const { colors } = useTheme();
   return (
-    <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: 2, opacity: disabled ? 0.5 : 1 }}>
+    <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: space.xxs, opacity: disabled ? 0.5 : 1 }}>
       {options.map((option, i) => {
         const selected = option.value === value;
-        const outer = 20;
+        const outer = TOUCH / 2;
         const inner = selected ? outer : shape.extraSmall;
         return (
           <Tap
             key={option.value}
             disabled={disabled}
             accessibilityRole="radio"
-            accessibilityState={{ selected }}
+            accessibilityState={{ selected, disabled: !!disabled }}
             accessibilityLabel={option.label}
             onPress={() => { haptics.tick(); onChange(option.value); }}
             style={{
-              flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 6, paddingHorizontal: 4,
+              flex: 1, minHeight: TOUCH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: space.xs + space.xxs, paddingHorizontal: space.xs,
               backgroundColor: selected ? colors.primary : colors.surfaceContainerHighest,
               borderTopLeftRadius: i === 0 ? outer : inner, borderBottomLeftRadius: i === 0 ? outer : inner,
               borderTopRightRadius: i === options.length - 1 ? outer : inner, borderBottomRightRadius: i === options.length - 1 ? outer : inner,
@@ -420,19 +475,15 @@ export function Chip({ label, selected, onPress, icon, disabled }: { label: stri
   return (
     <Tap
       onPress={() => { haptics.tick(); onPress(); }} disabled={disabled} radius={shape.extraSmall} pressedRadius={shape.medium}
-      accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={label}
+      accessibilityRole="radio" accessibilityState={{ selected, disabled: !!disabled }} accessibilityLabel={label}
+      hitSlop={{ top: (TOUCH - 36) / 2, bottom: (TOUCH - 36) / 2 }}
       style={{
-        height: 36, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6,
-        backgroundColor: selected ? colors.secondaryContainer : 'transparent', borderWidth: selected ? 0 : 1, borderColor: colors.outlineVariant,
+        minHeight: 36, paddingHorizontal: space.md + space.xxs, flexDirection: 'row', alignItems: 'center', gap: space.xs + space.xxs,
+        backgroundColor: selected ? colors.secondaryContainer : 'transparent', borderWidth: selected ? 0 : 1, borderColor: colors.outline,
       }}
     >
       {selected ? <Icon name="check" size={18} color={colors.onSecondaryContainer} /> : icon ? <Icon name={icon} size={18} color={colors.onSurfaceVariant} /> : null}
       <Text variant="labelLarge" color={selected ? colors.onSecondaryContainer : colors.onSurfaceVariant}>{label}</Text>
     </Tap>
   );
-}
-
-export function Spinner() {
-  const { colors } = useTheme();
-  return <ActivityIndicator color={colors.primary as string} size="large" style={{ paddingVertical: 32 }} />;
 }

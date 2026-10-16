@@ -3,23 +3,25 @@ import { useMemo, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatLongDate, parseDateOnly, toDateOnly } from '@/lib/logic';
-import { shape, useTheme } from '@/theme';
+import { useReducedMotion } from '@/lib/motion';
+import { shape, space, useTheme } from '@/theme';
 import { Button, Icon, IconButton, SelectField, Tap, Text, TextField, type IconName } from '.';
 
 /** Modal bottom sheet. The backdrop is a sibling, so scrolling the content never dismisses it. */
 export function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const reduced = useReducedMotion();
   return (
-    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType={reduced ? 'fade' : 'slide'} statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel={`Dismiss ${title}`} />
         <View accessibilityViewIsModal style={{
           backgroundColor: colors.surfaceContainerLow, borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge,
-          paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16), maxHeight: '85%',
+          paddingTop: space.md, paddingBottom: Math.max(insets.bottom, space.lg), maxHeight: '85%',
         }}>
-          <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: colors.outlineVariant, alignSelf: 'center', marginBottom: 8 }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingBottom: 8 }}>
+          <View style={{ width: 32, height: 4, borderRadius: shape.full, backgroundColor: colors.outline, alignSelf: 'center', marginBottom: space.sm }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.xxl, paddingBottom: space.sm }}>
             <Text variant="titleLarge" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={1}>{title}</Text>
             <IconButton icon="close" label={`Close ${title}`} onPress={onClose} />
           </View>
@@ -36,12 +38,12 @@ export function ActionSheet({ title, actions, onClose }: { title: string | null;
   const { colors } = useTheme();
   return (
     <Sheet visible={title !== null} title={title ?? ''} onClose={onClose}>
-      <View style={{ paddingHorizontal: 12 }}>
+      <View style={{ paddingHorizontal: space.md }}>
         {actions.map((action) => {
           const fg = action.destructive ? colors.error : colors.onSurface;
           return (
-            <Tap key={action.label} radius={shape.medium} accessibilityRole="button" onPress={() => { onClose(); action.onPress(); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 16 }}>
+            <Tap key={action.label} radius={shape.medium} accessibilityRole="button" accessibilityLabel={action.label} onPress={() => { onClose(); action.onPress(); }}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.lg, minHeight: 56 }}>
               <Icon name={action.icon} size={24} color={fg} />
               <Text variant="bodyLarge" color={fg}>{action.label}</Text>
             </Tap>
@@ -73,7 +75,7 @@ export function PickerSheet({ visible, title, options, selected, onSelect, onClo
   return (
     <Sheet visible={visible} title={title} onClose={close}>
       {searchable ? (
-        <View style={{ paddingHorizontal: 24, paddingBottom: 8 }}>
+        <View style={{ paddingHorizontal: space.xxl, paddingBottom: space.sm }}>
           <TextField label="Search" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
         </View>
       ) : null}
@@ -81,16 +83,16 @@ export function PickerSheet({ visible, title, options, selected, onSelect, onClo
         data={shown}
         keyExtractor={(o) => o.value}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 8 }}
-        ListEmptyComponent={<Text variant="bodyMedium" color={colors.onSurfaceVariant} style={{ padding: 16 }}>Nothing matches.</Text>}
+        contentContainerStyle={{ paddingHorizontal: space.md, paddingBottom: space.sm }}
+        ListEmptyComponent={<Text variant="bodyMedium" color={colors.onSurfaceVariant} style={{ padding: space.lg }}>Nothing matches.</Text>}
         renderItem={({ item }) => {
           const isSelected = item.value === selected;
           return (
             <Tap radius={shape.medium} accessibilityRole="radio" accessibilityState={{ selected: isSelected }} accessibilityLabel={item.label}
               onPress={() => { onSelect(item.value); close(); }}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: isSelected ? colors.secondaryContainer : 'transparent' }}>
+              style={{ flexDirection: 'row', alignItems: 'center', gap: space.lg, paddingHorizontal: space.lg, paddingVertical: space.md, minHeight: 56, backgroundColor: isSelected ? colors.secondaryContainer : 'transparent' }}>
               {item.icon ? (
-                <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: item.iconBackground ?? colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 36, height: 36, borderRadius: shape.small, backgroundColor: item.iconBackground ?? colors.surfaceContainerHighest, alignItems: 'center', justifyContent: 'center' }}>
                   <Icon name={item.icon} size={20} color={item.iconColor ?? colors.onSurfaceVariant} />
                 </View>
               ) : item.caption ? (
@@ -121,11 +123,11 @@ function PromptBody({ title, label, initial, confirmLabel, onSubmit, onClose }: 
   const { colors } = useTheme();
   const [value, setValue] = useState(initial);
   return (
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: colors.scrim }}>
-        <View accessibilityViewIsModal style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.extraLarge, padding: 24, gap: 16 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center', padding: space.xxl, backgroundColor: colors.scrim }}>
+        <View accessibilityViewIsModal style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.extraLarge, padding: space.xxl, gap: space.lg }}>
           <Text variant="headlineSmall" accessibilityRole="header">{title}</Text>
           <TextField label={label} value={value} onChangeText={setValue} autoFocus onSubmitEditing={() => onSubmit(value)} />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm }}>
             <Button label="Cancel" variant="text" onPress={onClose} />
             <Button label={confirmLabel} variant="text" onPress={() => onSubmit(value)} disabled={!value.trim()} />
           </View>
