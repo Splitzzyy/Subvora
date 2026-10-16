@@ -6,6 +6,7 @@ import * as haptics from '@/lib/haptics';
 import { space, useTheme } from '@/theme';
 import { Icon, RAIL_MIN_WIDTH, Text, TOUCH, type IconName } from '@/ui';
 import { SubVoraMark } from '@/ui/brand';
+import { useObstruction } from '@/ui/obstructions';
 
 const DESTINATIONS: Record<string, { title: string; icon: IconName; selected: IconName }> = {
   index: { title: 'Home', icon: 'home-variant-outline', selected: 'home-variant' },
@@ -35,6 +36,7 @@ function useKeyboardVisible() {
 function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & { rail: boolean }) {
   const { colors } = useTheme();
   const keyboard = useKeyboardVisible();
+  useObstruction('navBar', !rail);
   if (keyboard && !rail) return null;
 
   const items = state.routes.map((route, index) => {
@@ -62,7 +64,7 @@ function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & 
         </View>
         <Text variant={focused ? 'labelMediumEmphasized' : 'labelMedium'} color={focused ? colors.onSurface : colors.onSurfaceVariant}
           // Five labels share a phone's width; with large text they shrink to fit rather than truncate.
-          numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{d.title}</Text>
+          numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} maxFontSizeMultiplier={1.3}>{d.title}</Text>
       </Pressable>
     );
   });

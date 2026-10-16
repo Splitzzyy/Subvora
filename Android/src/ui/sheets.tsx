@@ -1,32 +1,72 @@
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
-import { useMemo, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Animated, FlatList, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { formatLongDate, parseDateOnly, toDateOnly } from '@/lib/logic';
 import { useReducedMotion } from '@/lib/motion';
-import { shape, space, useTheme } from '@/theme';
+import { motion, shape, space, useTheme } from '@/theme';
 import { Button, Icon, IconButton, SelectField, Tap, Text, TextField, type IconName } from '.';
 
-/** Modal bottom sheet. The backdrop is a sibling, so scrolling the content never dismisses it. */
+/**
+ * Modal bottom sheet. The scrim fades in on its own while only the sheet rises (spatial spring), and
+ * the sheet stays mounted for its exit. The handle and header drag it down: past 30% of its height,
+ * or with a flick, it closes. The backdrop is a sibling, so scrolling the content never dismisses it.
+ */
 export function Sheet({ visible, title, onClose, children }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
+  const { height: windowHeight } = useWindowDimensions();
+  const [mounted, setMounted] = useState(visible);
+  const [offset] = useState(() => new Animated.Value(windowHeight));
+  const [sheetHeight, setSheetHeight] = useState(windowHeight);
+  if (visible && !mounted) setMounted(true);
+
+  useEffect(() => {
+    if (visible) {
+      if (reduced) offset.setValue(0);
+      else Animated.spring(offset, { toValue: 0, ...motion.spatialDefault, useNativeDriver: true }).start();
+      return;
+    }
+    // Out without overshoot, then unmount; reduced motion just lets the Modal fade.
+    const exit = reduced
+      ? Animated.timing(offset, { toValue: sheetHeight, duration: 0, useNativeDriver: true })
+      : Animated.spring(offset, { toValue: sheetHeight, ...motion.effectsDefault, useNativeDriver: true });
+    exit.start(() => setMounted(false));
+    return () => exit.stop();
+  }, [visible, reduced, offset, sheetHeight]);
+
+  const drag = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => g.dy > 4 && Math.abs(g.dy) > Math.abs(g.dx),
+    onPanResponderMove: (_, g) => offset.setValue(Math.max(0, g.dy)),
+    onPanResponderRelease: (_, g) => {
+      if (g.dy > sheetHeight * 0.3 || g.vy > 1) onClose();
+      else Animated.spring(offset, { toValue: 0, ...motion.spatialFast, useNativeDriver: true }).start();
+    },
+  }), [offset, sheetHeight, onClose]);
+
   return (
-    <Modal visible={visible} transparent animationType={reduced ? 'fade' : 'slide'} statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+    <Modal visible={mounted} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel={`Dismiss ${title}`} />
-        <View accessibilityViewIsModal style={{
-          backgroundColor: colors.surfaceContainerLow, borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge,
-          paddingTop: space.md, paddingBottom: Math.max(insets.bottom, space.lg), maxHeight: '85%',
-        }}>
-          <View style={{ width: 32, height: 4, borderRadius: shape.full, backgroundColor: colors.outline, alignSelf: 'center', marginBottom: space.sm }} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.xxl, paddingBottom: space.sm }}>
-            <Text variant="titleLarge" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={1}>{title}</Text>
-            <IconButton icon="close" label={`Close ${title}`} onPress={onClose} />
+        <Animated.View
+          accessibilityViewIsModal
+          onLayout={(e) => setSheetHeight(e.nativeEvent.layout.height)}
+          style={{
+            backgroundColor: colors.surfaceContainerLow, borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge,
+            paddingTop: space.md, paddingBottom: Math.max(insets.bottom, space.lg), maxHeight: '85%',
+            transform: [{ translateY: offset }],
+          }}
+        >
+          <View {...drag.panHandlers}>
+            <View style={{ width: 32, height: 4, borderRadius: shape.full, backgroundColor: colors.outline, alignSelf: 'center', marginBottom: space.sm }} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.xxl, paddingBottom: space.sm }}>
+              <Text variant="titleLarge" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={1}>{title}</Text>
+              <IconButton icon="close" label={`Close ${title}`} onPress={onClose} />
+            </View>
           </View>
           {children}
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -134,6 +174,49 @@ function PromptBody({ title, label, initial, confirmLabel, onSubmit, onClose }: 
         </View>
       </KeyboardAvoidingView>
   );
+}
+
+export interface ConfirmRequest {
+  title: string;
+  body: string;
+  confirmLabel: string;
+  /** Data loss: the confirm action reads in the error colour. */
+  destructive?: boolean;
+  onConfirm: () => void;
+}
+
+/**
+ * M3 basic dialog for confirmations, in place of the native Alert (which the OEM themes: system
+ * font, uppercase buttons in the platform accent). Use through useConfirm().
+ */
+export function ConfirmDialog({ request, onClose }: { request: ConfirmRequest | null; onClose: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Modal visible={request !== null} transparent animationType="fade" statusBarTranslucent onRequestClose={onClose}>
+      {request ? (
+        <View style={{ flex: 1, justifyContent: 'center', padding: space.xxl, backgroundColor: colors.scrim }}>
+          <View accessibilityViewIsModal style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.extraLarge, padding: space.xxl, gap: space.lg }}>
+            <Text variant="headlineSmall" accessibilityRole="header">{request.title}</Text>
+            <Text variant="bodyMedium" color={colors.onSurfaceVariant}>{request.body}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: space.sm }}>
+              <Button label="Cancel" variant="text" onPress={onClose} />
+              <Button
+                label={request.confirmLabel} variant={request.destructive ? 'textDanger' : 'text'}
+                onPress={() => { onClose(); request.onConfirm(); }}
+              />
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </Modal>
+  );
+}
+
+/** `[dialog, confirm]`: render `dialog` once, call `confirm({...})` to ask. */
+export function useConfirm() {
+  const [request, setRequest] = useState<ConfirmRequest | null>(null);
+  const dialog = <ConfirmDialog request={request} onClose={() => setRequest(null)} />;
+  return [dialog, setRequest] as const;
 }
 
 /** Date-only field ("yyyy-MM-dd"). Android opens the native Material date dialog. */

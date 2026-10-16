@@ -1,8 +1,8 @@
 import { useEffect, useId, useState } from 'react';
-import { Animated, Easing, StyleSheet, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
+import { Animated, Easing, StyleSheet, useColorScheme, View, type ColorValue, type StyleProp, type ViewStyle } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Path, Polyline, RadialGradient, Stop } from 'react-native-svg';
 import { useReducedMotion } from '@/lib/motion';
-import { brand, motion, useTheme } from '@/theme';
+import { brand, lightSurface, motion, useTheme } from '@/theme';
 
 // The Renewal Ring's geometry, in the icon master's 1024 units (assets/brand/icon-master.svg): ring
 // centred at 512, r 290, stroke 84; the arc runs clockwise from 12 o'clock; the orb sits in the gap.
@@ -21,13 +21,17 @@ function arcPath(progress: number) {
   return `M${C} ${C - R} A${R} ${R} 0 ${progress > 0.5 ? 1 : 0} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
 }
 
-type Tone = 'brand' | 'themed' | 'mono';
+type Tone = 'brand' | 'brandOnLight' | 'themed' | 'mono';
 
 interface RingProps {
   size: number;
   /** Share of the circle the arc covers; the icon's 0.75 by default. */
   progress?: number;
-  /** brand: the icon's own colours (for midnight backgrounds). themed: primary/secondary/tertiary on surfaces. mono: one colour. */
+  /**
+   * brand: the icon's own colours, for midnight backgrounds. brandOnLight: the same mark for light
+   * backgrounds (violet arc, midnight V), as on the light splash. themed: primary/secondary on
+   * surfaces. mono: one colour.
+   */
   tone?: Tone;
   color?: ColorValue;
   /** Replaces the V, e.g. a figure or an icon. */
@@ -40,12 +44,17 @@ interface RingProps {
 
 /** The ring of the SubVora mark, as a component: the base of the mark, the loader, the dashboard ring and empty states. */
 export function RingMark({ size, progress = 0.75, tone = 'themed', color, center, orb = true, arcStyle, orbStyle }: RingProps) {
-  const { hex } = useTheme();
+  const { hex, colors, wallpaperActive } = useTheme();
   const id = useId().replace(/[^\w-]/g, '');
   const p = Math.max(0, Math.min(1, progress));
-  const ink = tone === 'brand' ? brand.white : tone === 'mono' ? (color ?? hex.onSurface) : hex.onSurface;
-  const [from, to] = tone === 'brand' ? [brand.markStart, brand.markEnd] : [hex.secondary, hex.primary];
-  const stroke = tone === 'mono' ? ink : `url(#arc${id})`;
+  const ink = tone === 'brand' ? brand.white : tone === 'brandOnLight' ? brand.night : tone === 'mono' ? (color ?? hex.onSurface) : hex.onSurface;
+  const [from, to] = tone === 'brand' ? [brand.markStart, brand.markEnd] : tone === 'brandOnLight' ? [brand.key, brand.violet] : [hex.secondary, hex.primary];
+  // Gradient stops only take plain colours, so with wallpaper colours on a themed ring is drawn in
+  // the wallpaper's solid primary (strokes and fills do take native colours) rather than in brand
+  // violet next to wallpaper-tinted buttons.
+  const live = tone === 'themed' && wallpaperActive;
+  const stroke = tone === 'mono' ? ink : live ? colors.primary : `url(#arc${id})`;
+  const orbFill = tone === 'mono' ? ink : live ? colors.tertiaryContainer : `url(#orb${id})`;
   const orbAt = point(p + (1 - p) / 2);
   const layer = StyleSheet.absoluteFill;
 
@@ -86,7 +95,7 @@ export function RingMark({ size, progress = 0.75, tone = 'themed', color, center
                   <Stop offset="1" stopColor={brand.orbDark} />
                 </RadialGradient>
               </Defs>
-              <Circle cx={orbAt.x} cy={orbAt.y} r={54} fill={tone === 'mono' ? ink : `url(#orb${id})`} />
+              <Circle cx={orbAt.x} cy={orbAt.y} r={54} fill={orbFill} />
             </Svg>
           </Animated.View>
         ) : null}
@@ -178,6 +187,18 @@ export function ExpressiveLoadingIndicator({ size = 40, color, label = 'Loading'
 
 // ---- Launch hand-off -------------------------------------------------------------------------
 
+/**
+ * What the native splash looks like right now. It follows the system appearance (not the in-app
+ * override), midnight in dark and the light surface in light, so a light-theme cold start no longer
+ * flips from midnight to light.
+ */
+export function useSplashLook() {
+  const dark = useColorScheme() === 'dark';
+  return dark
+    ? { background: brand.night, tone: 'brand' as const, statusBar: 'light' as const }
+    : { background: lightSurface, tone: 'brandOnLight' as const, statusBar: 'dark' as const };
+}
+
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 const GAP = CIRCUMFERENCE / 4;
 /** Ring diameter in the Android 12 splash: the 288dp icon with the mark scaled 0.82 (generate-icons.mjs). */
@@ -190,6 +211,7 @@ export const SPLASH_MARK_SIZE = Math.round(288 * 0.82 * (680 / 1024));
  */
 export function LaunchHandoff({ onDone }: { onDone: () => void }) {
   const reduced = useReducedMotion();
+  const splash = useSplashLook();
   const [sweep] = useState(() => new Animated.Value(0));
   const [fade] = useState(() => new Animated.Value(1));
   useEffect(() => {
@@ -203,14 +225,14 @@ export function LaunchHandoff({ onDone }: { onDone: () => void }) {
 
   const size = SPLASH_MARK_SIZE;
   return (
-    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: brand.night, alignItems: 'center', justifyContent: 'center', opacity: fade }]}>
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: splash.background, alignItems: 'center', justifyContent: 'center', opacity: fade }]}>
       <View style={{ width: size, height: size }}>
-        <RingMark size={size} tone="brand" orbStyle={{ opacity: sweep.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }) }} />
+        <RingMark size={size} tone={splash.tone} orbStyle={{ opacity: sweep.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }) }} />
         <Svg viewBox={VIEW_BOX} width={size} height={size} style={StyleSheet.absoluteFill}>
           <Defs>
             <LinearGradient id="handoff" gradientUnits="userSpaceOnUse" x1="309" y1="280" x2="715" y2="744">
-              <Stop offset="0" stopColor={brand.markStart} />
-              <Stop offset="1" stopColor={brand.markEnd} />
+              <Stop offset="0" stopColor={splash.tone === 'brand' ? brand.markStart : brand.key} />
+              <Stop offset="1" stopColor={splash.tone === 'brand' ? brand.markEnd : brand.violet} />
             </LinearGradient>
           </Defs>
           {/* The gap, 9 to 12 o'clock, drawn in as its dash offset runs out. */}

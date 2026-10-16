@@ -1,17 +1,18 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert } from 'react-native';
 import { authApi, isStatus, writeErrorMessage } from '@/api';
 import { useOffline } from '@/lib/hooks';
 import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { Banner, Button, OfflineBanner, TextField } from '@/ui';
 import { AuthScaffold } from '@/ui/layout';
+import { useSnackbar } from '@/ui/snackbar';
 
 /** Two states on one screen: ask for a code, then spend it. The second step needs the first's email. */
 export default function ForgotPassword() {
   const offline = useOffline();
   const { signIn } = useSession();
+  const snackbar = useSnackbar();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -49,7 +50,7 @@ export default function ForgotPassword() {
         void requestReminderPermission();
         return;
       }
-      Alert.alert('Password reset', 'Sign in with your new password.');
+      snackbar({ text: 'Password reset. Sign in with your new password.' });
       router.back();
     } catch (e) {
       // One 400 for wrong, expired, used and over-limit - deliberately, so guessing learns nothing.

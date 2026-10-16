@@ -35,6 +35,13 @@ const pairs: [string, string, number][] = [
   ['onRenewalWarning', 'renewalWarning', BODY], ['onRenewalWarningContainer', 'renewalWarningContainer', BODY],
   ['onRenewalSoon', 'renewalSoon', BODY], ['onRenewalSoonContainer', 'renewalSoonContainer', BODY],
   ['onSuccess', 'success', BODY], ['onSuccessContainer', 'successContainer', BODY],
+  // Snackbar action on the inverse surface.
+  ['inversePrimary', 'inverseSurface', BODY],
+  // Dashboard hero period switcher on its primaryContainer card: the selected segment inverts to
+  // onPrimaryContainer (a boundary, 3:1) carrying primaryContainer text (4.5:1).
+  ['onPrimaryContainer', 'primaryContainer', LARGE], ['primaryContainer', 'onPrimaryContainer', BODY],
+  // Unselected segments on that card: their fill against the card, and their label on the fill.
+  ['onSurfaceVariant', 'surfaceContainerHighest', BODY],
   ...SURFACES.flatMap((s): [string, string, number][] => [
     ['onSurface', s, BODY], ['onSurfaceVariant', s, BODY],
     // Accent text on plain surfaces: section headers, links, field errors, overdue copy.
@@ -51,6 +58,17 @@ for (const [name, scheme] of [['light', light], ['dark', dark]] as const) {
       .map(([fg, bg, min]) => ({ fg, bg, min, got: contrast(roles[fg], roles[bg]) }))
       .filter(({ got, min }) => got < min)
       .map(({ fg, bg, min, got }) => `${fg} on ${bg}: ${got.toFixed(2)} < ${min}`);
+    assert.deepEqual(failures, []);
+  });
+
+  test(`${name} scheme: breakdown bars stand out from their track`, () => {
+    // Dashboard bars draw each identity's ink (its hue at a readable tone) on the
+    // surfaceContainerHighest track (3:1, non-text). The raw light-theme hues fail this.
+    const track = (scheme as Record<string, string>).surfaceContainerHighest;
+    const failures = Object.entries({ ...categoryHues[name], ...paymentHues[name] })
+      .map(([key, { ink }]) => ({ key, got: contrast(ink, track) }))
+      .filter(({ got }) => got < LARGE)
+      .map(({ key, got }) => `${key}: ${got.toFixed(2)} < ${LARGE}`);
     assert.deepEqual(failures, []);
   });
 

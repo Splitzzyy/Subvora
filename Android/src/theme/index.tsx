@@ -30,6 +30,8 @@ const dark = withAliases(generated.dark);
 
 /** The mark's own colours (from the icon master), for SubVoraMark, the splash and system bars. */
 export const brand = generated.brand;
+/** The light splash's background (app.json's expo-splash-screen backgroundColor matches it). */
+export const lightSurface = generated.light.surface;
 
 /** Android 12+ wallpaper tones for the accent roles. Native colour objects: never concatenate them. */
 const dynamicAccents = (isDark: boolean): Partial<Palette> => {
@@ -166,14 +168,17 @@ function readPrefs(): { mode: ThemeMode; wallpaper: boolean } {
 interface Theme {
   colors: Palette;
   /**
-   * The explicit palette as plain strings, ignoring wallpaper colours: for APIs that cannot take a
-   * native colour (system UI, RefreshControl, SVG gradients) and for brand drawings.
+   * The explicit palette as plain strings, ignoring wallpaper colours: only for APIs that cannot
+   * take a native colour (system UI background, SVG gradient stops). Anything that can take
+   * `colors.*` should, or it keeps the brand hue while the rest follows the wallpaper.
    */
   hex: Record<Role | Alias, string>;
   surfaceHex: string;
   isDark: boolean;
   mode: ThemeMode;
   dynamic: boolean;
+  /** Wallpaper colours are on and this Android can provide them: the accent roles are native colours. */
+  wallpaperActive: boolean;
   setMode: (mode: ThemeMode) => void;
   setDynamic: (dynamic: boolean) => void;
   category: (name?: string | null) => Identity;
@@ -206,6 +211,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       isDark,
       mode: prefs.mode,
       dynamic: prefs.wallpaper,
+      wallpaperActive: prefs.wallpaper && supportsDynamicColor,
       setMode: (mode) => update({ mode }),
       setDynamic: (wallpaper) => update({ wallpaper }),
       category: (name) => {

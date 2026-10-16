@@ -1,20 +1,20 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import { isStatus, subscriptionsApi, writeErrorMessage, type Subscription } from '@/api';
 import { CACHE_KEYS } from '@/lib/cache';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
 import { asyncState } from '@/lib/loading';
-import { CYCLE_LABEL, describeRelative, formatLongDate, formatMoney, formatSavedAt, groupSubscriptions, initialOf, isOverdue } from '@/lib/logic';
+import { CYCLE_LABEL, describeRelative, formatLongDate, formatMoney, groupSubscriptions, initialOf, isOverdue } from '@/lib/logic';
 import { syncReminders } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { space, useTheme } from '@/theme';
 import { Banner, Button, EmptyState, Fab, IconButton, ListItem, OfflineBanner, Pill, positionOf, SectionHeader, Text, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
-import { ActionSheet } from '@/ui/sheets';
+import { ActionSheet, useConfirm } from '@/ui/sheets';
 import { useSnackbar } from '@/ui/snackbar';
-import { AsyncView, ListSkeleton } from '@/ui/states';
+import { AsyncView, CachedBanner, ListSkeleton } from '@/ui/states';
 
 const STALE_CHARGE = 'Not marked paid: this charge changed on another device. The list now shows what is due.';
 
@@ -27,6 +27,7 @@ export default function Subscriptions() {
   /** Which write is in flight ("pay:<id>", "delete:<id>"), or null. Any value blocks a second write. */
   const [busy, setBusy] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Subscription | null>(null);
+  const [confirmDialog, confirm] = useConfirm();
 
   // Reminders are re-derived from whichever list won - live or the offline mirror.
   // ponytail: only refreshed when this screen loads; move behind dataVersion if reminders must follow
@@ -64,10 +65,10 @@ export default function Subscriptions() {
   });
 
   // No undo: there is no endpoint that restores a deleted subscription as it was.
-  const remove = (sub: Subscription) => Alert.alert('Delete subscription', `Delete ${sub.customName}? This cannot be undone.`, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: () => write(`delete:${sub.id}`, `${sub.customName} deleted.`, () => subscriptionsApi.remove(sub.id)) },
-  ]);
+  const remove = (sub: Subscription) => confirm({
+    title: 'Delete subscription', body: `Delete ${sub.customName}? This cannot be undone.`, confirmLabel: 'Delete', destructive: true,
+    onConfirm: () => write(`delete:${sub.id}`, `${sub.customName} deleted.`, () => subscriptionsApi.remove(sub.id)),
+  });
 
   const canWrite = !offline && !busy;
   const groups = data ? groupSubscriptions(data) : [];
@@ -82,7 +83,7 @@ export default function Subscriptions() {
       overlay={<Fab icon="plus" label="Add subscription" onPress={add} disabled={offline} />}
     >
       {offline ? <OfflineBanner />
-        : cached ? <Banner tone="warning" text={cachedAt ? `Offline — showing data from ${formatSavedAt(cachedAt)}.` : 'Offline — showing last synced data.'} />
+        : cached ? <CachedBanner savedAt={cachedAt} status={errorStatus} offline={offline} onRetry={reload} />
         : null}
       {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
 
@@ -112,6 +113,11 @@ export default function Subscriptions() {
                   accessibilityLabel={`${sub.customName}, ${price}, ${when}`}
                   onPress={() => router.push(`/subscription/${sub.id}`)}
                   onLongPress={() => setMenuFor(sub)}
+                  // The row is one TalkBack stop; its buttons are offered as actions instead.
+                  actions={[
+                    ...(overdue && canWrite ? [{ label: 'Mark as paid', run: () => markPaid(sub) }] : []),
+                    { label: 'More options', run: () => setMenuFor(sub) },
+                  ]}
                   leading={<Tile letter={initialOf(sub.customName)} color={id.ink} background={id.soft} />}
                   title={
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
@@ -142,6 +148,7 @@ export default function Subscriptions() {
         ))}
       </AsyncView>
 
+      {confirmDialog}
       <ActionSheet
         title={menuFor?.customName ?? null}
         onClose={() => setMenuFor(null)}

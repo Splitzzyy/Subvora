@@ -25,7 +25,7 @@ export function useLoader<T>(fetcher: () => Promise<T>, cacheKey?: CacheKey) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** The failed request's status (0: no response), for the offline/error state and "More info". */
+  /** The failed request's status (0: no response): for the offline/error states, "More info" and the cached banner. */
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [cached, setCached] = useState(false);
   /** When the mirror on screen was saved; null when live, or for a mirror older than timestamps. */
@@ -58,6 +58,8 @@ export function useLoader<T>(fetcher: () => Promise<T>, cacheKey?: CacheKey) {
         setData(mirror.data);
         setCached(true);
         setCachedAt(mirror.savedAt);
+        // Why the mirror is showing: no response (offline) reads differently from a server error.
+        setErrorStatus(e instanceof ApiError ? e.status : null);
         loadedVersion.current = version;
       } else {
         // Nothing on screen, so loadedVersion stays put and the next visit retries.

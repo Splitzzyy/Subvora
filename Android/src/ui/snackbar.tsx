@@ -1,9 +1,10 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { AccessibilityInfo, Animated, Keyboard, useWindowDimensions, View } from 'react-native';
+import { Animated, Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from '@/lib/motion';
 import { motion, shape, space, useTheme } from '@/theme';
-import { Icon, IconButton, RAIL_MIN_WIDTH, Tap, Text, TOUCH } from '.';
+import { Icon, IconButton, NAV_BAR_HEIGHT, Tap, Text, TOUCH } from '.';
+import { useObstructions } from './obstructions';
 
 export interface SnackbarMessage {
   text: string;
@@ -19,11 +20,21 @@ const SnackbarContext = createContext<(message: SnackbarMessage) => void>(() => 
 /** Write results, app-wide: one host at the root, so a message survives the screen that raised it closing. */
 export const useSnackbar = () => useContext(SnackbarContext);
 
+let nextId = 0;
+
+/**
+ * One snackbar at a time, in order (M3). A queue rather than a slot: a later success must never
+ * replace an unread "this change wasn't saved".
+ */
 export function SnackbarProvider({ children }: { children: React.ReactNode }) {
-  const [current, setCurrent] = useState<(SnackbarMessage & { id: number }) | null>(null);
-  const show = useCallback((message: SnackbarMessage) => setCurrent({ ...message, id: Date.now() }), []);
+  const [queue, setQueue] = useState<(SnackbarMessage & { id: number })[]>([]);
+  const show = useCallback((message: SnackbarMessage) => setQueue((q) => (
+    // The same message twice in a row says nothing new.
+    q.some((m) => m.text === message.text) ? q : [...q, { ...message, id: ++nextId }]
+  )), []);
   // Stable, so the shown snackbar's timer is not restarted by unrelated re-renders.
-  const dismiss = useCallback((id: number) => setCurrent((c) => (c?.id === id ? null : c)), []);
+  const dismiss = useCallback((id: number) => setQueue((q) => q.filter((m) => m.id !== id)), []);
+  const current = queue[0];
   return (
     <SnackbarContext.Provider value={show}>
       {children}
@@ -38,7 +49,7 @@ const WITH_ACTION_MS = 8000;
 function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessage & { id: number }; onDismiss: (id: number) => void }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { width } = useWindowDimensions();
+  const covered = useObstructions();
   const reduced = useReducedMotion();
   const [enter] = useState(() => new Animated.Value(0));
   const [keyboard, setKeyboard] = useState(() => (Keyboard.isVisible() ? Keyboard.metrics()?.height ?? 0 : 0));
@@ -55,8 +66,8 @@ function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessag
   }, []);
   const onDismiss = useCallback(() => dismissById(message.id), [dismissById, message.id]);
 
+  // Announced once, by the live region below; an explicit announce as well read it twice.
   useEffect(() => {
-    AccessibilityInfo.announceForAccessibility(message.text);
     (reduced
       ? Animated.timing(enter, { toValue: 1, duration: motion.fadeMs, useNativeDriver: true })
       : Animated.spring(enter, { toValue: 1, ...motion.spatialDefault, useNativeDriver: true })).start();
@@ -65,8 +76,10 @@ function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessag
     return () => clearTimeout(timer);
   }, [enter, reduced, error, message, onDismiss]);
 
-  // Clear of the navigation bar and of a FAB above it; with the side rail there is no bottom bar.
-  const clear = insets.bottom + (width >= RAIL_MIN_WIDTH ? space.lg : 88 + 56 + space.xxl);
+  // Directly above whatever is at the bottom: the keyboard, else the navigation bar (none with the
+  // side rail) and a FAB only when one is on screen.
+  const navBar = covered.navBar ? NAV_BAR_HEIGHT + Math.max(insets.bottom, space.md) : insets.bottom;
+  const clear = navBar + space.sm + (covered.fab ? 56 + space.lg : 0);
   const bottom = keyboard > 0 ? keyboard + space.lg : clear;
   return (
     <Animated.View

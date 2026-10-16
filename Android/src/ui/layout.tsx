@@ -14,16 +14,19 @@ const COLLAPSE_TO = 96;
  * `title` it gets the large, collapsing top app bar: a headline that scrolls with the content and a
  * small bar that fades in once it has gone.
  */
-export function Screen({ children, refreshing, onRefresh, overlay, title, subtitle, actions }: {
+export function Screen({ children, refreshing, onRefresh, overlay, title, subtitle, actions, header }: {
   children: React.ReactNode; refreshing?: boolean; onRefresh?: () => void; overlay?: React.ReactNode;
   title?: string; subtitle?: string; actions?: React.ReactNode;
+  /** A fixed bar above the scrolling content, e.g. a full-screen dialog's close and save. */
+  header?: React.ReactNode;
 }) {
-  const { colors, hex } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [scrollY] = useState(() => new Animated.Value(0));
   return (
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       <View style={{ height: insets.top }} />
+      {header}
       <View style={{ flex: 1 }}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="height">
           <Animated.ScrollView
@@ -33,7 +36,7 @@ export function Screen({ children, refreshing, onRefresh, overlay, title, subtit
             contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: (overlay ? 104 : space.xxxl) + insets.bottom }}
             // The native Android indicator; it cannot be swapped for the Expressive one, so it is tinted from the tokens.
             refreshControl={onRefresh ? (
-              <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} colors={[hex.primary]} progressBackgroundColor={hex.surfaceContainerHigh} />
+              <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} colors={[colors.primary]} progressBackgroundColor={colors.surfaceContainerHigh} />
             ) : undefined}
           >
             {title ? <ScreenHeader title={title} subtitle={subtitle} actions={actions} /> : null}

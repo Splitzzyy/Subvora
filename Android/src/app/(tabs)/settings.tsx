@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Alert, View } from 'react-native';
+import Constants from 'expo-constants';
+import { View } from 'react-native';
 import { API_BASE_URL, authApi, tokens, usersApi, writeErrorMessage } from '@/api';
 import { CURRENCIES, currencyOption } from '@/lib/currencies';
 import * as haptics from '@/lib/haptics';
@@ -10,7 +11,7 @@ import { useSession } from '@/lib/session';
 import { space, supportsDynamicColor, useTheme, type ThemeMode } from '@/theme';
 import { Banner, Button, ButtonGroup, Card, OfflineBanner, SelectField, SwitchRow, Text, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
-import { PickerSheet } from '@/ui/sheets';
+import { PickerSheet, useConfirm } from '@/ui/sheets';
 import { useSnackbar } from '@/ui/snackbar';
 import { AsyncView, FormSkeleton } from '@/ui/states';
 
@@ -24,11 +25,13 @@ export default function Settings() {
   const snackbar = useSnackbar();
   const { data: profile, setData: setProfile, loading, error, errorStatus, reload } = useLoader(usersApi.me);
 
-  // Drafts over the loaded profile: null means "unchanged", so a fresh profile shows through as-is.
-  const [currencyDraft, setCurrency] = useState<string | null>(null);
+  // The reminder default is a draft over the loaded profile (null: unchanged) with its own Save. The
+  // home currency is a single choice, so it applies as soon as it is picked, with an Undo.
   const [alertDaysDraft, setAlertDays] = useState<string | null>(null);
-  const currency = currencyDraft ?? profile?.preferredCurrency ?? '';
+  const currency = profile?.preferredCurrency ?? '';
   const alertDays = alertDaysDraft ?? profile?.defaultAlertDaysAdvance?.toString() ?? '';
+  const [applyingCurrency, setApplyingCurrency] = useState(false);
+  const [confirmDialog, confirm] = useConfirm();
   const [pickingCurrency, setPickingCurrency] = useState(false);
   const [saving, setSaving] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
@@ -43,14 +46,33 @@ export default function Settings() {
   const days = alertDays.trim() === '' ? null : Number(alertDays);
   const daysInvalid = days !== null && (!Number.isInteger(days) || days < 0);
 
+  /** `keepDays` is the saved reminder default at pick time, so an unsaved draft there is not sent along. */
+  const setHomeCurrency = async (code: string, keepDays: number | null, undoOf?: string) => {
+    setProfileError(null);
+    setApplyingCurrency(true);
+    try {
+      setProfile(await usersApi.updateMe(code, keepDays));
+      haptics.confirm();
+      // The home currency is what every burn-rate figure converts into.
+      dataChanged();
+      snackbar(undoOf
+        ? { text: `Home currency set back to ${code}.` }
+        : { text: `Home currency set to ${code}.`, actionLabel: 'Undo', onAction: () => void setHomeCurrency(currency, keepDays, code) });
+    } catch (e) {
+      haptics.reject();
+      snackbar({ tone: 'error', text: writeErrorMessage(e) });
+    } finally {
+      setApplyingCurrency(false);
+    }
+  };
+
   const save = async () => {
     setProfileError(null);
     setSaving(true);
     try {
       setProfile(await usersApi.updateMe(currency, days));
-      setCurrency(null);
       setAlertDays(null);
-      snackbar({ text: 'Preferences saved. Your dashboard now uses them.' });
+      snackbar({ text: 'Reminder default saved.' });
       haptics.confirm();
       // The home currency is what every burn-rate figure converts into.
       dataChanged();
@@ -82,10 +104,9 @@ export default function Settings() {
     }
   };
 
-  const confirmSignOut = () => Alert.alert('Sign out', 'Are you sure you want to sign out?', [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Sign out', style: 'destructive', onPress: () => void signOut() },
-  ]);
+  const confirmSignOut = () => confirm({
+    title: 'Sign out', body: 'Are you sure you want to sign out?', confirmLabel: 'Sign out', onConfirm: () => void signOut(),
+  });
 
   return (
     <Screen title="Settings" subtitle="Account" refreshing={loading && !!profile} onRefresh={reload}>
@@ -116,7 +137,7 @@ export default function Settings() {
               <Text variant="titleLargeEmphasized" accessibilityRole="header">Preferences</Text>
               {profileError ? <Banner tone="error" text={profileError} /> : null}
               <SelectField
-                label="Home currency" placeholder="Choose a currency" disabled={!profile}
+                label="Home currency" placeholder="Choose a currency" disabled={!profile || offline || applyingCurrency}
                 value={currency ? currencyOption(currency).label : null}
                 onPress={() => setPickingCurrency(true)}
                 // The chosen currency's own sign; a fixed "$" icon read as dollars whatever was picked.
@@ -132,7 +153,7 @@ export default function Settings() {
                 onChangeText={(v) => setAlertDays(v.replace(/\D/g, ''))}
                 error={daysInvalid ? 'Enter a whole number of days.' : null}
               />
-              <Button label="Save preferences" onPress={save} loading={saving} disabled={!profile || offline || daysInvalid || !currency} style={{ alignSelf: 'flex-end' }} />
+              <Button label="Save reminder" onPress={save} loading={saving} disabled={!profile || offline || daysInvalid || alertDaysDraft === null} style={{ alignSelf: 'flex-end' }} />
             </Card>
           </View>
         </AsyncView>
@@ -161,16 +182,21 @@ export default function Settings() {
           <Button label="Change password" variant="tonal" onPress={changePassword} loading={changing} disabled={offline || !currentPassword || !newPassword} style={{ alignSelf: 'flex-end' }} />
         </Card>
 
-        <Button label="Sign out" icon="logout" variant="danger" size="lg" onPress={confirmSignOut} />
-        <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ textAlign: 'center', paddingTop: space.sm }}>{API_BASE_URL}</Text>
+        {/* Not red: signing out loses nothing. Red is for errors and data loss. */}
+        <Button label="Sign out" icon="logout" variant="outlined" size="lg" onPress={confirmSignOut} />
+        {/* The version helps support; the API address is for developers only. */}
+        <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ textAlign: 'center', paddingTop: space.sm }}>
+          SubVora {Constants.expoConfig?.version ?? ''}{__DEV__ ? ` · ${API_BASE_URL}` : ''}
+        </Text>
       </View>
 
+      {confirmDialog}
       <PickerSheet
         visible={pickingCurrency}
         title="Home currency"
         options={currencies}
         selected={currency}
-        onSelect={setCurrency}
+        onSelect={(code) => { if (profile && code !== currency) void setHomeCurrency(code, profile.defaultAlertDaysAdvance); }}
         onClose={() => setPickingCurrency(false)}
         searchable
         custom={customCurrency}

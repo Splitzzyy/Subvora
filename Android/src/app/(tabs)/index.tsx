@@ -1,16 +1,16 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { dashboardApi, type BurnRate } from '@/api';
-import { CACHE_KEYS } from '@/lib/cache';
+import { CACHE_KEYS, readCache } from '@/lib/cache';
 import { useLoader, useOffline } from '@/lib/hooks';
 import { asyncState } from '@/lib/loading';
-import { burnRateWarning, formatMoney, formatSavedAt, topCategoryShare, topSpendSummary } from '@/lib/logic';
+import { burnRateWarning, formatMoney, topCategoryShare, topSpendSummary } from '@/lib/logic';
 import { shape, space, useTheme } from '@/theme';
 import { Banner, Button, ButtonGroup, Card, EmptyState, ProgressBar, Text, Tile } from '@/ui';
 import { RingMark } from '@/ui/brand';
 import { Screen } from '@/ui/layout';
-import { AsyncView, DashboardSkeleton } from '@/ui/states';
+import { AsyncView, CachedBanner, DashboardSkeleton } from '@/ui/states';
 
 type Period = 'weekly' | 'monthly' | 'yearly';
 const PERIOD_LABEL: Record<Period, string> = { weekly: 'per week', monthly: 'per month', yearly: 'per year' };
@@ -27,22 +27,35 @@ export default function Dashboard() {
   // Bars are normalised against the leader, not the total: across eight categories a share-of-total
   // bar is a stub for everything below first place.
   const maxOf = (items: { monthlyAmount: number }[]) => Math.max(0, ...items.map((i) => i.monthlyAmount));
-  const empty = !!data && data.yearly === 0 && data.oneTimeThisYear === 0 && data.byCategory.length === 0;
+  const noSpend = !!data && data.yearly === 0 && data.oneTimeThisYear === 0 && data.byCategory.length === 0;
+  // No spend is not the same as nothing tracked: trials and inactive subscriptions cost nothing. The
+  // subscriptions mirror (last list load) tells the two apart without another request.
+  const [trackedCount, setTrackedCount] = useState<number | null>(null);
+  useEffect(() => {
+    if (!noSpend) return;
+    let live = true;
+    readCache<unknown[]>(CACHE_KEYS.subscriptions).then((m) => { if (live) setTrackedCount(m ? m.data.length : null); });
+    return () => { live = false; };
+  }, [noSpend, data]);
 
   return (
     <Screen title="Overview" subtitle="Burn rate" refreshing={loading && !!data} onRefresh={reload}>
-      {cached ? <Banner tone="warning" text={cachedAt ? `Offline — showing data from ${formatSavedAt(cachedAt)}.` : 'Offline — showing last synced data.'} /> : null}
+      {cached ? <CachedBanner savedAt={cachedAt} status={errorStatus} offline={offline} onRetry={reload} /> : null}
       {/* A failed reload over live figures: keep them, say so. */}
       {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
       {warning ? <Banner tone="info" text={warning} /> : null}
 
       <AsyncView
-        state={asyncState({ hasData: !!data, empty, error, errorStatus })}
+        state={asyncState({ hasData: !!data, empty: noSpend, error, errorStatus })}
         skeleton={<DashboardSkeleton />}
         error={error}
         errorStatus={errorStatus}
         onRetry={reload}
-        empty={(
+        empty={trackedCount ? (
+          <EmptyState icon="pause-circle-outline" title="No active spend"
+            body={`Your ${trackedCount === 1 ? 'subscription is a free trial or paused' : `${trackedCount} subscriptions are free trials or paused`}, so nothing counts towards your burn rate yet.`}
+            action={<Button label="View subscriptions" icon="calendar-sync-outline" variant="tonal" onPress={() => router.navigate('/subscriptions')} />} />
+        ) : (
           <EmptyState icon="rocket-launch-outline" title="Nothing tracked yet"
             body="Add your first subscription and your burn rate shows up here."
             action={<Button label="Add subscription" icon="plus" onPress={() => router.push('/subscription/new')} disabled={offline} />} />
@@ -60,6 +73,7 @@ export default function Dashboard() {
                 <Text variant="titleMedium" color={colors.onPrimaryContainer}>{PERIOD_LABEL[period]} on subscriptions</Text>
               </View>
               <ButtonGroup<Period>
+                onPrimaryContainer
                 value={period}
                 onChange={setPeriod}
                 options={[{ value: 'weekly', label: 'Week' }, { value: 'monthly', label: 'Month' }, { value: 'yearly', label: 'Year' }]}
@@ -111,7 +125,7 @@ export default function Dashboard() {
                           <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{item.categoryName}</Text>
                           <Text variant="amountLabel">{formatMoney(item.monthlyAmount, data.homeCurrency)}</Text>
                         </View>
-                        <ProgressBar value={item.monthlyAmount / (maxOf(data.byCategory) || 1)} color={id.color} />
+                        <ProgressBar value={item.monthlyAmount / (maxOf(data.byCategory) || 1)} color={id.ink} />
                       </View>
                     </View>
                   );
@@ -124,8 +138,9 @@ export default function Dashboard() {
                 <Text variant="titleLargeEmphasized" accessibilityRole="header">By payment source</Text>
                 {topSource ? <Text variant="bodyMedium" color={colors.onSurfaceVariant}>{topSource}</Text> : null}
                 {data.byPaymentSource.map((item) => {
-                  // A card when the type is missing: an older API or a cached response.
-                  const id = payment(item.paymentSourceType ?? 'Card');
+                  // Unassigned is nobody's card: neutral. A missing type on a real source (an older
+                  // API or a cached response) reads as a card.
+                  const id = item.paymentSourceId ? payment(item.paymentSourceType ?? 'Card') : category(null);
                   return (
                     <View key={item.paymentSourceId ?? item.paymentSourceLabel} style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}
                       accessible accessibilityLabel={`${item.paymentSourceLabel}, ${formatMoney(item.monthlyAmount, data.homeCurrency)} a month`}>
@@ -135,7 +150,7 @@ export default function Dashboard() {
                           <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{item.paymentSourceLabel}</Text>
                           <Text variant="amountLabel">{formatMoney(item.monthlyAmount, data.homeCurrency)}</Text>
                         </View>
-                        <ProgressBar value={item.monthlyAmount / (maxOf(data.byPaymentSource) || 1)} color={colors.primary} />
+                        <ProgressBar value={item.monthlyAmount / (maxOf(data.byPaymentSource) || 1)} color={id.ink} />
                       </View>
                     </View>
                   );

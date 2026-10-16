@@ -8,7 +8,9 @@ import Svg, { Path } from 'react-native-svg';
 import { reduceMotionEnabled, useReducedMotion } from '@/lib/motion';
 import { motion, shape, space, typescale, useTheme, type TypeVariant } from '@/theme';
 import * as haptics from '@/lib/haptics';
+import { useIsFocused } from 'expo-router';
 import { ExpressiveLoadingIndicator, RingMark } from './brand';
+import { useObstruction } from './obstructions';
 
 export type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 export const Icon = MaterialCommunityIcons;
@@ -17,6 +19,8 @@ export const Icon = MaterialCommunityIcons;
 export const TOUCH = 48;
 /** From this window width (tablets, unfolded foldables) the tab bar becomes a navigation rail. */
 export const RAIL_MIN_WIDTH = 600;
+/** The bottom navigation bar above the system inset: top padding plus one destination. */
+export const NAV_BAR_HEIGHT = 12 + 64;
 
 // ---- Text ------------------------------------------------------------------------------------
 
@@ -51,32 +55,36 @@ interface TapProps extends Omit<PressableProps, 'style' | 'children'> {
   /** Resting corner radius. With pressedRadius set, the shape morphs on press (M3 Expressive). */
   radius?: number;
   pressedRadius?: number;
+  /** Shrink slightly on press. Off for list rows, where touch-down starts every scroll. */
+  scaleOnPress?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 /**
- * Native ripple plus a spring on the fast spatial token; shape morph where a radius pair is given.
- * Buttons and the FAB use this one morph. Reduced motion: ripple only.
+ * Native ripple plus a spring on the fast spatial token. With a radius pair the shape morphs on
+ * press (pill -> rounded square), which buttons and the FAB use as their feedback; the corner
+ * radius cannot run on the native driver, so morphing taps do not also scale. Everything else
+ * scales on the native driver, off the JS thread. Reduced motion: ripple only.
  */
-export function Tap({ style, children, radius = 0, pressedRadius, onPressIn, onPressOut, ...props }: TapProps) {
+export function Tap({ style, children, radius = 0, pressedRadius, scaleOnPress = true, onPressIn, onPressOut, ...props }: TapProps) {
   const { colors } = useTheme();
+  const morph = pressedRadius !== undefined;
+  const scales = scaleOnPress && !morph;
   const [scale] = useState(() => new Animated.Value(1));
   const [corner] = useState(() => new Animated.Value(radius));
-  const spring = (to: number, r: number) => {
+  const press = (down: boolean) => {
     if (reduceMotionEnabled()) return;
-    Animated.parallel([
-      Animated.spring(scale, { toValue: to, ...motion.spatialFast, useNativeDriver: false }),
-      Animated.spring(corner, { toValue: r, ...motion.spatialFast, useNativeDriver: false }),
-    ]).start();
+    if (morph) Animated.spring(corner, { toValue: down ? pressedRadius : radius, ...motion.spatialFast, useNativeDriver: false }).start();
+    if (scales) Animated.spring(scale, { toValue: down ? 0.97 : 1, ...motion.spatialFast, useNativeDriver: true }).start();
   };
   return (
     <AnimatedPressable
       {...props}
       android_ripple={{ color: colors.outlineVariant, foreground: true }}
-      onPressIn={(e) => { spring(0.97, pressedRadius ?? radius); onPressIn?.(e); }}
-      onPressOut={(e) => { spring(1, radius); onPressOut?.(e); }}
-      style={[{ overflow: 'hidden', borderRadius: corner, transform: [{ scale }] }, style]}
+      onPressIn={(e) => { press(true); onPressIn?.(e); }}
+      onPressOut={(e) => { press(false); onPressOut?.(e); }}
+      style={[{ overflow: 'hidden', borderRadius: morph ? corner : radius, transform: scales ? [{ scale }] : undefined }, style]}
     >
       {children}
     </AnimatedPressable>
@@ -85,7 +93,7 @@ export function Tap({ style, children, radius = 0, pressedRadius, onPressIn, onP
 
 // ---- Buttons ---------------------------------------------------------------------------------
 
-type ButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text' | 'danger';
+type ButtonVariant = 'filled' | 'tonal' | 'outlined' | 'text' | 'textDanger' | 'danger';
 
 /**
  * `loading` disables the button and shows an inline indicator while keeping the label, so the
@@ -102,10 +110,12 @@ export function Button({ label, onPress, variant = 'filled', icon, loading, disa
     tonal: { bg: colors.secondaryContainer, fg: colors.onSecondaryContainer },
     outlined: { bg: 'transparent', fg: colors.primary, border: colors.outline },
     text: { bg: 'transparent', fg: colors.primary },
+    textDanger: { bg: 'transparent', fg: colors.error },
     danger: { bg: colors.errorContainer, fg: colors.onErrorContainer },
   };
   const inactive = disabled || loading;
-  const { bg, fg, border } = inactive && variant !== 'text'
+  const textual = variant === 'text' || variant === 'textDanger';
+  const { bg, fg, border } = inactive && !textual
     ? { bg: colors.surfaceContainerHighest, fg: colors.onSurfaceVariant, border: undefined }
     : palette[variant];
   return (
@@ -119,7 +129,7 @@ export function Button({ label, onPress, variant = 'filled', icon, loading, disa
       pressedRadius={shape.small}
       style={[{
         minHeight: height, paddingHorizontal: size === 'lg' ? space.xxl + space.xs : space.xl, paddingVertical: space.sm, backgroundColor: bg,
-        borderWidth: border ? 1 : 0, borderColor: border, opacity: inactive && variant === 'text' ? 0.5 : 1,
+        borderWidth: border ? 1 : 0, borderColor: border, opacity: inactive && textual ? 0.5 : 1,
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm,
       }, style]}
     >
@@ -152,6 +162,8 @@ export function IconButton({ icon, onPress, label, tone = 'standard', disabled }
 /** Extended FAB, bottom-right. Squarer when pressed, through Tap's morph. */
 export function Fab({ icon, label, onPress, disabled }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
   const { colors } = useTheme();
+  // Tab screens stay mounted, so "on screen" is focus, not mount.
+  useObstruction('fab', useIsFocused());
   return (
     <View style={{ position: 'absolute', right: space.lg, bottom: space.lg }}>
       <Tap
@@ -214,9 +226,14 @@ export const positionOf = (index: number, count: number): ListPosition =>
   count === 1 ? 'single' : index === 0 ? 'first' : index === count - 1 ? 'last' : 'middle';
 
 /** Segmented list row: large outer corners on the run, small inner ones where rows meet. */
-export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPress, position = 'single', children, accessibilityLabel }: {
+/**
+ * A pressable row is one TalkBack focus stop, so the buttons inside it cannot be reached by focus.
+ * `actions` exposes them as accessibility actions (TalkBack's actions menu) instead.
+ */
+export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPress, position = 'single', children, accessibilityLabel, actions }: {
   leading?: React.ReactNode; title: React.ReactNode; subtitle?: React.ReactNode; trailing?: React.ReactNode;
   onPress?: () => void; onLongPress?: () => void; position?: ListPosition; children?: React.ReactNode; accessibilityLabel?: string;
+  actions?: { label: string; run: () => void }[];
 }) {
   const { colors } = useTheme();
   const top = position === 'single' || position === 'first' ? shape.large : shape.listInner;
@@ -237,7 +254,11 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
   };
   if (!onPress && !onLongPress) return <View style={[style, { overflow: 'hidden' }]}>{body}{children}</View>;
   return (
-    <Tap onPress={onPress} onLongPress={onLongPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={style}>
+    <Tap
+      onPress={onPress} onLongPress={onLongPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={style} scaleOnPress={false}
+      accessibilityActions={actions?.map((a, i) => ({ name: `action${i}`, label: a.label }))}
+      onAccessibilityAction={(e) => actions?.[Number(e.nativeEvent.actionName.slice('action'.length))]?.run()}
+    >
       {body}
       {children}
     </Tap>
@@ -252,7 +273,7 @@ export const TILE_CORNER = 0.34;
 export function Tile({ icon, letter, color, background, size = 44 }: { icon?: IconName; letter?: string; color: ColorValue; background: ColorValue; size?: number }) {
   return (
     <View accessible={false} style={{ width: size, height: size, borderRadius: size * TILE_CORNER, backgroundColor: background, alignItems: 'center', justifyContent: 'center' }}>
-      {icon ? <Icon name={icon} size={size * 0.5} color={color} /> : <Text variant="titleLargeEmphasized" color={color} allowFontScaling={false}>{letter}</Text>}
+      {icon ? <Icon name={icon} size={size * 0.5} color={color} /> : <Text variant="titleLargeEmphasized" color={color} allowFontScaling={false} style={{ fontSize: size * 0.45, lineHeight: size * 0.6 }}>{letter}</Text>}
     </View>
   );
 }
@@ -336,7 +357,7 @@ export function ProgressBar({ value, color }: { value?: number; color?: ColorVal
 
 const WAVELENGTH = 24;
 function WavyProgress() {
-  const { hex } = useTheme();
+  const { colors } = useTheme();
   const reduced = useReducedMotion();
   const [width, setWidth] = useState(0);
   const [shift] = useState(() => new Animated.Value(0));
@@ -354,7 +375,7 @@ function WavyProgress() {
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {width > 0 ? (
         <Animated.View style={{ width: span, transform: [{ translateX: shift }] }}>
-          <Svg width={span} height={10}><Path d={d} fill="none" stroke={hex.primary} strokeWidth={4} strokeLinecap="round" /></Svg>
+          <Svg width={span} height={10}><Path d={d} fill="none" stroke={colors.primary} strokeWidth={4} strokeLinecap="round" /></Svg>
         </Animated.View>
       ) : null}
     </View>
@@ -386,7 +407,7 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
           <TextInput
             {...props}
             ref={input}
-            accessibilityLabel={label}
+            accessibilityLabel={error ? `${label}, error: ${error}` : label}
             // Password fields never get keyboard help: with the eye toggled to "show", Android would
             // otherwise capitalise and autocorrect them, silently storing a different password.
             {...(secure ? { autoCapitalize: 'none', autoCorrect: false, spellCheck: false } as const : {})}
@@ -401,7 +422,7 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
         </View>
         {secure ? <IconButton icon={hidden ? 'eye-outline' : 'eye-off-outline'} label={hidden ? 'Show password' : 'Hide password'} onPress={() => setHidden((h) => !h)} /> : null}
       </Pressable>
-      {error ? <Text variant="labelMedium" color={colors.error} style={{ paddingHorizontal: space.lg }}>{error}</Text> : null}
+      {error ? <Text variant="labelMedium" color={colors.error} accessibilityLiveRegion="polite" style={{ paddingHorizontal: space.lg }}>{error}</Text> : null}
     </View>
   );
 }
@@ -432,7 +453,7 @@ export function SelectField({ label, value, placeholder, onPress, disabled, lead
 export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
   label: string; caption?: string; value: boolean; onValueChange: (v: boolean) => void; disabled?: boolean;
 }) {
-  const { colors, hex } = useTheme();
+  const { colors } = useTheme();
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, opacity: disabled ? 0.5 : 1 }}>
       <View style={{ flex: 1 }}>
@@ -443,7 +464,7 @@ export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
         value={value} disabled={disabled} accessibilityLabel={label}
         onValueChange={(v) => { haptics.tick(); onValueChange(v); }}
         trackColor={{ true: colors.primary, false: colors.surfaceContainerHighest }}
-        thumbColor={value ? hex.onPrimary : hex.outline}
+        thumbColor={value ? colors.onPrimary : colors.outline}
       />
     </View>
   );
@@ -453,10 +474,17 @@ export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
  * M3 Expressive connected button group. Segments share small inner corners; the selected one
  * rounds fully and fills, so the choice reads by shape as well as colour.
  */
-export function ButtonGroup<T extends string>({ options, value, onChange, disabled }: {
+export function ButtonGroup<T extends string>({ options, value, onChange, disabled, onPrimaryContainer }: {
   options: { value: T; label: string; icon?: IconName }[]; value: T; onChange: (v: T) => void; disabled?: boolean;
+  /**
+   * On a primaryContainer card a `primary` fill all but vanishes in dark mode (1.87:1), so the
+   * selected segment inverts to onPrimaryContainer with primaryContainer ink.
+   */
+  onPrimaryContainer?: boolean;
 }) {
   const { colors } = useTheme();
+  const selectedBg = onPrimaryContainer ? colors.onPrimaryContainer : colors.primary;
+  const selectedFg = onPrimaryContainer ? colors.primaryContainer : colors.onPrimary;
   return (
     <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: space.xxs, opacity: disabled ? 0.5 : 1 }}>
       {options.map((option, i) => {
@@ -473,13 +501,14 @@ export function ButtonGroup<T extends string>({ options, value, onChange, disabl
             onPress={() => { haptics.tick(); onChange(option.value); }}
             style={{
               flex: 1, minHeight: TOUCH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: space.xs + space.xxs, paddingHorizontal: space.xs,
-              backgroundColor: selected ? colors.primary : colors.surfaceContainerHighest,
+              backgroundColor: selected ? selectedBg : colors.surfaceContainerHighest,
               borderTopLeftRadius: i === 0 ? outer : inner, borderBottomLeftRadius: i === 0 ? outer : inner,
               borderTopRightRadius: i === options.length - 1 ? outer : inner, borderBottomRightRadius: i === options.length - 1 ? outer : inner,
             }}
           >
-            {option.icon ? <Icon name={selected ? 'check' : option.icon} size={18} color={selected ? colors.onPrimary : colors.onSurfaceVariant} /> : null}
-            <Text variant="labelLarge" numberOfLines={1} color={selected ? colors.onPrimary : colors.onSurfaceVariant}>{option.label}</Text>
+            {option.icon ? <Icon name={selected ? 'check' : option.icon} size={18} color={selected ? selectedFg : colors.onSurfaceVariant} /> : null}
+            {/* Two lines rather than an ellipsis at large font sizes. */}
+            <Text variant="labelLarge" numberOfLines={2} style={{ textAlign: 'center', flexShrink: 1 }} color={selected ? selectedFg : colors.onSurfaceVariant}>{option.label}</Text>
           </Tap>
         );
       })}

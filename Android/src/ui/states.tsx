@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { Animated, View, type DimensionValue } from 'react-native';
 import { useDelayedLoading } from '@/lib/hooks';
 import { errorDetail, type AsyncState } from '@/lib/loading';
+import { formatSavedAt } from '@/lib/logic';
 import { useReducedMotion } from '@/lib/motion';
 import { motion, shape, space, useTheme } from '@/theme';
-import { Button, Icon, Tap, Text, TILE_CORNER, TOUCH } from '.';
+import { Banner, Button, Icon, Tap, Text, TILE_CORNER, TOUCH } from '.';
 import { RingMark } from './brand';
 
 /**
@@ -30,6 +31,17 @@ export function AsyncView({ state, skeleton, empty, error, errorStatus, onRetry,
     case 'error': return <ErrorState message={error ?? 'Something went wrong.'} status={errorStatus} onRetry={onRetry} />;
     default: return <>{children}</>;
   }
+}
+
+/**
+ * Over the offline mirror: "Offline" only when nothing answered (status 0 or no network); a server
+ * error or rate limit with the phone online says the refresh failed instead, and offers Retry.
+ */
+export function CachedBanner({ savedAt, status, offline, onRetry }: { savedAt: string | null; status: number | null; offline: boolean; onRetry: () => void }) {
+  const since = savedAt ? `data from ${formatSavedAt(savedAt)}` : 'last synced data';
+  return offline || status === 0
+    ? <Banner tone="warning" text={`Offline — showing ${since}.`} />
+    : <Banner tone="warning" text={`Couldn't refresh — showing ${since}.`} actionLabel="Retry" onAction={onRetry} />;
 }
 
 /** Plain-language failure with Retry; the status sits behind "More info", never a raw error. */

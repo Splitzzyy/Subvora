@@ -7,8 +7,8 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { SessionProvider, useSession } from '@/lib/session';
 import { useReducedMotion } from '@/lib/motion';
-import { brand, ThemeProvider, useTheme } from '@/theme';
-import { LaunchHandoff, SPLASH_MARK_SIZE, SubVoraLoader } from '@/ui/brand';
+import { ThemeProvider, useTheme } from '@/theme';
+import { LaunchHandoff, SPLASH_MARK_SIZE, SubVoraLoader, useSplashLook } from '@/ui/brand';
 import { SnackbarProvider } from '@/ui/snackbar';
 
 SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -23,6 +23,7 @@ function RootStack() {
   const [timedOut, setTimedOut] = useState(false);
   const [handingOff, setHandingOff] = useState(true);
   const endHandoff = useCallback(() => setHandingOff(false), []);
+  const splash = useSplashLook();
 
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(surfaceHex).catch(() => undefined);
@@ -42,9 +43,9 @@ function RootStack() {
 
   if (!ready) {
     return timedOut ? (
-      <View style={{ flex: 1, backgroundColor: brand.night, alignItems: 'center', justifyContent: 'center' }}>
-        <StatusBar style="light" />
-        <SubVoraLoader size={SPLASH_MARK_SIZE} tone="brand" />
+      <View style={{ flex: 1, backgroundColor: splash.background, alignItems: 'center', justifyContent: 'center' }}>
+        <StatusBar style={splash.statusBar} />
+        <SubVoraLoader size={SPLASH_MARK_SIZE} tone={splash.tone} />
       </View>
     ) : null;
   }
@@ -52,7 +53,7 @@ function RootStack() {
   const signedIn = status === 'signedIn';
   return (
     <>
-      <StatusBar style={handingOff || isDark ? 'light' : 'dark'} />
+      <StatusBar style={handingOff ? splash.statusBar : isDark ? 'light' : 'dark'} />
       {/* Protected groups redirect on their own when the session starts or ends - including a
           refresh the server refused, which flips status to signedOut from inside the API client. */}
       {/* Native-stack approximations of M3 shared-axis transitions: list -> add/edit rises on the
