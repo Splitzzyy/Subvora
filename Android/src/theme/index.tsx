@@ -3,41 +3,33 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 import { Platform, PlatformColor, useColorScheme, type ColorValue, type TextStyle } from 'react-native';
 import type { PaymentSourceType } from '@/api';
 import type { IconName } from '@/ui';
+import * as generated from './palette.generated';
 
 /**
- * Material 3 Expressive tonal palette, seeded from the MAUI app's violet (#512BD4). Surfaces and
- * status colours are fixed; the accent roles follow the wallpaper on Android 12+ unless the user
- * turns dynamic colour off (see ThemeProvider).
+ * Material 3 Expressive tonal palette, generated from the SubVora key colours (violet #7B5CFF,
+ * cyan #38C6FF, amber-orange #FF8A4C, midnight #0B0A1F) by scripts/generate-palette.mjs. Surfaces,
+ * status colours and semantic roles are fixed; with wallpaper colours on (Android 12+, off by
+ * default) the accent roles follow the wallpaper instead (see ThemeProvider).
  */
-const light = {
-  primary: '#5A3FC0', onPrimary: '#FFFFFF', primaryContainer: '#E6DEFF', onPrimaryContainer: '#1B0062',
-  secondary: '#615B71', secondaryContainer: '#E7DEF8', onSecondaryContainer: '#1D192B',
-  tertiary: '#7E525E', tertiaryContainer: '#FFD9E1', onTertiaryContainer: '#31101B',
-  error: '#BA1A1A', onError: '#FFFFFF', errorContainer: '#FFDAD6', onErrorContainer: '#410002',
-  success: '#1B6C3F', successContainer: '#A3F5BC', onSuccessContainer: '#00210E',
-  warningContainer: '#FFDEA6', onWarningContainer: '#271900',
-  surface: '#FDF8FF', onSurface: '#1C1B20', onSurfaceVariant: '#48454F',
-  surfaceContainerLowest: '#FFFFFF', surfaceContainerLow: '#F7F2FA', surfaceContainer: '#F1ECF4',
-  surfaceContainerHigh: '#EBE6EE', surfaceContainerHighest: '#E6E1E9',
-  outline: '#79757F', outlineVariant: '#CAC4D0',
-  inverseSurface: '#313036', inverseOnSurface: '#F4EFF7', scrim: 'rgba(0,0,0,0.4)',
-};
+type Role = keyof typeof generated.light;
+export type Palette = { [K in Role | Alias]: ColorValue };
 
-export type Palette = { [K in keyof typeof light]: ColorValue };
+/** Older names kept working, and roles that share a family rather than inventing a hue. */
+type Alias = 'warningContainer' | 'onWarningContainer' | 'spendUp' | 'spendUpContainer' | 'onSpendUpContainer'
+  | 'spendDown' | 'spendDownContainer' | 'onSpendDownContainer';
+const withAliases = (p: typeof generated.light | typeof generated.dark): Record<Role | Alias, string> => ({
+  ...p,
+  // The warning banner (offline, cached data) shares the "renewal soon" amber.
+  warningContainer: p.renewalSoonContainer, onWarningContainer: p.onRenewalSoonContainer,
+  // Spend going up is a warning, never an error: red stays reserved for errors.
+  spendUp: p.renewalWarning, spendUpContainer: p.renewalWarningContainer, onSpendUpContainer: p.onRenewalWarningContainer,
+  spendDown: p.success, spendDownContainer: p.successContainer, onSpendDownContainer: p.onSuccessContainer,
+});
+const light = withAliases(generated.light);
+const dark = withAliases(generated.dark);
 
-const dark: typeof light = {
-  primary: '#C9BFFF', onPrimary: '#2E128F', primaryContainer: '#4526A7', onPrimaryContainer: '#E6DEFF',
-  secondary: '#CBC2DB', secondaryContainer: '#4A4458', onSecondaryContainer: '#E7DEF8',
-  tertiary: '#EFB8C6', tertiaryContainer: '#643B47', onTertiaryContainer: '#FFD9E1',
-  error: '#FFB4AB', onError: '#690005', errorContainer: '#93000A', onErrorContainer: '#FFDAD6',
-  success: '#88D9A1', successContainer: '#00522B', onSuccessContainer: '#A3F5BC',
-  warningContainer: '#5C4200', onWarningContainer: '#FFDEA6',
-  surface: '#141318', onSurface: '#E6E1E9', onSurfaceVariant: '#CAC4D0',
-  surfaceContainerLowest: '#0F0D13', surfaceContainerLow: '#1C1B20', surfaceContainer: '#201F24',
-  surfaceContainerHigh: '#2B292F', surfaceContainerHighest: '#36343A',
-  outline: '#938F99', outlineVariant: '#48454F',
-  inverseSurface: '#E6E1E9', inverseOnSurface: '#313036', scrim: 'rgba(0,0,0,0.6)',
-};
+/** The mark's own colours (from the icon master), for SubVoraMark, the splash and system bars. */
+export const brand = generated.brand;
 
 /** Android 12+ wallpaper tones for the accent roles. Native colour objects: never concatenate them. */
 const dynamicAccents = (isDark: boolean): Partial<Palette> => {
@@ -67,54 +59,65 @@ export const typescale = {
 } satisfies Record<string, TextStyle>;
 export type TypeVariant = keyof typeof typescale;
 
-/** Expressive shape scale: big outer radii, small inner ones where list items meet. */
-export const shape = { xs: 4, sm: 8, md: 12, lg: 16, xl: 28, xxl: 36, full: 999 };
+/**
+ * Expressive shape scale. Replaces the old xs..xxl names (migrated in one go): cards use `large`,
+ * sheets, dialogs and the dashboard hero `extraLarge`. `listInner`/`listGap` are the segmented
+ * list's inner corners and the gap between its rows.
+ */
+export const shape = { extraSmall: 8, small: 12, medium: 16, large: 24, extraLarge: 32, full: 999, listInner: 6, listGap: 2 };
+
+/** Spacing on a 4dp grid (2dp for hairline gaps). */
+export const space = { xxs: 2, xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24, xxxl: 32, huge: 48 };
+
+/**
+ * M3 Expressive spring tokens (MotionScheme.expressive: damping ratio + stiffness), converted to
+ * React Native Animated.spring's physical damping for a unit mass: c = 2ζ√k. Spatial springs move
+ * and resize things and may overshoot; effects springs (colour, opacity) never do.
+ */
+const spring = (dampingRatio: number, stiffness: number) => ({ stiffness, damping: 2 * dampingRatio * Math.sqrt(stiffness), mass: 1 });
+export const motion = {
+  spatialFast: spring(0.6, 800),
+  spatialDefault: spring(0.8, 380),
+  spatialSlow: spring(0.8, 200),
+  effectsFast: spring(1, 3800),
+  effectsDefault: spring(1, 1600),
+  effectsSlow: spring(1, 800),
+  /** Plain fade used instead of any spring when the user asks for reduced motion. */
+  fadeMs: 150,
+};
 
 // ---- Category and payment-source identity ----------------------------------------------------
 // Colour and glyph follow the category, never its rank. User-created and unknown categories fall
 // to neutral - an invented hue or icon would be wrong more often than blank. Red stays out of the
 // set: it is the danger colour.
 
-const CATEGORY: Record<string, { light: string; dark: string; icon: IconName }> = {
-  entertainment: { light: '#2a78d6', dark: '#3987e5', icon: 'movie-open-outline' },
-  food: { light: '#eb6834', dark: '#d95926', icon: 'silverware-fork-knife' },
-  fitness: { light: '#1baf7a', dark: '#199e70', icon: 'dumbbell' },
-  utilities: { light: '#eda100', dark: '#c98500', icon: 'lightning-bolt-outline' },
-  travel: { light: '#e87ba4', dark: '#d55181', icon: 'airplane' },
-  finance: { light: '#008300', dark: '#008300', icon: 'cash-multiple' },
-  productivity: { light: '#4a3aa7', dark: '#9085e9', icon: 'briefcase-outline' },
-  other: { light: '#8A8A99', dark: '#767686', icon: 'inbox-outline' },
+const CATEGORY_ICON: Record<string, IconName> = {
+  entertainment: 'movie-open-outline', food: 'silverware-fork-knife', fitness: 'dumbbell',
+  utilities: 'lightning-bolt-outline', travel: 'airplane', finance: 'cash-multiple',
+  productivity: 'briefcase-outline', other: 'inbox-outline',
 };
-const NEUTRAL = { light: '#8A8A99', dark: '#767686', icon: 'shape-outline' as IconName };
-
-const PAYMENT: Record<PaymentSourceType, { light: string; dark: string; icon: IconName }> = {
-  Card: { light: '#1F6FEB', dark: '#5AA0FF', icon: 'credit-card-outline' },
-  BankAccount: { light: '#0E8A80', dark: '#3FD0C3', icon: 'bank-outline' },
-  Wallet: { light: '#7A3FD0', dark: '#A98CF0', icon: 'wallet-outline' },
-  Other: { light: '#8A8A99', dark: '#9C9CAB', icon: 'cash' },
+const PAYMENT_ICON: Record<PaymentSourceType, IconName> = {
+  Card: 'credit-card-outline', BankAccount: 'bank-outline', Wallet: 'wallet-outline', Other: 'cash',
 };
 
-/** A wash behind dark ink; dark surfaces need more of the hue or it reads muddy. */
-const soft = (hex: string, isDark: boolean) => `${hex}${isDark ? '52' : '33'}`;
-
-export interface Identity { color: string; soft: string; icon: IconName }
-
-const identity = (entry: { light: string; dark: string; icon: IconName }, isDark: boolean): Identity => {
-  const color = isDark ? entry.dark : entry.light;
-  return { color, soft: soft(color, isDark), icon: entry.icon };
-};
+export interface Identity { color: string; soft: string; ink: string; icon: IconName }
 
 // ---- Provider --------------------------------------------------------------------------------
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 const PREFS_KEY = 'prefs:appearance';
 
-/** Device-local, synchronous read so the first frame is already in the chosen appearance. */
-function readPrefs(): { mode: ThemeMode; dynamic: boolean } {
+/**
+ * Device-local, synchronous read so the first frame is already in the chosen appearance.
+ * Wallpaper colours are stored as `wallpaper`, off unless chosen: the old `dynamic` flag defaulted
+ * on and was saved with every theme change, so it cannot tell a choice from the old default.
+ */
+function readPrefs(): { mode: ThemeMode; wallpaper: boolean } {
   try {
-    return { mode: 'system', dynamic: true, ...JSON.parse(Storage.getItemSync(PREFS_KEY) ?? '{}') };
+    const { mode = 'system', wallpaper = false } = JSON.parse(Storage.getItemSync(PREFS_KEY) ?? '{}');
+    return { mode, wallpaper };
   } catch {
-    return { mode: 'system', dynamic: true };
+    return { mode: 'system', wallpaper: false };
   }
 }
 
@@ -147,16 +150,26 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<Theme>(() => {
     const base = isDark ? dark : light;
+    const scheme = isDark ? 'dark' : 'light';
+    const categories = generated.categoryHues[scheme];
+    const payments = generated.paymentHues[scheme];
     return {
-      colors: { ...base, ...(prefs.dynamic && supportsDynamicColor ? dynamicAccents(isDark) : {}) },
+      colors: { ...base, ...(prefs.wallpaper && supportsDynamicColor ? dynamicAccents(isDark) : {}) },
       surfaceHex: base.surface,
       isDark,
       mode: prefs.mode,
-      dynamic: prefs.dynamic,
+      dynamic: prefs.wallpaper,
       setMode: (mode) => update({ mode }),
-      setDynamic: (dynamic) => update({ dynamic }),
-      category: (name) => identity(CATEGORY[(name ?? '').trim().toLowerCase()] ?? NEUTRAL, isDark),
-      payment: (t) => identity(PAYMENT[t] ?? PAYMENT.Other, isDark),
+      setDynamic: (wallpaper) => update({ wallpaper }),
+      category: (name) => {
+        const key = (name ?? '').trim().toLowerCase();
+        const known = key in CATEGORY_ICON;
+        return { ...categories[known ? key as keyof typeof categories : 'neutral'], icon: known ? CATEGORY_ICON[key] : 'shape-outline' };
+      },
+      payment: (t) => {
+        const key = t in PAYMENT_ICON ? t : 'Other';
+        return { ...payments[key], icon: PAYMENT_ICON[key] };
+      },
     };
   }, [isDark, prefs, update]);
 

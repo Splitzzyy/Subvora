@@ -39,7 +39,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --disable-warning=ExperimentalWarning --experimental-test-module-mocks --experimental-transform-types --test tests/*.test.ts",
     "lint": "expo lint",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "palette": "node scripts/generate-palette.mjs"
   },
   "private": true
 }

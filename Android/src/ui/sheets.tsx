@@ -15,7 +15,7 @@ export function Sheet({ visible, title, onClose, children }: { visible: boolean;
       <KeyboardAvoidingView style={{ flex: 1, justifyContent: 'flex-end' }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={[StyleSheet.absoluteFill, { backgroundColor: colors.scrim }]} onPress={onClose} accessibilityLabel={`Dismiss ${title}`} />
         <View accessibilityViewIsModal style={{
-          backgroundColor: colors.surfaceContainerLow, borderTopLeftRadius: shape.xxl, borderTopRightRadius: shape.xxl,
+          backgroundColor: colors.surfaceContainerLow, borderTopLeftRadius: shape.extraLarge, borderTopRightRadius: shape.extraLarge,
           paddingTop: 12, paddingBottom: Math.max(insets.bottom, 16), maxHeight: '85%',
         }}>
           <View style={{ width: 32, height: 4, borderRadius: 2, backgroundColor: colors.outlineVariant, alignSelf: 'center', marginBottom: 8 }} />
@@ -40,7 +40,7 @@ export function ActionSheet({ title, actions, onClose }: { title: string | null;
         {actions.map((action) => {
           const fg = action.destructive ? colors.error : colors.onSurface;
           return (
-            <Tap key={action.label} radius={shape.lg} accessibilityRole="button" onPress={() => { onClose(); action.onPress(); }}
+            <Tap key={action.label} radius={shape.medium} accessibilityRole="button" onPress={() => { onClose(); action.onPress(); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 16 }}>
               <Icon name={action.icon} size={24} color={fg} />
               <Text variant="bodyLarge" color={fg}>{action.label}</Text>
@@ -86,7 +86,7 @@ export function PickerSheet({ visible, title, options, selected, onSelect, onClo
         renderItem={({ item }) => {
           const isSelected = item.value === selected;
           return (
-            <Tap radius={shape.lg} accessibilityRole="radio" accessibilityState={{ selected: isSelected }} accessibilityLabel={item.label}
+            <Tap radius={shape.medium} accessibilityRole="radio" accessibilityState={{ selected: isSelected }} accessibilityLabel={item.label}
               onPress={() => { onSelect(item.value); close(); }}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: isSelected ? colors.secondaryContainer : 'transparent' }}>
               {item.icon ? (
@@ -122,7 +122,7 @@ function PromptBody({ title, label, initial, confirmLabel, onSubmit, onClose }: 
   const [value, setValue] = useState(initial);
   return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: colors.scrim }}>
-        <View accessibilityViewIsModal style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.xl, padding: 24, gap: 16 }}>
+        <View accessibilityViewIsModal style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.extraLarge, padding: 24, gap: 16 }}>
           <Text variant="headlineSmall" accessibilityRole="header">{title}</Text>
           <TextField label={label} value={value} onChangeText={setValue} autoFocus onSubmitEditing={() => onSubmit(value)} />
           <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }}>

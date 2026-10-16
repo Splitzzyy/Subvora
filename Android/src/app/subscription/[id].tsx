@@ -215,14 +215,14 @@ export default function SubscriptionDetail() {
     { value: NONE, label: 'No category', icon: 'minus-circle-outline' },
     ...categories.map((c) => {
       const identity = categoryIdentity(c.name);
-      return { value: c.id, label: c.name, icon: identity.icon, iconColor: identity.color, iconBackground: identity.soft };
+      return { value: c.id, label: c.name, icon: identity.icon, iconColor: identity.ink, iconBackground: identity.soft };
     }),
   ];
   const paymentOptions: PickerOption[] = [
     { value: NONE, label: 'No payment source', icon: 'minus-circle-outline' },
     ...paymentSources.map((p) => {
       const identity = payment(p.sourceType);
-      return { value: p.id, label: p.label, icon: identity.icon, iconColor: identity.color, iconBackground: identity.soft };
+      return { value: p.id, label: p.label, icon: identity.icon, iconColor: identity.ink, iconBackground: identity.soft };
     }),
   ];
   const currencyOptions = CURRENCIES.some((c) => c.value === currency) ? CURRENCIES : [currencyOption(currency), ...CURRENCIES];
@@ -246,16 +246,16 @@ export default function SubscriptionDetail() {
           <Text variant="titleMedium" color={colors.primary}>Service</Text>
           <TextField label="Name" value={name} onChangeText={onNameChange} placeholder="e.g. Netflix" autoCapitalize="words" />
           {suggestions.length > 0 ? (
-            <View style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.lg, padding: 8, gap: 2 }}>
+            <View style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.medium, padding: 8, gap: 2 }}>
               <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
                 {tier === 'AutoFill' ? 'Looks like one of these' : 'Did you mean'}
               </Text>
               {suggestions.map((s) => {
                 const identity = categoryIdentity(categories.find((c) => c.id === s.categoryId)?.name);
                 return (
-                  <Tap key={s.catalogId} radius={shape.md} accessibilityRole="button" accessibilityLabel={`Use ${s.providerName}`} onPress={() => pickSuggestion(s)}
+                  <Tap key={s.catalogId} radius={shape.small} accessibilityRole="button" accessibilityLabel={`Use ${s.providerName}`} onPress={() => pickSuggestion(s)}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8 }}>
-                    <Tile letter={s.providerName[0]?.toUpperCase()} color={identity.color} background={identity.soft} size={32} />
+                    <Tile letter={s.providerName[0]?.toUpperCase()} color={identity.ink} background={identity.soft} size={32} />
                     <Text variant="bodyLarge" style={{ flex: 1 }}>{s.providerName}</Text>
                     <Icon name="arrow-top-left" size={20} color={colors.onSurfaceVariant} />
                   </Tap>
@@ -266,7 +266,7 @@ export default function SubscriptionDetail() {
           <SelectField
             label="Category" placeholder={loading ? 'Loading categories…' : 'No category'} disabled={loading}
             value={selectedCategory?.name ?? null} onPress={() => setPicker('category')}
-            leading={<Tile icon={categoryTile.icon} color={categoryTile.color} background={categoryTile.soft} size={32} />}
+            leading={<Tile icon={categoryTile.icon} color={categoryTile.ink} background={categoryTile.soft} size={32} />}
           />
         </Card>
 

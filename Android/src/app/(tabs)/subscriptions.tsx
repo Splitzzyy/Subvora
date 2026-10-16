@@ -99,7 +99,7 @@ export default function Subscriptions() {
                 accessibilityLabel={`${sub.customName}, ${formatMoney(sub.costAmount, sub.currency)} ${CYCLE_LABEL[sub.cycleCadence]}`}
                 onPress={() => router.push(`/subscription/${sub.id}`)}
                 onLongPress={() => setMenuFor(sub)}
-                leading={<Tile letter={initialOf(sub.customName)} color={id.color} background={id.soft} />}
+                leading={<Tile letter={initialOf(sub.customName)} color={id.ink} background={id.soft} />}
                 title={
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                     <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{sub.customName}</Text>
@@ -108,7 +108,7 @@ export default function Subscriptions() {
                   </View>
                 }
                 subtitle={
-                  <Text variant="bodyMedium" color={overdue ? colors.error : colors.onSurfaceVariant}>
+                  <Text variant="bodyMedium" color={overdue ? colors.renewalWarning : colors.onSurfaceVariant}>
                     {formatMoney(sub.costAmount, sub.currency)} · {CYCLE_LABEL[sub.cycleCadence]} · {overdue ? `was due ${formatLongDate(sub.nextBillingDate)}` : `renews ${describeRelative(sub.nextBillingDate)}`}
                   </Text>
                 }
@@ -116,7 +116,7 @@ export default function Subscriptions() {
               >
                 {overdue ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 14 }}>
-                    <Pill label="Overdue" tone="error" />
+                    <Pill label="Overdue" tone="warning" />
                     <View style={{ flex: 1 }} />
                     <Button label="Mark as paid" icon="check" variant="tonal" onPress={() => markPaid(sub)} disabled={!canWrite} />
                   </View>

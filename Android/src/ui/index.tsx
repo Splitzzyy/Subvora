@@ -87,7 +87,7 @@ export function Button({ label, onPress, variant = 'filled', icon, loading, disa
       disabled={inactive}
       onPress={() => { haptics.tick(); onPress?.(); }}
       radius={height / 2}
-      pressedRadius={shape.md}
+      pressedRadius={shape.small}
       style={[{
         height, paddingHorizontal: size === 'lg' ? 28 : 20, backgroundColor: bg,
         borderWidth: border ? 1 : 0, borderColor: border, opacity: inactive && variant === 'text' ? 0.5 : 1,
@@ -125,7 +125,7 @@ export function Fab({ icon, label, onPress, disabled }: { icon: IconName; label:
     <View style={{ position: 'absolute', right: 16, bottom: 16 }}>
       <Tap
         accessibilityRole="button" accessibilityLabel={label} onPress={onPress} disabled={disabled}
-        radius={shape.lg} pressedRadius={shape.xl}
+        radius={shape.medium} pressedRadius={shape.large}
         style={{
           height: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', gap: 12,
           backgroundColor: colors.primaryContainer, elevation: 3, opacity: disabled ? 0.6 : 1,
@@ -148,7 +148,7 @@ export function Card({ children, tone = 'low', style }: { children: React.ReactN
     low: colors.surfaceContainerLow, default: colors.surfaceContainer, high: colors.surfaceContainerHigh,
     primary: colors.primaryContainer, tertiary: colors.tertiaryContainer,
   };
-  return <View style={[{ backgroundColor: bg[tone], borderRadius: shape.xl, padding: 20, gap: 12 }, style]}>{children}</View>;
+  return <View style={[{ backgroundColor: bg[tone], borderRadius: shape.large, padding: 20, gap: 12 }, style]}>{children}</View>;
 }
 
 export function ScreenHeader({ title, subtitle, actions }: { title: string; subtitle?: string; actions?: React.ReactNode }) {
@@ -234,7 +234,7 @@ export function Banner({ tone, text, actionLabel, onAction }: { tone: BannerTone
   };
   const { bg, fg, icon } = map[tone];
   return (
-    <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: bg, borderRadius: shape.lg, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12 }}>
+    <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: bg, borderRadius: shape.medium, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12 }}>
       <Icon name={icon} size={22} color={fg} />
       <Text variant="bodyMedium" color={fg} style={{ flex: 1 }}>{text}</Text>
       {actionLabel ? (
@@ -249,11 +249,12 @@ export function Banner({ tone, text, actionLabel, onAction }: { tone: BannerTone
 /** Shown wherever writes are closed because the phone has no network. */
 export const OfflineBanner = () => <Banner tone="warning" text="You're offline. Changes are disabled until you reconnect." />;
 
-export function Pill({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'error' | 'tertiary' | 'success' }) {
+export function Pill({ label, tone = 'neutral' }: { label: string; tone?: 'neutral' | 'error' | 'warning' | 'tertiary' | 'success' }) {
   const { colors } = useTheme();
   const map = {
     neutral: [colors.surfaceContainerHighest, colors.onSurfaceVariant],
     error: [colors.errorContainer, colors.onErrorContainer],
+    warning: [colors.renewalWarningContainer, colors.onRenewalWarningContainer],
     tertiary: [colors.tertiaryContainer, colors.onTertiaryContainer],
     success: [colors.successContainer, colors.onSuccessContainer],
   } as const;
@@ -306,7 +307,7 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
   return (
     <View style={[{ gap: 4 }, style]}>
       <View style={{
-        backgroundColor: colors.surfaceContainerHighest, borderRadius: shape.lg, paddingHorizontal: 16, paddingTop: 8,
+        backgroundColor: colors.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: 16, paddingTop: 8,
         borderWidth: 2, borderColor: error ? colors.error : focused ? colors.primary : 'transparent', flexDirection: 'row', alignItems: 'center',
       }}>
         <View style={{ flex: 1 }}>
@@ -343,7 +344,7 @@ export function SelectField({ label, value, placeholder, onPress, disabled, lead
     <Tap
       // Dismissed first: Android hands focus back to the last input when a sheet or dialog closes,
       // which reopened the keyboard over the form after every pick.
-      onPress={() => { Keyboard.dismiss(); onPress(); }} disabled={disabled} radius={shape.lg} accessibilityRole="button" accessibilityLabel={`${label}: ${value ?? placeholder}`}
+      onPress={() => { Keyboard.dismiss(); onPress(); }} disabled={disabled} radius={shape.medium} accessibilityRole="button" accessibilityLabel={`${label}: ${value ?? placeholder}`}
       style={{ backgroundColor: colors.surfaceContainerHighest, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12, opacity: disabled ? 0.5 : 1 }}
     >
       {leading}
@@ -389,7 +390,7 @@ export function ButtonGroup<T extends string>({ options, value, onChange, disabl
       {options.map((option, i) => {
         const selected = option.value === value;
         const outer = 20;
-        const inner = selected ? outer : shape.sm;
+        const inner = selected ? outer : shape.extraSmall;
         return (
           <Tap
             key={option.value}
@@ -418,7 +419,7 @@ export function Chip({ label, selected, onPress, icon, disabled }: { label: stri
   const { colors } = useTheme();
   return (
     <Tap
-      onPress={() => { haptics.tick(); onPress(); }} disabled={disabled} radius={shape.sm} pressedRadius={shape.lg}
+      onPress={() => { haptics.tick(); onPress(); }} disabled={disabled} radius={shape.extraSmall} pressedRadius={shape.medium}
       accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={label}
       style={{
         height: 36, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 6,

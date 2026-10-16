@@ -91,7 +91,7 @@ export default function Categories() {
                 key={c.id}
                 position={positionOf(i, section.rows.length)}
                 title={c.name}
-                leading={<Tile icon={id.icon} color={id.color} background={id.soft} size={40} />}
+                leading={<Tile icon={id.icon} color={id.ink} background={id.soft} size={40} />}
                 onLongPress={section.editable && !offline ? () => setMenuFor(c) : undefined}
                 trailing={section.editable
                   ? <IconButton icon="dots-vertical" label={`Manage ${c.name}`} onPress={() => setMenuFor(c)} disabled={offline} />

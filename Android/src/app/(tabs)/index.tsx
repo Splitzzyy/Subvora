@@ -36,7 +36,7 @@ export default function Dashboard() {
       {data ? (
         <View style={{ gap: 12 }}>
           {/* Hero: the one number this app exists to show, in display type on the primary container. */}
-          <Card tone="primary" style={{ borderRadius: shape.xxl, paddingVertical: 28, gap: 20 }}>
+          <Card tone="primary" style={{ borderRadius: shape.extraLarge, paddingVertical: 28, gap: 20 }}>
             <View style={{ gap: 4 }}>
               <Text variant="labelLarge" color={colors.onPrimaryContainer}>You spend</Text>
               <Text variant="displayLarge" color={colors.onPrimaryContainer} adjustsFontSizeToFit numberOfLines={1}>
@@ -75,7 +75,7 @@ export default function Dashboard() {
                 const id = category(item.categoryName);
                 return (
                   <View key={item.categoryId ?? item.categoryName} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Tile icon={id.icon} color={id.color} background={id.soft} size={40} />
+                    <Tile icon={id.icon} color={id.ink} background={id.soft} size={40} />
                     <View style={{ flex: 1, gap: 6 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                         <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{item.categoryName}</Text>
@@ -98,7 +98,7 @@ export default function Dashboard() {
                 const id = payment(item.paymentSourceType ?? 'Card');
                 return (
                   <View key={item.paymentSourceId ?? item.paymentSourceLabel} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <Tile icon={item.paymentSourceId ? id.icon : 'help-circle-outline'} color={id.color} background={id.soft} size={40} />
+                    <Tile icon={item.paymentSourceId ? id.icon : 'help-circle-outline'} color={id.ink} background={id.soft} size={40} />
                     <View style={{ flex: 1, gap: 6 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                         <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{item.paymentSourceLabel}</Text>

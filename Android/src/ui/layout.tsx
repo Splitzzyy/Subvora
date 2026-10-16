@@ -35,7 +35,7 @@ export function AuthScaffold({ title, subtitle, children }: { title: string; sub
     <Screen>
       <View style={{ paddingTop: 48, paddingBottom: 32, gap: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <View style={{ width: 56, height: 56, borderRadius: shape.lg + 4, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-10deg' }] }}>
+          <View style={{ width: 56, height: 56, borderRadius: shape.medium + 4, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center', transform: [{ rotate: '-10deg' }] }}>
             <Icon name="autorenew" size={32} color={colors.onPrimary} style={{ transform: [{ rotate: '10deg' }] }} />
           </View>
           <Text variant="titleLarge" color={colors.primary}>SubVora</Text>

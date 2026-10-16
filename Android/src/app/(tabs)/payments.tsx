@@ -107,7 +107,7 @@ export default function PaymentSources() {
             position={positionOf(i, rows.length)}
             title={source.label}
             subtitle={TYPE_LABEL[source.sourceType]}
-            leading={<Tile icon={id.icon} color={id.color} background={id.soft} size={40} />}
+            leading={<Tile icon={id.icon} color={id.ink} background={id.soft} size={40} />}
             onLongPress={offline ? undefined : () => setMenuFor(source)}
             trailing={<IconButton icon="dots-vertical" label={`Manage ${source.label}`} onPress={() => setMenuFor(source)} disabled={offline} />}
           />
