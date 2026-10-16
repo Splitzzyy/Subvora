@@ -22,10 +22,12 @@ export const useSnackbar = () => useContext(SnackbarContext);
 export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   const [current, setCurrent] = useState<(SnackbarMessage & { id: number }) | null>(null);
   const show = useCallback((message: SnackbarMessage) => setCurrent({ ...message, id: Date.now() }), []);
+  // Stable, so the shown snackbar's timer is not restarted by unrelated re-renders.
+  const dismiss = useCallback((id: number) => setCurrent((c) => (c?.id === id ? null : c)), []);
   return (
     <SnackbarContext.Provider value={show}>
       {children}
-      {current ? <Snackbar key={current.id} message={current} onDismiss={() => setCurrent((c) => (c?.id === current.id ? null : c))} /> : null}
+      {current ? <Snackbar key={current.id} message={current} onDismiss={dismiss} /> : null}
     </SnackbarContext.Provider>
   );
 }
@@ -33,13 +35,14 @@ export function SnackbarProvider({ children }: { children: React.ReactNode }) {
 const DURATION_MS = 4000;
 const WITH_ACTION_MS = 8000;
 
-function Snackbar({ message, onDismiss }: { message: SnackbarMessage; onDismiss: () => void }) {
+function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessage & { id: number }; onDismiss: (id: number) => void }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const reduced = useReducedMotion();
   const [enter] = useState(() => new Animated.Value(0));
   const error = message.tone === 'error';
+  const onDismiss = useCallback(() => dismissById(message.id), [dismissById, message.id]);
 
   useEffect(() => {
     AccessibilityInfo.announceForAccessibility(message.text);
