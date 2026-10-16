@@ -44,19 +44,61 @@ const dynamicAccents = (isDark: boolean): Partial<Palette> => {
 
 export const supportsDynamicColor = Platform.OS === 'android' && Number(Platform.Version) >= 31;
 
-/** M3 type scale, emphasised weights for the Expressive display/headline styles. */
-export const typescale = {
-  displayLarge: { fontSize: 52, lineHeight: 60, fontWeight: '800', letterSpacing: -1 },
-  displaySmall: { fontSize: 36, lineHeight: 44, fontWeight: '700', letterSpacing: -0.5 },
-  headlineLarge: { fontSize: 32, lineHeight: 40, fontWeight: '700' },
-  headlineSmall: { fontSize: 24, lineHeight: 32, fontWeight: '600' },
-  titleLarge: { fontSize: 22, lineHeight: 28, fontWeight: '600' },
-  titleMedium: { fontSize: 16, lineHeight: 24, fontWeight: '600', letterSpacing: 0.15 },
-  bodyLarge: { fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0.3 },
-  bodyMedium: { fontSize: 14, lineHeight: 20, fontWeight: '400', letterSpacing: 0.25 },
-  labelLarge: { fontSize: 14, lineHeight: 20, fontWeight: '600', letterSpacing: 0.1 },
-  labelMedium: { fontSize: 12, lineHeight: 16, fontWeight: '600', letterSpacing: 0.5 },
-} satisfies Record<string, TextStyle>;
+/**
+ * Plus Jakarta Sans (OFL, assets/fonts), embedded at build time by the expo-font config plugin.
+ * Android registers each file as its own family, so every style names the weight's family and
+ * never sets fontWeight (which would make Android synthesise bold on top).
+ */
+const font = {
+  regular: 'PlusJakartaSans-Regular',
+  medium: 'PlusJakartaSans-Medium',
+  semiBold: 'PlusJakartaSans-SemiBold',
+  bold: 'PlusJakartaSans-Bold',
+  extraBold: 'PlusJakartaSans-ExtraBold',
+};
+const style = (fontSize: number, lineHeight: number, fontFamily: string, letterSpacing = 0) => ({ fontSize, lineHeight, fontFamily, letterSpacing });
+
+/**
+ * Full M3 type scale. Display and headline are the Expressive emphasised weights (700-800, slightly
+ * tight); title 500, body 400, labels 600. Sizes are in sp, so the system font scale applies.
+ */
+const base = {
+  displayLarge: style(57, 64, font.extraBold, -1),
+  displayMedium: style(45, 52, font.extraBold, -0.75),
+  displaySmall: style(36, 44, font.bold, -0.5),
+  headlineLarge: style(32, 40, font.bold, -0.5),
+  headlineMedium: style(28, 36, font.bold, -0.25),
+  headlineSmall: style(24, 32, font.bold, -0.25),
+  titleLarge: style(22, 28, font.medium),
+  titleMedium: style(16, 24, font.medium, 0.15),
+  titleSmall: style(14, 20, font.medium, 0.1),
+  bodyLarge: style(16, 24, font.regular, 0.3),
+  bodyMedium: style(14, 20, font.regular, 0.25),
+  bodySmall: style(12, 16, font.regular, 0.4),
+  labelLarge: style(14, 20, font.semiBold, 0.1),
+  labelMedium: style(12, 16, font.semiBold, 0.5),
+  labelSmall: style(11, 16, font.semiBold, 0.5),
+};
+
+/** M3 Expressive emphasised styles: the same size one weight heavier, for the line that matters. */
+const HEAVIER: Record<string, string> = {
+  [font.regular]: font.medium, [font.medium]: font.bold, [font.semiBold]: font.bold, [font.bold]: font.extraBold, [font.extraBold]: font.extraBold,
+};
+type Emphasized = { [K in keyof typeof base as `${K}Emphasized`]: TextStyle };
+const emphasized = Object.fromEntries(
+  Object.entries(base).map(([name, s]) => [`${name}Emphasized`, { ...s, fontFamily: HEAVIER[s.fontFamily] }]),
+) as Emphasized;
+
+/** Money: tabular figures (Plus Jakarta Sans has `tnum`), so amounts line up and don't jitter. */
+const tabular: TextStyle['fontVariant'] = ['tabular-nums'];
+const amounts = {
+  amountDisplay: { ...base.displayLarge, fontVariant: tabular },
+  amountHeadline: { ...base.headlineSmall, fontVariant: tabular },
+  amountTitle: { ...base.titleMedium, fontFamily: font.semiBold, fontVariant: tabular },
+  amountLabel: { ...base.labelLarge, fontVariant: tabular },
+};
+
+export const typescale = { ...base, ...emphasized, ...amounts };
 export type TypeVariant = keyof typeof typescale;
 
 /**

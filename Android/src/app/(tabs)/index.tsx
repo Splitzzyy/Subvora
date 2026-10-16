@@ -39,7 +39,7 @@ export default function Dashboard() {
           <Card tone="primary" style={{ borderRadius: shape.extraLarge, paddingVertical: 28, gap: 20 }}>
             <View style={{ gap: 4 }}>
               <Text variant="labelLarge" color={colors.onPrimaryContainer}>You spend</Text>
-              <Text variant="displayLarge" color={colors.onPrimaryContainer} adjustsFontSizeToFit numberOfLines={1}>
+              <Text variant="amountDisplay" color={colors.onPrimaryContainer} adjustsFontSizeToFit numberOfLines={1}>
                 {formatMoney(data[period], data.homeCurrency)}
               </Text>
               <Text variant="titleMedium" color={colors.onPrimaryContainer}>{PERIOD_LABEL[period]} on subscriptions</Text>
@@ -56,7 +56,7 @@ export default function Dashboard() {
               <Tile icon="cash-check" color={colors.onTertiaryContainer} background={colors.surfaceContainerLowest} />
               <View style={{ flex: 1 }}>
                 <Text variant="labelLarge" color={colors.onTertiaryContainer}>One-time payments this year</Text>
-                <Text variant="headlineSmall" color={colors.onTertiaryContainer}>{formatMoney(data.oneTimeThisYear, data.homeCurrency)}</Text>
+                <Text variant="amountHeadline" color={colors.onTertiaryContainer}>{formatMoney(data.oneTimeThisYear, data.homeCurrency)}</Text>
               </View>
             </Card>
           ) : null}
@@ -79,7 +79,7 @@ export default function Dashboard() {
                     <View style={{ flex: 1, gap: 6 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                         <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{item.categoryName}</Text>
-                        <Text variant="labelLarge">{formatMoney(item.monthlyAmount, data.homeCurrency)}</Text>
+                        <Text variant="amountLabel">{formatMoney(item.monthlyAmount, data.homeCurrency)}</Text>
                       </View>
                       <ProgressBar value={item.monthlyAmount / (maxOf(data.byCategory) || 1)} color={id.color} />
                     </View>
@@ -102,7 +102,7 @@ export default function Dashboard() {
                     <View style={{ flex: 1, gap: 6 }}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
                         <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{item.paymentSourceLabel}</Text>
-                        <Text variant="labelLarge">{formatMoney(item.monthlyAmount, data.homeCurrency)}</Text>
+                        <Text variant="amountLabel">{formatMoney(item.monthlyAmount, data.homeCurrency)}</Text>
                       </View>
                       <ProgressBar value={item.monthlyAmount / (maxOf(data.byPaymentSource) || 1)} color={colors.primary} />
                     </View>
