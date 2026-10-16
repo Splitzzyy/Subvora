@@ -94,8 +94,8 @@ export default function Dashboard() {
               <Text variant="titleLarge">By payment source</Text>
               {topSource ? <Text variant="bodyMedium" color={colors.onSurfaceVariant}>{topSource}</Text> : null}
               {data.byPaymentSource.map((item) => {
-                // The breakdown carries no type, so every row wears the card tint.
-                const id = payment('Card');
+                // A card when the type is missing: an older API or a cached response.
+                const id = payment(item.paymentSourceType ?? 'Card');
                 return (
                   <View key={item.paymentSourceId ?? item.paymentSourceLabel} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <Tile icon={item.paymentSourceId ? id.icon : 'help-circle-outline'} color={id.color} background={id.soft} size={40} />

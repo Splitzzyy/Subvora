@@ -63,7 +63,7 @@ public class BurnRateCalculator
         var oneTimeThisYear = 0m;
         var unresolvedSubscriptionIds = new List<Guid>();
         var categoryAnnualAmounts = new Dictionary<(Guid? CategoryId, string CategoryName), decimal>();
-        var paymentSourceAnnualAmounts = new Dictionary<(Guid? PaymentSourceId, string Label), decimal>();
+        var paymentSourceAnnualAmounts = new Dictionary<(Guid? PaymentSourceId, string Label, PaymentSourceType? PaymentSourceType), decimal>();
         DateTimeOffset? oldestRateFetchedAt = null;
 
         // Materialized because the currencies are collected in one pass and the amounts summed in
@@ -135,7 +135,7 @@ public class BurnRateCalculator
             var categoryKey = (subscription.CategoryId, subscription.CategoryName ?? uncategorizedName);
             categoryAnnualAmounts[categoryKey] = categoryAnnualAmounts.GetValueOrDefault(categoryKey) + subscriptionAnnual;
 
-            var paymentSourceKey = (subscription.PaymentSourceId, subscription.PaymentSourceLabel ?? unassignedPaymentSourceLabel);
+            var paymentSourceKey = (subscription.PaymentSourceId, subscription.PaymentSourceLabel ?? unassignedPaymentSourceLabel, subscription.PaymentSourceType);
             paymentSourceAnnualAmounts[paymentSourceKey] = paymentSourceAnnualAmounts.GetValueOrDefault(paymentSourceKey) + subscriptionAnnual;
         }
 
@@ -154,6 +154,7 @@ public class BurnRateCalculator
             {
                 PaymentSourceId = kvp.Key.PaymentSourceId,
                 PaymentSourceLabel = kvp.Key.Label,
+                PaymentSourceType = kvp.Key.PaymentSourceType,
                 MonthlyAmount = Math.Round(kvp.Value / MonthsPerYear, 2),
             })
             .OrderByDescending(item => item.MonthlyAmount)

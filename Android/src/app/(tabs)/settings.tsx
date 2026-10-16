@@ -4,10 +4,10 @@ import { API_BASE_URL, authApi, tokens, usersApi, writeErrorMessage } from '@/ap
 import { CURRENCIES, currencyOption } from '@/lib/currencies';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
-import { initialOf } from '@/lib/logic';
+import { currencySymbol, initialOf } from '@/lib/logic';
 import { useSession } from '@/lib/session';
 import { supportsDynamicColor, useTheme, type ThemeMode } from '@/theme';
-import { Banner, Button, ButtonGroup, Card, Icon, OfflineBanner, ScreenHeader, SelectField, Spinner, SwitchRow, Text, TextField, Tile } from '@/ui';
+import { Banner, Button, ButtonGroup, Card, OfflineBanner, ScreenHeader, SelectField, Spinner, SwitchRow, Text, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
 import { PickerSheet } from '@/ui/sheets';
 
@@ -113,7 +113,12 @@ export default function Settings() {
             label="Home currency" placeholder="Choose a currency" disabled={!profile}
             value={currency ? currencyOption(currency).label : null}
             onPress={() => setPickingCurrency(true)}
-            leading={<Icon name="currency-usd" size={22} color={colors.onSurfaceVariant} />}
+            // The chosen currency's own sign; a fixed "$" icon read as dollars whatever was picked.
+            leading={(
+              <View style={{ minWidth: 24, alignItems: 'center' }}>
+                <Text variant="titleLarge" color={colors.onSurfaceVariant} numberOfLines={1}>{currency ? currencySymbol(currency) : '¤'}</Text>
+              </View>
+            )}
           />
           <Text variant="bodyMedium" color={colors.onSurfaceVariant}>Every total is converted into this currency. Subscriptions keep their own.</Text>
           <TextField

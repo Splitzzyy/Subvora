@@ -41,6 +41,7 @@ export interface Subscription {
   categoryName: string | null;
   paymentSourceId: string | null;
   paymentSourceLabel: string | null;
+  paymentSourceType?: PaymentSourceType | null;
   catalogId: string | null;
   catalogLogoUrl: string | null;
   isFreeTrial: boolean;
@@ -92,7 +93,8 @@ export interface BurnRate {
   unresolvedSubscriptionIds: string[];
   oldestRateFetchedAt: string | null;
   byCategory: { categoryId: string | null; categoryName: string; monthlyAmount: number }[];
-  byPaymentSource: { paymentSourceId: string | null; paymentSourceLabel: string; monthlyAmount: number }[];
+  /** paymentSourceType is null for the unassigned bucket, and absent from an older API or cache. */
+  byPaymentSource: { paymentSourceId: string | null; paymentSourceLabel: string; paymentSourceType?: PaymentSourceType | null; monthlyAmount: number }[];
 }
 
 export interface UserProfile {
