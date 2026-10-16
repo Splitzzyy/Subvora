@@ -164,6 +164,6 @@ What trigrams do not cover is rebrands and pure semantics — `G Suite` → Goog
 ---
 
 ## 🚀 Strategic Architecture Advantages
-* **Single Core Repository:** Avoid writing discrete Swift/Kotlin layers. Features, visual design elements, and local configurations are completed entirely in C#.
+* **Single Core Repository:** No discrete Swift/Kotlin layers. The API is C#; the mobile client is TypeScript (React Native/Expo), with native configuration through `app.json` and config plugins.
 * **Frictionless Onboarding:** Manual tracking drops drastically. Raw string entries resolve into standard categories, logos, and a catalog link without leaving the database.
-* **Unified Financial Intelligence:** Database-centric architecture guarantees real-time notification synchronization, data security compliance, and platform independence.
+* **Unified Financial Intelligence:** One Postgres store holds the financial rows and the provider catalog they link to. Reminders need no server at all: the client schedules them on-device from its own copy of the list.
