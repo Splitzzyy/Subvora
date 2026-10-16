@@ -228,9 +228,10 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
  * Squircle tile behind an icon or letter - the monogram that stands in for a provider logo. Logos
  * are not loaded (the catalog's are remote SVGs); if they ever are, fade them in over this.
  */
+export const TILE_CORNER = 0.34;
 export function Tile({ icon, letter, color, background, size = 44 }: { icon?: IconName; letter?: string; color: ColorValue; background: ColorValue; size?: number }) {
   return (
-    <View accessible={false} style={{ width: size, height: size, borderRadius: size * 0.34, backgroundColor: background, alignItems: 'center', justifyContent: 'center' }}>
+    <View accessible={false} style={{ width: size, height: size, borderRadius: size * TILE_CORNER, backgroundColor: background, alignItems: 'center', justifyContent: 'center' }}>
       {icon ? <Icon name={icon} size={size * 0.5} color={color} /> : <Text variant="titleLargeEmphasized" color={color} allowFontScaling={false}>{letter}</Text>}
     </View>
   );
@@ -338,11 +339,6 @@ function WavyProgress() {
       ) : null}
     </View>
   );
-}
-
-/** Short indeterminate wait inside a section. Full-screen and first-load waits use skeletons or SubVoraLoader. */
-export function Spinner() {
-  return <View style={{ alignItems: 'center', paddingVertical: space.xxxl }}><ExpressiveLoadingIndicator size={48} /></View>;
 }
 
 // ---- Inputs ----------------------------------------------------------------------------------

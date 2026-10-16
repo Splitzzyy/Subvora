@@ -3,11 +3,14 @@ import { Alert, View } from 'react-native';
 import { categoriesApi, isStatus, writeErrorMessage, type Category } from '@/api';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
+import { asyncState } from '@/lib/loading';
 import { useSession } from '@/lib/session';
 import { useTheme } from '@/theme';
-import { Banner, Button, Card, IconButton, ListItem, OfflineBanner, positionOf, ScreenHeader, SectionHeader, Spinner, TextField, Tile } from '@/ui';
+import { Banner, Button, Card, IconButton, ListItem, OfflineBanner, positionOf, SectionHeader, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
 import { ActionSheet, PromptDialog } from '@/ui/sheets';
+import { useSnackbar, type SnackbarMessage } from '@/ui/snackbar';
+import { AsyncView, ListSkeleton } from '@/ui/states';
 
 const DUPLICATE = 'A category with this name already exists.';
 const byName = (a: Category, b: Category) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
@@ -16,34 +19,51 @@ export default function Categories() {
   const { category } = useTheme();
   const { dataChanged } = useSession();
   const offline = useOffline();
-  const { data, loading, error, reload } = useLoader(categoriesApi.list);
+  const snackbar = useSnackbar();
+  const { data, loading, error, errorStatus, reload } = useLoader(categoriesApi.list);
   const [name, setName] = useState('');
-  const [writeError, setWriteError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [menuFor, setMenuFor] = useState<Category | null>(null);
   const [renaming, setRenaming] = useState<Category | null>(null);
 
   /** Every write moves the dashboard breakdown or the list grouping, so all of them announce it. */
-  const write = async (action: () => Promise<void>) => {
-    setWriteError(null);
+  const write = async (action: () => Promise<SnackbarMessage>) => {
+    if (busy) return;
+    setBusy(true);
     try {
-      await action();
+      const result = await action();
       haptics.confirm();
       dataChanged();
+      snackbar(result);
     } catch (e) {
       haptics.reject();
-      setWriteError(isStatus(e, 409) ? DUPLICATE : writeErrorMessage(e));
+      snackbar({ tone: 'error', text: isStatus(e, 409) ? DUPLICATE : writeErrorMessage(e) });
+    } finally {
+      setBusy(false);
     }
   };
 
   const add = () => write(async () => {
-    await categoriesApi.create(name.trim());
+    const created = await categoriesApi.create(name.trim());
     setName('');
+    return { text: `${created.name} added.` };
   });
 
   const rename = (target: Category, newName: string) => {
     setRenaming(null);
     if (!newName.trim() || newName.trim() === target.name) return;
-    void write(async () => { await categoriesApi.rename(target.id, newName.trim()); });
+    void write(async () => {
+      await categoriesApi.rename(target.id, newName.trim());
+      // A rename is cleanly reversible with the same call, so it gets an undo.
+      return {
+        text: `Renamed to ${newName.trim()}.`,
+        actionLabel: 'Undo',
+        onAction: () => void write(async () => {
+          await categoriesApi.rename(target.id, target.name);
+          return { text: `Name changed back to ${target.name}.` };
+        }),
+      };
+    });
   };
 
   // Subscriptions survive a delete (FK is SET NULL) but lose their grouping - say so first.
@@ -55,7 +75,7 @@ export default function Categories() {
       {
         text: 'Delete', style: 'destructive', onPress: () => write(async () => {
           const { subscriptionsUncategorized: n } = await categoriesApi.remove(target.id);
-          if (n > 0) Alert.alert('Category deleted', `${n} ${n === 1 ? 'subscription is' : 'subscriptions are'} now uncategorised.`);
+          return { text: n > 0 ? `Category deleted. ${n} ${n === 1 ? 'subscription is' : 'subscriptions are'} now uncategorised.` : 'Category deleted.' };
         }),
       },
     ],
@@ -68,39 +88,44 @@ export default function Categories() {
   ].filter((s) => s.rows.length > 0);
 
   return (
-    <Screen refreshing={loading && !!data} onRefresh={reload}>
-      <ScreenHeader subtitle="Organise" title="Categories" />
+    <Screen title="Categories" subtitle="Organise" refreshing={loading && !!data} onRefresh={reload}>
       {offline ? <OfflineBanner /> : null}
-      {error ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
-      {writeError ? <Banner tone="error" text={writeError} /> : null}
+      {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
 
       <Card tone="default">
         <TextField label="New category" value={name} onChangeText={setName} placeholder="e.g. Music" onSubmitEditing={add} returnKeyType="done" />
-        <Button label="Add category" icon="plus" variant="tonal" onPress={add} disabled={offline || !name.trim()} style={{ alignSelf: 'flex-end' }} />
+        <Button label="Add category" icon="plus" variant="tonal" onPress={add} loading={busy && !!name.trim()} disabled={offline || busy || !name.trim()} style={{ alignSelf: 'flex-end' }} />
       </Card>
 
-      {!data && loading ? <Spinner /> : null}
-
-      {sections.map((section) => (
-        <View key={section.title}>
-          <SectionHeader title={section.title} summary={`${section.rows.length} ${section.rows.length === 1 ? 'category' : 'categories'}`} />
-          {section.rows.map((c, i) => {
-            const id = category(c.name);
-            return (
-              <ListItem
-                key={c.id}
-                position={positionOf(i, section.rows.length)}
-                title={c.name}
-                leading={<Tile icon={id.icon} color={id.ink} background={id.soft} size={40} />}
-                onLongPress={section.editable && !offline ? () => setMenuFor(c) : undefined}
-                trailing={section.editable
-                  ? <IconButton icon="dots-vertical" label={`Manage ${c.name}`} onPress={() => setMenuFor(c)} disabled={offline} />
-                  : null}
-              />
-            );
-          })}
-        </View>
-      ))}
+      <AsyncView
+        state={asyncState({ hasData: !!data, error, errorStatus })}
+        skeleton={<ListSkeleton rows={6} />}
+        error={error}
+        errorStatus={errorStatus}
+        onRetry={reload}
+      >
+        {sections.map((section) => (
+          <View key={section.title}>
+            <SectionHeader title={section.title} summary={`${section.rows.length} ${section.rows.length === 1 ? 'category' : 'categories'}`} />
+            {section.rows.map((c, i) => {
+              const id = category(c.name);
+              return (
+                <ListItem
+                  key={c.id}
+                  position={positionOf(i, section.rows.length)}
+                  title={c.name}
+                  accessibilityLabel={c.name}
+                  leading={<Tile icon={id.icon} color={id.ink} background={id.soft} size={40} />}
+                  onLongPress={section.editable && !offline ? () => setMenuFor(c) : undefined}
+                  trailing={section.editable
+                    ? <IconButton icon="dots-vertical" label={`Manage ${c.name}`} onPress={() => setMenuFor(c)} disabled={offline} />
+                    : null}
+                />
+              );
+            })}
+          </View>
+        ))}
+      </AsyncView>
 
       <ActionSheet
         title={menuFor?.name ?? null}

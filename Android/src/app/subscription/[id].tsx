@@ -3,18 +3,21 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, View } from 'react-native';
 import {
-  categoriesApi, errorMessage, isStatus, paymentSourcesApi, subscriptionsApi, writeErrorMessage,
+  ApiError, categoriesApi, errorMessage, isStatus, paymentSourcesApi, subscriptionsApi, writeErrorMessage,
   type CatalogMatchCandidate, type Category, type MatchConfidenceTier, type PaymentSource, type Subscription, type SubscriptionRequest,
 } from '@/api';
 import { CURRENCIES, currencyOption, DEFAULT_CURRENCY } from '@/lib/currencies';
 import * as haptics from '@/lib/haptics';
 import { useDebounced, useOffline } from '@/lib/hooks';
+import { asyncState } from '@/lib/loading';
 import { CYCLE_LABEL, CYCLES_ORDERED, nextBillingDate, todayDateOnly, type BillingCycle } from '@/lib/logic';
 import { useSession } from '@/lib/session';
-import { shape, useTheme } from '@/theme';
-import { Banner, Button, Card, Chip, Icon, IconButton, OfflineBanner, SelectField, Spinner, SwitchRow, Tap, Text, TextField, Tile } from '@/ui';
+import { shape, space, useTheme } from '@/theme';
+import { Banner, Button, Card, Chip, Icon, IconButton, OfflineBanner, ProgressBar, SelectField, SwitchRow, Tap, Text, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
 import { DateField, PickerSheet, type PickerOption } from '@/ui/sheets';
+import { useSnackbar } from '@/ui/snackbar';
+import { AsyncView, FormSkeleton } from '@/ui/states';
 
 const MIN_RESOLVE_LENGTH = 3;
 const NONE = '__none__';
@@ -26,6 +29,7 @@ export default function SubscriptionDetail() {
   const { colors, category: categoryIdentity, payment } = useTheme();
   const { dataChanged } = useSession();
   const offline = useOffline();
+  const snackbar = useSnackbar();
   const debounce = useDebounced(500);
 
   const today = todayDateOnly();
@@ -49,6 +53,8 @@ export default function SubscriptionDetail() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The record itself failed to load: nothing to edit, so the whole form gives way to an error state. */
+  const [loadFailure, setLoadFailure] = useState<{ message: string; status: number | null } | null>(null);
   const [picker, setPicker] = useState<'category' | 'payment' | 'currency' | null>(null);
 
   // Not state: nothing renders them. The catalog link and the version this edit started from.
@@ -78,16 +84,20 @@ export default function SubscriptionDetail() {
     setTier(null);
   };
 
-  const fetchRecord = () => editId
+  /** `initial`: a failure replaces the form (there is nothing to edit); later reloads report in the banner. */
+  const fetchRecord = (initial = false) => editId
     ? subscriptionsApi.get(editId).then(apply, (e) => {
-      if (!isStatus(e, 404)) return setError(errorMessage(e));
+      if (!isStatus(e, 404)) {
+        const message = errorMessage(e);
+        return initial ? setLoadFailure({ message, status: e instanceof ApiError ? e.status : null }) : setError(message);
+      }
       // Deleted elsewhere - nothing left to edit.
       dataChanged();
       router.back();
     })
     : Promise.resolve();
 
-  useEffect(() => {
+  const load = () => {
     // All three GETs are independent, so they go out together; one failing still fills the others.
     const pickers = Promise.allSettled([categoriesApi.list(), paymentSourcesApi.list()]).then(([c, p]) => {
       if (c.status === 'fulfilled') setCategories(c.value);
@@ -95,7 +105,18 @@ export default function SubscriptionDetail() {
       const failure = [c, p].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
       if (failure) setError(errorMessage(failure.reason));
     });
-    Promise.all([pickers, fetchRecord()]).then(() => setLoading(false));
+    Promise.all([pickers, fetchRecord(true)]).then(() => setLoading(false));
+  };
+
+  const retry = () => {
+    setLoading(true);
+    setLoadFailure(null);
+    setError(null);
+    load();
+  };
+
+  useEffect(() => {
+    load();
     return debounce.cancel;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -165,6 +186,7 @@ export default function SubscriptionDetail() {
       else await subscriptionsApi.create({ ...request, id: createId });
       haptics.confirm();
       dataChanged();
+      snackbar({ text: editId ? 'Changes saved.' : `${request.customName} added.` });
       router.back();
     } catch (e) {
       haptics.reject();
@@ -204,6 +226,7 @@ export default function SubscriptionDetail() {
         }
         haptics.confirm();
         dataChanged();
+        snackbar({ text: `${name.trim() || 'Subscription'} deleted.` });
         router.back();
       },
     },
@@ -232,81 +255,90 @@ export default function SubscriptionDetail() {
 
   return (
     <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, paddingBottom: 8 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm }}>
         <IconButton icon="close" label="Close" onPress={() => router.back()} />
-        <Text variant="titleLarge" accessibilityRole="header" style={{ flex: 1 }}>{editId ? 'Edit subscription' : 'Add subscription'}</Text>
+        <Text variant="titleLargeEmphasized" accessibilityRole="header" style={{ flex: 1 }}>{editId ? 'Edit subscription' : 'Add subscription'}</Text>
       </View>
 
       {offline ? <OfflineBanner /> : null}
       {error ? <Banner tone="error" text={error} /> : null}
-      {loading && editId ? <Spinner /> : null}
+      {/* A new form is usable at once; only the category and payment pickers are still filling. */}
+      {loading && !editId ? <View style={{ paddingBottom: space.md }}><ProgressBar /></View> : null}
 
-      <View style={{ gap: 12, display: loading && editId ? 'none' : 'flex' }}>
-        <Card>
-          <Text variant="titleMedium" color={colors.primary}>Service</Text>
-          <TextField label="Name" value={name} onChangeText={onNameChange} placeholder="e.g. Netflix" autoCapitalize="words" />
-          {suggestions.length > 0 ? (
-            <View style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.medium, padding: 8, gap: 2 }}>
-              <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
-                {tier === 'AutoFill' ? 'Looks like one of these' : 'Did you mean'}
-              </Text>
-              {suggestions.map((s) => {
-                const identity = categoryIdentity(categories.find((c) => c.id === s.categoryId)?.name);
-                return (
-                  <Tap key={s.catalogId} radius={shape.small} accessibilityRole="button" accessibilityLabel={`Use ${s.providerName}`} onPress={() => pickSuggestion(s)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8 }}>
-                    <Tile letter={s.providerName[0]?.toUpperCase()} color={identity.ink} background={identity.soft} size={32} />
-                    <Text variant="bodyLarge" style={{ flex: 1 }}>{s.providerName}</Text>
-                    <Icon name="arrow-top-left" size={20} color={colors.onSurfaceVariant} />
-                  </Tap>
-                );
-              })}
+      <AsyncView
+        state={editId ? asyncState({ hasData: !loading && !loadFailure, error: loadFailure?.message, errorStatus: loadFailure?.status }) : 'content'}
+        skeleton={<FormSkeleton />}
+        error={loadFailure?.message}
+        errorStatus={loadFailure?.status}
+        onRetry={retry}
+      >
+        <View style={{ gap: space.md }}>
+          <Card>
+            <Text variant="titleMedium" color={colors.primary}>Service</Text>
+            <TextField label="Name" value={name} onChangeText={onNameChange} placeholder="e.g. Netflix" autoCapitalize="words" />
+            {suggestions.length > 0 ? (
+              <View style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.medium, padding: space.sm, gap: space.xxs }}>
+                <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ paddingHorizontal: space.sm, paddingVertical: space.xs }}>
+                  {tier === 'AutoFill' ? 'Looks like one of these' : 'Did you mean'}
+                </Text>
+                {suggestions.map((s) => {
+                  const identity = categoryIdentity(categories.find((c) => c.id === s.categoryId)?.name);
+                  return (
+                    <Tap key={s.catalogId} radius={shape.small} accessibilityRole="button" accessibilityLabel={`Use ${s.providerName}`} onPress={() => pickSuggestion(s)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.sm, minHeight: 48 }}>
+                      <Tile letter={s.providerName[0]?.toUpperCase()} color={identity.ink} background={identity.soft} size={32} />
+                      <Text variant="bodyLarge" style={{ flex: 1 }}>{s.providerName}</Text>
+                      <Icon name="arrow-top-left" size={20} color={colors.onSurfaceVariant} />
+                    </Tap>
+                  );
+                })}
+              </View>
+            ) : null}
+            <SelectField
+              label="Category" placeholder={loading ? 'Loading categories…' : 'No category'} disabled={loading}
+              value={selectedCategory?.name ?? null} onPress={() => setPicker('category')}
+              leading={<Tile icon={categoryTile.icon} color={categoryTile.ink} background={categoryTile.soft} size={32} />}
+            />
+          </Card>
+
+          <Card>
+            <Text variant="titleMedium" color={colors.primary}>Cost</Text>
+            <View style={{ flexDirection: 'row', gap: space.sm }}>
+              <TextField label="Amount" value={cost} onChangeText={setCost} keyboardType="decimal-pad" placeholder="0.00" style={{ flex: 1 }} />
+              <View style={{ width: 128 }}>
+                <SelectField label="Currency" placeholder="" value={currency} onPress={() => setPicker('currency')} />
+              </View>
             </View>
-          ) : null}
-          <SelectField
-            label="Category" placeholder={loading ? 'Loading categories…' : 'No category'} disabled={loading}
-            value={selectedCategory?.name ?? null} onPress={() => setPicker('category')}
-            leading={<Tile icon={categoryTile.icon} color={categoryTile.ink} background={categoryTile.soft} size={32} />}
-          />
-        </Card>
-
-        <Card>
-          <Text variant="titleMedium" color={colors.primary}>Cost</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextField label="Amount" value={cost} onChangeText={setCost} keyboardType="decimal-pad" placeholder="0.00" style={{ flex: 1 }} />
-            <View style={{ width: 128 }}>
-              <SelectField label="Currency" placeholder="" value={currency} onPress={() => setPicker('currency')} />
+            <Text variant="labelLarge" color={colors.onSurfaceVariant}>Billing cycle</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }} accessibilityRole="radiogroup">
+              {CYCLES_ORDERED.map((c) => <Chip key={c} label={CYCLE_LABEL[c]} selected={cycle === c} onPress={() => onCycle(c)} />)}
             </View>
-          </View>
-          <Text variant="labelLarge" color={colors.onSurfaceVariant}>Billing cycle</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} accessibilityRole="radiogroup">
-            {CYCLES_ORDERED.map((c) => <Chip key={c} label={CYCLE_LABEL[c]} selected={cycle === c} onPress={() => onCycle(c)} />)}
-          </View>
-          <SelectField
-            label="Payment source" placeholder={loading ? 'Loading payment sources…' : 'No payment source'} disabled={loading}
-            value={selectedSource?.label ?? null} onPress={() => setPicker('payment')}
-            leading={<Icon name={selectedSource ? payment(selectedSource.sourceType).icon : 'credit-card-outline'} size={22} color={colors.onSurfaceVariant} />}
-          />
-          {!loading && paymentSources.length === 0 ? (
-            <Text variant="bodyMedium" color={colors.onSurfaceVariant}>No payment sources yet — add one on the Payment tab. Optional either way.</Text>
-          ) : null}
-          <SwitchRow label="Free trial" caption="Flag it so you remember to cancel before it converts." value={isFreeTrial} onValueChange={setIsFreeTrial} />
-        </Card>
+            <SelectField
+              label="Payment source" placeholder={loading ? 'Loading payment sources…' : 'No payment source'} disabled={loading}
+              value={selectedSource?.label ?? null} onPress={() => setPicker('payment')}
+              leading={<Icon name={selectedSource ? payment(selectedSource.sourceType).icon : 'credit-card-outline'} size={22} color={colors.onSurfaceVariant} />}
+            />
+            {!loading && paymentSources.length === 0 ? (
+              <Text variant="bodyMedium" color={colors.onSurfaceVariant}>No payment sources yet — add one on the Payment tab. Optional either way.</Text>
+            ) : null}
+            <SwitchRow label="Free trial" caption="Flag it so you remember to cancel before it converts." value={isFreeTrial} onValueChange={setIsFreeTrial} />
+          </Card>
 
-        <Card>
-          <Text variant="titleMedium" color={colors.primary}>Dates & reminders</Text>
-          <DateField label="Purchase date" value={purchaseDate} onChange={onPurchaseDate} />
-          <DateField label="Next billing date" value={nextDate} onChange={setNextDate} />
-          <Text variant="bodyMedium" color={colors.onSurfaceVariant}>One billing period after the purchase date. Change it if your provider bills on a different day.</Text>
-          <TextField
-            label="Remind me this many days ahead" value={alertDays} keyboardType="number-pad" placeholder="Your default"
-            onChangeText={(v) => setAlertDays(v.replace(/\D/g, ''))}
-          />
-        </Card>
+          <Card>
+            <Text variant="titleMedium" color={colors.primary}>Dates & reminders</Text>
+            <DateField label="Purchase date" value={purchaseDate} onChange={onPurchaseDate} />
+            <DateField label="Next billing date" value={nextDate} onChange={setNextDate} />
+            <Text variant="bodyMedium" color={colors.onSurfaceVariant}>One billing period after the purchase date. Change it if your provider bills on a different day.</Text>
+            <TextField
+              label="Remind me this many days ahead" value={alertDays} keyboardType="number-pad" placeholder="Your default"
+              onChangeText={(v) => setAlertDays(v.replace(/\D/g, ''))}
+            />
+          </Card>
 
-        <Button label={editId ? 'Save changes' : 'Save'} size="lg" icon="check" onPress={save} loading={busy} disabled={!canSubmit || !valid} />
-        {editId ? <Button label="Delete subscription" icon="delete-outline" variant="danger" onPress={remove} disabled={!canSubmit} /> : null}
-      </View>
+          <Button label={editId ? 'Save changes' : 'Save'} size="lg" icon="check" onPress={save} loading={busy} disabled={!canSubmit || !valid} />
+          {editId ? <Button label="Delete subscription" icon="delete-outline" variant="danger" onPress={remove} disabled={!canSubmit} /> : null}
+        </View>
+      </AsyncView>
 
       <PickerSheet visible={picker === 'category'} title="Category" options={categoryOptions} selected={categoryId ?? NONE}
         onSelect={(v) => setCategoryId(v === NONE ? null : v)} onClose={() => setPicker(null)} />

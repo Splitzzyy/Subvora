@@ -5,15 +5,16 @@ import { isStatus, subscriptionsApi, writeErrorMessage, type Subscription } from
 import { CACHE_KEYS } from '@/lib/cache';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
-import { CYCLE_LABEL, describeRelative, formatLongDate, formatMoney, groupSubscriptions, initialOf, isOverdue } from '@/lib/logic';
+import { asyncState } from '@/lib/loading';
+import { CYCLE_LABEL, describeRelative, formatLongDate, formatMoney, formatSavedAt, groupSubscriptions, initialOf, isOverdue } from '@/lib/logic';
 import { syncReminders } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
-import { useTheme } from '@/theme';
-import {
-  Banner, Button, EmptyState, Fab, IconButton, ListItem, OfflineBanner, Pill, positionOf, ScreenHeader, SectionHeader, Spinner, Text, Tile,
-} from '@/ui';
+import { space, useTheme } from '@/theme';
+import { Banner, Button, EmptyState, Fab, IconButton, ListItem, OfflineBanner, Pill, positionOf, SectionHeader, Text, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
 import { ActionSheet } from '@/ui/sheets';
+import { useSnackbar } from '@/ui/snackbar';
+import { AsyncView, ListSkeleton } from '@/ui/states';
 
 const STALE_CHARGE = 'Not marked paid: this charge changed on another device. The list now shows what is due.';
 
@@ -21,9 +22,10 @@ export default function Subscriptions() {
   const { colors, category } = useTheme();
   const { dataChanged } = useSession();
   const offline = useOffline();
-  const { data, loading, error, cached, reload } = useLoader(subscriptionsApi.list, CACHE_KEYS.subscriptions);
-  const [busy, setBusy] = useState(false);
-  const [writeError, setWriteError] = useState<string | null>(null);
+  const snackbar = useSnackbar();
+  const { data, loading, error, errorStatus, cached, cachedAt, reload } = useLoader(subscriptionsApi.list, CACHE_KEYS.subscriptions);
+  /** Which write is in flight ("pay:<id>", "delete:<id>"), or null. Any value blocks a second write. */
+  const [busy, setBusy] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<Subscription | null>(null);
 
   // Reminders are re-derived from whichever list won - live or the offline mirror.
@@ -32,24 +34,24 @@ export default function Subscriptions() {
   useEffect(() => { if (data) void syncReminders(data); }, [data]);
 
   /** A second write landing on the first would, for mark-paid, advance the date two cycles. */
-  const write = async (action: () => Promise<unknown>) => {
+  const write = async (key: string, success: string, action: () => Promise<unknown>) => {
     if (busy) return;
-    setWriteError(null);
-    setBusy(true);
+    setBusy(key);
     try {
       await action();
       haptics.confirm();
       dataChanged();
+      snackbar({ text: success });
     } catch (e) {
       haptics.reject();
       // Nothing is queued for later, so a failed settle must say so or the OVERDUE chip lies.
-      setWriteError(isStatus(e, 409) ? STALE_CHARGE : writeErrorMessage(e));
+      snackbar({ tone: 'error', text: isStatus(e, 409) ? STALE_CHARGE : writeErrorMessage(e) });
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
-  const markPaid = (sub: Subscription) => write(async () => {
+  const markPaid = (sub: Subscription) => write(`pay:${sub.id}`, `${sub.customName} marked as paid.`, async () => {
     try {
       await subscriptionsApi.markPaid(sub.id, sub.nextBillingDate);
     } catch (e) {
@@ -61,71 +63,84 @@ export default function Subscriptions() {
     }
   });
 
+  // No undo: there is no endpoint that restores a deleted subscription as it was.
   const remove = (sub: Subscription) => Alert.alert('Delete subscription', `Delete ${sub.customName}? This cannot be undone.`, [
     { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: () => write(() => subscriptionsApi.remove(sub.id)) },
+    { text: 'Delete', style: 'destructive', onPress: () => write(`delete:${sub.id}`, `${sub.customName} deleted.`, () => subscriptionsApi.remove(sub.id)) },
   ]);
 
   const canWrite = !offline && !busy;
   const groups = data ? groupSubscriptions(data) : [];
+  const add = () => router.push('/subscription/new');
 
   return (
     <Screen
+      title="Subscriptions"
+      subtitle={data ? `${data.length} tracked` : undefined}
       refreshing={loading && !!data}
       onRefresh={reload}
-      overlay={<Fab icon="plus" label="Add" onPress={() => router.push('/subscription/new')} disabled={offline} />}
+      overlay={<Fab icon="plus" label="Add subscription" onPress={add} disabled={offline} />}
     >
-      <ScreenHeader subtitle={data ? `${data.length} tracked` : undefined} title="Subscriptions" />
+      {offline ? <OfflineBanner />
+        : cached ? <Banner tone="warning" text={cachedAt ? `Offline — showing data from ${formatSavedAt(cachedAt)}.` : 'Offline — showing last synced data.'} />
+        : null}
+      {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
 
-      {offline ? <OfflineBanner /> : cached ? <Banner tone="warning" text="Offline — showing last synced data." /> : null}
-      {error ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
-      {writeError ? <Banner tone="error" text={writeError} /> : null}
-      {!data && loading ? <Spinner /> : null}
-
-      {data && data.length === 0 ? (
-        <EmptyState icon="calendar-plus" title="No subscriptions yet" body="Add one to see when it renews and what it costs you each month." />
-      ) : null}
-
-      {groups.map((group) => (
-        <View key={group.title}>
-          <SectionHeader title={group.title} summary={group.summary} />
-          {group.data.map((sub, i) => {
-            const overdue = isOverdue(sub);
-            const id = category(sub.categoryName);
-            return (
-              <ListItem
-                key={sub.id}
-                position={positionOf(i, group.data.length)}
-                accessibilityLabel={`${sub.customName}, ${formatMoney(sub.costAmount, sub.currency)} ${CYCLE_LABEL[sub.cycleCadence]}`}
-                onPress={() => router.push(`/subscription/${sub.id}`)}
-                onLongPress={() => setMenuFor(sub)}
-                leading={<Tile letter={initialOf(sub.customName)} color={id.ink} background={id.soft} />}
-                title={
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{sub.customName}</Text>
-                    {sub.isFreeTrial ? <Pill label="Trial" tone="tertiary" /> : null}
-                    {!sub.isActive ? <Pill label="Inactive" /> : null}
-                  </View>
-                }
-                subtitle={
-                  <Text variant="bodyMedium" color={overdue ? colors.renewalWarning : colors.onSurfaceVariant}>
-                    {formatMoney(sub.costAmount, sub.currency)} · {CYCLE_LABEL[sub.cycleCadence]} · {overdue ? `was due ${formatLongDate(sub.nextBillingDate)}` : `renews ${describeRelative(sub.nextBillingDate)}`}
-                  </Text>
-                }
-                trailing={<IconButton icon="dots-vertical" label={`More for ${sub.customName}`} onPress={() => setMenuFor(sub)} />}
-              >
-                {overdue ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingBottom: 14 }}>
-                    <Pill label="Overdue" tone="warning" />
-                    <View style={{ flex: 1 }} />
-                    <Button label="Mark as paid" icon="check" variant="tonal" onPress={() => markPaid(sub)} disabled={!canWrite} />
-                  </View>
-                ) : null}
-              </ListItem>
-            );
-          })}
-        </View>
-      ))}
+      <AsyncView
+        state={asyncState({ hasData: !!data, empty: data?.length === 0, error, errorStatus })}
+        skeleton={<ListSkeleton rows={5} />}
+        error={error}
+        errorStatus={errorStatus}
+        onRetry={reload}
+        empty={(
+          <EmptyState icon="calendar-plus" title="No subscriptions yet" body="Add one to see when it renews and what it costs you each month."
+            action={<Button label="Add subscription" icon="plus" onPress={add} disabled={offline} />} />
+        )}
+      >
+        {groups.map((group) => (
+          <View key={group.title}>
+            <SectionHeader title={group.title} summary={group.summary} />
+            {group.data.map((sub, i) => {
+              const overdue = isOverdue(sub);
+              const id = category(sub.categoryName);
+              const price = `${formatMoney(sub.costAmount, sub.currency)} · ${CYCLE_LABEL[sub.cycleCadence]}`;
+              const when = overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}` : `Renews ${describeRelative(sub.nextBillingDate)}`;
+              return (
+                <ListItem
+                  key={sub.id}
+                  position={positionOf(i, group.data.length)}
+                  accessibilityLabel={`${sub.customName}, ${price}, ${when}`}
+                  onPress={() => router.push(`/subscription/${sub.id}`)}
+                  onLongPress={() => setMenuFor(sub)}
+                  leading={<Tile letter={initialOf(sub.customName)} color={id.ink} background={id.soft} />}
+                  title={
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+                      <Text variant="titleMedium" numberOfLines={1} style={{ flexShrink: 1 }}>{sub.customName}</Text>
+                      {sub.isFreeTrial ? <Pill label="Trial" tone="tertiary" /> : null}
+                      {!sub.isActive ? <Pill label="Inactive" /> : null}
+                    </View>
+                  }
+                  subtitle={
+                    <View style={{ gap: space.xs + space.xxs, alignItems: 'flex-start' }}>
+                      <Text variant="amountLabel" color={colors.onSurfaceVariant}>{price}</Text>
+                      {/* Overdue is never colour alone: the chip carries an icon and says it. */}
+                      <Pill label={when} tone={overdue ? 'warning' : 'neutral'} icon={overdue ? 'alert-outline' : 'calendar-refresh-outline'} />
+                    </View>
+                  }
+                  trailing={<IconButton icon="dots-vertical" label={`More for ${sub.customName}`} onPress={() => setMenuFor(sub)} />}
+                >
+                  {overdue ? (
+                    <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: space.lg, paddingBottom: space.md + space.xxs }}>
+                      <Button label="Mark as paid" icon="check" variant="tonal" onPress={() => markPaid(sub)}
+                        loading={busy === `pay:${sub.id}`} disabled={!canWrite} />
+                    </View>
+                  ) : null}
+                </ListItem>
+              );
+            })}
+          </View>
+        ))}
+      </AsyncView>
 
       <ActionSheet
         title={menuFor?.customName ?? null}
