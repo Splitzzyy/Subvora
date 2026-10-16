@@ -62,6 +62,7 @@ public class AuthController : ControllerBase
     }
 
     /// <summary>Signs in with email and password.</summary>
+    /// <remarks>After 10 failed attempts in 15 minutes the address is refused for 15 minutes, with the same 401, whether or not it has an account; a password reset lifts the lock.</remarks>
     /// <response code="200">Returns a new access/refresh token pair.</response>
     /// <response code="400">The email or password failed validation.</response>
     /// <response code="401">Invalid email or password.</response>

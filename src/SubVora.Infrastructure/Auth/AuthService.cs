@@ -56,6 +56,7 @@ public class AuthService : IAuthService
     private readonly IPasswordHasher _passwordHasher;
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IEmailSender _emailSender;
+    private readonly LoginThrottle _loginThrottle;
     private readonly ILogger<AuthService> _logger;
 
     public AuthService(
@@ -63,12 +64,14 @@ public class AuthService : IAuthService
         IPasswordHasher passwordHasher,
         IJwtTokenService jwtTokenService,
         IEmailSender emailSender,
+        LoginThrottle loginThrottle,
         ILogger<AuthService> logger)
     {
         _dbContext = dbContext;
         _passwordHasher = passwordHasher;
         _jwtTokenService = jwtTokenService;
         _emailSender = emailSender;
+        _loginThrottle = loginThrottle;
         _logger = logger;
     }
 
@@ -169,21 +172,45 @@ public class AuthService : IAuthService
     {
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
 
+        // Before the lookup, so a locked address answers the same whether or not it has an account:
+        // same 401, same dummy BCrypt, and no query to time.
+        if (_loginThrottle.IsLocked(normalizedEmail))
+        {
+            _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
+            return AuthResult.Failed();
+        }
+
         var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
         if (user is null)
         {
             // Deliberately does the work anyway - see DummyPasswordHash.
             _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
+            RecordLoginFailure(normalizedEmail, userId: null);
             return AuthResult.Failed();
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
+            RecordLoginFailure(normalizedEmail, user.Id);
             return AuthResult.Failed();
         }
 
+        _loginThrottle.Clear(normalizedEmail);
         var tokens = await IssueTokenPairAsync(user, cancellationToken);
         return AuthResult.Success(tokens);
+    }
+
+    private void RecordLoginFailure(string normalizedEmail, Guid? userId)
+    {
+        if (_loginThrottle.RecordFailure(normalizedEmail))
+        {
+            // Never the address: logs must not carry email addresses. An unknown address has no id.
+            _logger.LogWarning(
+                "Login locked for {LockMinutes} minutes after {MaxFailures} failed attempts (user {UserId}).",
+                LoginThrottle.Window.TotalMinutes,
+                LoginThrottle.MaxFailures,
+                userId?.ToString() ?? "unknown");
+        }
     }
 
     public async Task<AuthResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default)
@@ -467,7 +494,7 @@ public class AuthService : IAuthService
         // acknowledgement is recognised. Replayed, the consume finds the code already used and
         // would report "invalid code" for a reset that went through.
         var newPasswordHash = _passwordHasher.Hash(request.NewPassword);
-        return await InTransactionAsync(async () =>
+        var result = await InTransactionAsync(async () =>
         {
             var consumed = await _dbContext.PasswordResetCodes
                 .Where(c => c.Id == resetCode.Id && c.UsedAt == null)
@@ -487,6 +514,15 @@ public class AuthService : IAuthService
             return ResetPasswordResult.Success();
         }, cancellationToken,
         committed: () => _dbContext.Users.AnyAsync(u => u.Id == user.Id && u.PasswordHash == newPasswordHash, cancellationToken));
+
+        // A reset is the way back in for someone locked out of login, including by a stranger
+        // guessing at their address on purpose.
+        if (result.Succeeded)
+        {
+            _loginThrottle.Clear(normalizedEmail);
+        }
+
+        return result;
     }
 
     public async Task<AuthResult> ChangePasswordAsync(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken = default)

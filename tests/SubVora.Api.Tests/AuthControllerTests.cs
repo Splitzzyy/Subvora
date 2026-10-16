@@ -157,6 +157,28 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Fact]
+    public async Task Login_AfterTenFailedAttempts_RefusesTheRightPasswordWithTheSame401()
+    {
+        // Across requests, so the counter has to live outside the request scope; and the locked
+        // answer must be byte-for-byte the wrong-password one, or "locked" becomes its own signal.
+        var client = _factory.CreateClient();
+        var email = $"lockout-{Guid.NewGuid()}@example.com";
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+
+        HttpResponseMessage wrong = null!;
+        for (var i = 0; i < 10; i++)
+        {
+            wrong = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "wrong-password" });
+            Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
+        }
+
+        var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "correct-horse-battery-staple" });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, locked.StatusCode);
+        Assert.Equal(await wrong.Content.ReadAsStringAsync(), await locked.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public async Task Login_WithNonexistentEmail_Returns401()
     {
         var client = _factory.CreateClient();
