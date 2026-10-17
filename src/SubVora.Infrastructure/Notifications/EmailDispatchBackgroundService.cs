@@ -1,4 +1,3 @@
-using MailKit.Net.Smtp;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -44,20 +43,12 @@ public class EmailDispatchBackgroundService : BackgroundService
             {
                 await _smtpEmailSender.SendAsync(email.ToEmail, email.Subject, email.Body, stoppingToken);
             }
-            catch (SmtpCommandException ex)
-            {
-                // The server's reply usually quotes the mailbox it refused ("<user@host>: Recipient
-                // address rejected"), so neither the message nor the exception is logged - only codes.
-                _logger.LogWarning(
-                    "Could not deliver an email ({Subject}): SMTP {ErrorCode} {StatusCode}.",
-                    email.Subject,
-                    ex.ErrorCode,
-                    (int)ex.StatusCode);
-            }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // Must not take the host down, and must not surface anywhere the caller can see. The
-                // subject, not the address: logs must not carry email addresses.
+                // subject, not the address: logs must not carry email addresses. An exception message
+                // that quotes the mailbox (an SMTP rejection does) is masked at the sink instead -
+                // see EmailMaskingFormatter.
                 _logger.LogWarning(ex, "Could not deliver an email ({Subject}).", email.Subject);
             }
         }

@@ -148,20 +148,32 @@ async function expire() {
 
 // ---- Messages --------------------------------------------------------------------------------
 
-/**
- * First field-level message from a ValidationProblemDetails body. With no field errors, the title:
- * change-password reports a wrong current password that way.
- */
-function firstValidationMessage(body: unknown): string | null {
-  const { errors, title } = (body ?? {}) as { errors?: Record<string, unknown>; title?: unknown };
+function firstFieldMessage(body: unknown): string | null {
+  const { errors } = (body ?? {}) as { errors?: Record<string, unknown> };
   for (const messages of Object.values(errors ?? {})) {
     if (Array.isArray(messages)) {
       const text = messages.find((m) => typeof m === 'string' && m.trim());
       if (text) return text;
     }
   }
-  return typeof title === 'string' && title.trim() ? title : null;
+  return null;
 }
+
+/**
+ * First field-level message from a ValidationProblemDetails body. With no field errors, the title:
+ * change-password reports a wrong current password that way.
+ */
+function firstValidationMessage(body: unknown): string | null {
+  const { title } = (body ?? {}) as { title?: unknown };
+  return firstFieldMessage(body) ?? (typeof title === 'string' && title.trim() ? title : null);
+}
+
+/**
+ * The message of a 400 that names a field (a new password too short, or found in a breach), else
+ * null - so a screen can tell that apart from a 400 refusing the request as a whole.
+ */
+export const fieldErrorMessage = (error: unknown) =>
+  error instanceof ApiError && error.status === 400 ? firstFieldMessage(error.body) : null;
 
 /**
  * What to tell the user about a failed read. Anything that is not an ApiError is a defect in this

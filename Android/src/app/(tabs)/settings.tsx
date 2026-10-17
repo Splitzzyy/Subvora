@@ -11,7 +11,7 @@ import { useSession } from '@/lib/session';
 import { space, supportsDynamicColor, useTheme, type ThemeMode } from '@/theme';
 import { Banner, Button, ButtonGroup, Card, OfflineBanner, SelectField, SwitchRow, Text, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
-import { PickerSheet, useConfirm } from '@/ui/sheets';
+import { PickerSheet, Sheet, useConfirm } from '@/ui/sheets';
 import { useSnackbar } from '@/ui/snackbar';
 import { AsyncView, FormSkeleton } from '@/ui/states';
 
@@ -20,7 +20,7 @@ const customCurrency = (q: string) => (/^[A-Za-z]{3}$/.test(q) ? currencyOption(
 export default function Settings() {
   const theme = useTheme();
   const { colors } = theme;
-  const { signOut, dataChanged } = useSession();
+  const { signOut, endLocally, dataChanged } = useSession();
   const offline = useOffline();
   const snackbar = useSnackbar();
   const { data: profile, setData: setProfile, loading, error, errorStatus, reload } = useLoader(usersApi.me);
@@ -42,6 +42,12 @@ export default function Settings() {
   const [changing, setChanging] = useState(false);
   const newPasswordField = useRef<TextInput>(null);
   const canChangePassword = !offline && !changing && !!currentPassword && !!newPassword;
+
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const canDelete = !offline && !deleting && !!deletePassword;
 
   // A stored code the list does not know must still be selectable, or Save would silently change it.
   const currencies = currency && !CURRENCIES.some((c) => c.value === currency) ? [currencyOption(currency), ...CURRENCIES] : CURRENCIES;
@@ -103,6 +109,31 @@ export default function Settings() {
       setPasswordError(writeErrorMessage(e));
     } finally {
       setChanging(false);
+    }
+  };
+
+  const closeDelete = () => {
+    if (deleting) return;
+    setDeletingAccount(false);
+    setDeletePassword('');
+    setDeleteError(null);
+  };
+
+  const deleteAccount = async () => {
+    setDeleteError(null);
+    setDeleting(true);
+    try {
+      await usersApi.deleteMe(deletePassword);
+      haptics.confirm();
+      // The snackbar lives above the router, so it is still showing once the login screen is.
+      snackbar({ text: 'Account deleted.' });
+      // Not signOut: its server logout would only find the session already gone with the account.
+      await endLocally();
+    } catch (e) {
+      haptics.reject();
+      // 400 is a wrong current password; the server's title says so in change-password's words.
+      setDeleteError(writeErrorMessage(e));
+      setDeleting(false);
     }
   };
 
@@ -188,6 +219,8 @@ export default function Settings() {
 
         {/* Not red: signing out loses nothing. Red is for errors and data loss. */}
         <Button label="Sign out" icon="logout" variant="outlined" size="lg" onPress={confirmSignOut} />
+        {/* Google Play requires an in-app way to delete the account. Red: this one loses everything. */}
+        <Button label="Delete account" icon="delete-outline" variant="textDanger" onPress={() => setDeletingAccount(true)} disabled={offline} />
         {/* The version helps support; the API address is for developers only. */}
         <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ textAlign: 'center', paddingTop: space.sm }}>
           SubVora {Constants.expoConfig?.version ?? ''}{__DEV__ ? ` · ${API_BASE_URL}` : ''}
@@ -195,6 +228,20 @@ export default function Settings() {
       </View>
 
       {confirmDialog}
+      <Sheet visible={deletingAccount} title="Delete account" onClose={closeDelete}>
+        <View style={{ gap: space.lg, paddingHorizontal: space.xxl }}>
+          <Text variant="bodyMedium" color={colors.onSurfaceVariant}>
+            This permanently deletes your subscriptions, categories and payment sources, and signs out every device. It cannot be undone.
+          </Text>
+          {deleteError ? <Banner tone="error" text={deleteError} /> : null}
+          <TextField label="Current password" value={deletePassword} onChangeText={setDeletePassword} secure autoComplete="current-password"
+            returnKeyType="done" onSubmitEditing={() => { if (canDelete) void deleteAccount(); }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: space.sm }}>
+            <Button label="Cancel" variant="text" onPress={closeDelete} disabled={deleting} />
+            <Button label="Delete account" variant="danger" onPress={deleteAccount} loading={deleting} disabled={!canDelete} />
+          </View>
+        </View>
+      </Sheet>
       <PickerSheet
         visible={pickingCurrency}
         title="Home currency"

@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SubVora.Application.Auth;
 using SubVora.Application.Notifications;
 using SubVora.Infrastructure.Data;
 using Testcontainers.PostgreSql;
@@ -60,6 +61,12 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<FakeEmailSender>();
             services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<FakeEmailSender>());
+
+            // Never the real corpus: tests would depend on the network, and their passwords are
+            // exactly the kind it lists.
+            services.RemoveAll<IBreachedPasswordChecker>();
+            services.AddSingleton<FakeBreachedPasswordChecker>();
+            services.AddSingleton<IBreachedPasswordChecker>(sp => sp.GetRequiredService<FakeBreachedPasswordChecker>());
         });
     }
 

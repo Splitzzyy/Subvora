@@ -9,6 +9,8 @@ interface Session {
   status: Status;
   signIn: (tokens: AuthTokenResponse) => Promise<void>;
   signOut: () => Promise<void>;
+  /** Signs this device out without asking the server - for when the account itself is gone. */
+  endLocally: () => Promise<void>;
   /**
    * Bumped by every write. Screens reload on focus when it has moved since their last load - the
    * MAUI app's SubscriptionsChangedMessage, without a messenger.
@@ -40,6 +42,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     status,
     dataVersion,
     dataChanged: () => setDataVersion((v) => v + 1),
+    endLocally,
     signIn: async (t) => {
       await tokens.save(t);
       setStatus('signedIn');

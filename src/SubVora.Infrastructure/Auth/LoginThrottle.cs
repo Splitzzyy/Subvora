@@ -34,7 +34,18 @@ public sealed class LoginThrottle : IDisposable
 
     public static readonly TimeSpan Window = TimeSpan.FromMinutes(15);
 
+    /// <summary>
+    /// Failed sign-ins across every account, in one clock minute, that get a warning logged. The
+    /// per-address count never sees credential stuffing - one guess each against many accounts,
+    /// spread over enough IPs to stay under the per-IP limit - so this is the only place it shows.
+    /// Ordinary typos from the whole user base come nowhere near it.
+    /// </summary>
+    public const int GlobalFailureWarningThreshold = 30;
+
     private readonly ConcurrentDictionary<string, Entry> _entries = new(StringComparer.Ordinal);
+    private readonly Lock _globalGate = new();
+    private long _failureMinute;
+    private int _failuresThisMinute;
     private readonly TimeProvider _timeProvider;
     private readonly ITimer _sweepTimer;
 
@@ -64,6 +75,25 @@ public sealed class LoginThrottle : IDisposable
                 : current.Attempts >= MaxAttempts
                     ? current with { Attempts = current.Attempts + 1 }
                     : new Entry(current.Attempts + 1, now + Window)).Attempts;
+    }
+
+    /// <summary>
+    /// Counts one failed sign-in towards the app-wide rate. True exactly once per minute, on the
+    /// failure that reaches <see cref="GlobalFailureWarningThreshold"/>, so the warning is one line
+    /// per minute of attack rather than one per guess.
+    /// </summary>
+    public bool RecordFailure()
+    {
+        var minute = _timeProvider.GetUtcNow().ToUnixTimeSeconds() / 60;
+        lock (_globalGate)
+        {
+            if (minute != _failureMinute)
+            {
+                (_failureMinute, _failuresThisMinute) = (minute, 0);
+            }
+
+            return ++_failuresThisMinute == GlobalFailureWarningThreshold;
+        }
     }
 
     /// <summary>Called on a successful sign-in or password reset.</summary>

@@ -12,13 +12,13 @@ public class EmailLengthValidatorTests
     [Theory]
     [InlineData(255, true)]
     [InlineData(256, false)]
-    public void EveryEmailValidator_StopsAtTheColumnLength(int length, bool valid)
+    public async Task EveryEmailValidator_StopsAtTheColumnLength(int length, bool valid)
     {
         var email = EmailOfLength(length);
 
-        Assert.Equal(valid, new RegisterRequestValidator().Validate(new RegisterRequest { Email = email, Password = Password }).IsValid);
+        Assert.Equal(valid, (await new RegisterRequestValidator(NeverBreached.Instance).ValidateAsync(new RegisterRequest { Email = email, Password = Password })).IsValid);
         Assert.Equal(valid, new LoginRequestValidator().Validate(new LoginRequest { Email = email, Password = Password }).IsValid);
         Assert.Equal(valid, new ForgotPasswordRequestValidator().Validate(new ForgotPasswordRequest { Email = email }).IsValid);
-        Assert.Equal(valid, new ResetPasswordRequestValidator().Validate(new ResetPasswordRequest { Email = email, Code = "123456", NewPassword = Password }).IsValid);
+        Assert.Equal(valid, (await new ResetPasswordRequestValidator(NeverBreached.Instance).ValidateAsync(new ResetPasswordRequest { Email = email, Code = "123456", NewPassword = Password })).IsValid);
     }
 }

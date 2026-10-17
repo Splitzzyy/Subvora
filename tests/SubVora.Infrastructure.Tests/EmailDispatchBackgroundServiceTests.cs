@@ -1,4 +1,3 @@
-using MailKit.Net.Smtp;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using SubVora.Infrastructure.Notifications;
@@ -17,23 +16,6 @@ public class EmailDispatchBackgroundServiceTests
         var entry = await DispatchOneFailingAsync(new InvalidOperationException("Smtp:Host is not configured."));
 
         Assert.Contains("Your SubVora password reset code", entry);
-        Assert.DoesNotContain(Recipient, entry);
-    }
-
-    [Fact]
-    public async Task ARejectedRecipient_IsLoggedWithoutTheServersReply()
-    {
-        // The server's reply quotes the mailbox it refused, so logging the exception would put the
-        // address straight back.
-        var rejection = new SmtpCommandException(
-            SmtpErrorCode.RecipientNotAccepted,
-            SmtpStatusCode.MailboxUnavailable,
-            new MimeKit.MailboxAddress(null, Recipient),
-            $"5.1.1 <{Recipient}>: Recipient address rejected");
-
-        var entry = await DispatchOneFailingAsync(rejection);
-
-        Assert.Contains("RecipientNotAccepted", entry);
         Assert.DoesNotContain(Recipient, entry);
     }
 

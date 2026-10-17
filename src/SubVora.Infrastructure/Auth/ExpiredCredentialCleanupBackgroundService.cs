@@ -27,18 +27,13 @@ public class ExpiredCredentialCleanupBackgroundService : BackgroundService
     private const int DefaultCleanupUtcHour = 3;
 
     /// <summary>
-    /// Expired refresh tokens are kept this long before deletion. No auth decision reads them:
-    /// RefreshAsync answers an unknown token and an expired one with the same quiet failure, before
-    /// any reuse check. The week is history for diagnosing a sign-out, nothing more.
-    /// <para>
-    /// What matters is the other end: a token must not be deleted before it expires, which is why
-    /// the window counts from expiry and not from revocation. A rotated token is dead, but it is the
-    /// one the real device still holds if an attacker rotated a stolen copy first; presenting it is
-    /// what trips revoke-all and ends the attacker's chain. Deleting it a week after rotation would
-    /// let a phone idle for longer fail quietly instead, leaving the attacker signed in (#249).
-    /// Detection still ends at that token's own expiry - past it, the replay fails quietly too. An
-    /// absolute session lifetime is what would bound a stolen chain beyond that (#257).
-    /// </para>
+    /// Expired refresh tokens are kept this long before deletion, and the window counts from expiry,
+    /// not from revocation. A rotated token is dead, but it is the one the real device still holds if
+    /// an attacker rotated a stolen copy first; presenting it is what ends the attacker's chain, so
+    /// RefreshAsync treats a rotated token as theft even once it has expired. Deleting it a week
+    /// after rotation would let a phone idle for longer fail quietly instead, leaving the attacker
+    /// signed in (#249). Past this window the replay fails quietly too, and what still ends the chain
+    /// is the absolute session lifetime (AuthService.AbsoluteSessionLifetime).
     /// </summary>
     private static readonly TimeSpan RefreshTokenRetention = TimeSpan.FromDays(7);
 
