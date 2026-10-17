@@ -85,7 +85,7 @@ To see the live schema: `docker compose exec db psql -U subvora -d subvora_dev -
 | `categories` | System and per-user categories | `user_id IS NULL` marks a system default. Deleting a user cascades to theirs |
 | `payment_sources` | A user's cards, accounts and wallets | Optional on a subscription; the burn-rate response groups monthly spend by it so the dashboard can name the account carrying the most |
 | `fx_rates` | Cached conversion rates | Burn-rate totals are converted at read time from this cache, never by mutating a stored amount |
-| `refresh_tokens` | Opaque refresh tokens | Only the SHA-256 hash is persisted, never the plaintext. Access tokens are stateless and not stored at all |
+| `refresh_tokens` | Opaque refresh tokens | Only the SHA-256 hash is persisted, never the plaintext. Access tokens are stateless and not stored at all. Grouped into families, one per sign-in, so a theft signal ends one device's chain and no chain lives past 90 days |
 
 Account deletion (`DELETE /api/v1/users/me`) is one `DELETE FROM users`: every user-owned table
 references `users` with `ON DELETE CASCADE`, and the database removes the rest. A new user-owned

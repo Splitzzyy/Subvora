@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
-import { authApi, isStatus, writeErrorMessage } from '@/api';
+import { authApi, fieldErrorMessage, isStatus, writeErrorMessage } from '@/api';
 import { useOffline } from '@/lib/hooks';
 import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
@@ -57,10 +57,11 @@ export default function ForgotPassword() {
       snackbar({ text: 'Password reset. Sign in with your new password.' });
       router.back();
     } catch (e) {
-      // One 400 for wrong, expired, used and over-limit - deliberately, so guessing learns nothing.
-      setError(isStatus(e, 400)
+      // One 400 for wrong, expired, used and over-limit - deliberately, so guessing learns nothing. A
+      // 400 naming a field is the new password itself (too short, or found in a breach) instead.
+      setError(fieldErrorMessage(e) ?? (isStatus(e, 400)
         ? "That code isn't valid. It may have expired or already been used - request a new one if you need to."
-        : writeErrorMessage(e));
+        : writeErrorMessage(e)));
     }
   });
 

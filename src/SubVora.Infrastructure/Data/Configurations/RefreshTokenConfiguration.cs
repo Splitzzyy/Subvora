@@ -18,6 +18,11 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
 
         builder.Property(r => r.CreatedAt).HasDefaultValueSql("now()");
 
+        // AuthService always sets both. The defaults make a row inserted without them (a test seed,
+        // a manual fix-up) its own fresh family rather than one started in year 1 and already dead.
+        builder.Property(r => r.FamilyId).HasDefaultValueSql("gen_random_uuid()");
+        builder.Property(r => r.FamilyStartedAt).HasDefaultValueSql("now()");
+
         builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(r => r.UserId)

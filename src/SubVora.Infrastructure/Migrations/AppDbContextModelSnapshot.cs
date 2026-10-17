@@ -209,6 +209,18 @@ namespace SubVora.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
 
+                    b.Property<Guid>("FamilyId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("family_id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("FamilyStartedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("family_started_at")
+                        .HasDefaultValueSql("now()");
+
                     b.Property<Guid?>("ReplacedByTokenId")
                         .HasColumnType("uuid")
                         .HasColumnName("replaced_by_token_id");

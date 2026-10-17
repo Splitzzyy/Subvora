@@ -4,9 +4,9 @@ namespace SubVora.Application.Auth;
 
 public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
 {
-    public RegisterRequestValidator()
+    public RegisterRequestValidator(IBreachedPasswordChecker breachedPasswords)
     {
         RuleFor(r => r.Email).NotEmpty().EmailAddress().MaximumLength(AuthLimits.EmailMaxLength);
-        RuleFor(r => r.Password).NotEmpty().MinimumLength(8);
+        RuleFor(r => r.Password).NewPassword(breachedPasswords);
     }
 }

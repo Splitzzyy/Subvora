@@ -71,4 +71,6 @@ export const usersApi = {
   me: () => api<UserProfile>('GET', '/api/v1/users/me'),
   updateMe: (preferredCurrency: string, defaultAlertDaysAdvance: number | null) =>
     api<UserProfile>('PUT', '/api/v1/users/me', { preferredCurrency, defaultAlertDaysAdvance }),
+  /** 204 takes every session with it; 400 is a wrong current password (the title says so). */
+  deleteMe: (currentPassword: string) => api('DELETE', '/api/v1/users/me', { currentPassword }),
 };

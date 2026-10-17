@@ -169,7 +169,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     }
 
     [Fact]
-    public async Task Refresh_ReplayAfterGrace_RevokesEverything()
+    public async Task Refresh_ReplayAfterGrace_RevokesTheChain()
     {
         // Outside the window the old rule stands: a rotated token presented again is theft.
         var (userId, first) = await RegisterAndLoginAsync("grace-expired");
@@ -196,7 +196,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     }
 
     [Fact]
-    public async Task Refresh_ReplayWithinGrace_AfterTheSuccessorWasUsed_RevokesEverything()
+    public async Task Refresh_ReplayWithinGrace_AfterTheSuccessorWasUsed_RevokesTheChain()
     {
         // A client that received T2 would present T2, not T1. Once T2 has been used, T1 coming back
         // means two holders - the grace no longer applies.
@@ -211,9 +211,118 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
     }
 
     [Fact]
+    public async Task Refresh_Reuse_RevokesOnlyThatSignInsFamily()
+    {
+        // Theft of the phone's chain says nothing about the tablet, which signed in separately.
+        var (userId, phone) = await RegisterAndLoginAsync("family-scope");
+        var tablet = await LoginAsync(userId);
+        var phoneNext = await RefreshAsync(phone.RefreshToken);
+        await AgeRevocationAsync(phone.RefreshToken, TimeSpan.FromMinutes(3));
+
+        Assert.False((await _authService.RefreshAsync(phone.RefreshToken)).Succeeded);
+
+        Assert.NotNull(await RevokedAtAsync(phoneNext.RefreshToken));
+        Assert.True((await _authService.RefreshAsync(tablet.RefreshToken)).Succeeded);
+    }
+
+    [Fact]
+    public async Task Refresh_ARotatedTokenReplayedAfterItExpired_StillRevokesItsFamily()
+    {
+        // The real phone sat idle past its token's expiry while a thief, who rotated a stolen copy
+        // first, kept the chain going. The stale token coming back is still the theft signal.
+        var (userId, phone) = await RegisterAndLoginAsync("family-expired-replay");
+        var thief = await RefreshAsync(phone.RefreshToken);
+        await _dbContext.RefreshTokens
+            .Where(t => t.TokenHash == $"hash:{phone.RefreshToken}")
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(t => t.ExpiresAt, DateTimeOffset.UtcNow.AddDays(-1))
+                .SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow.AddDays(-20)));
+
+        Assert.False((await _authService.RefreshAsync(phone.RefreshToken)).Succeeded);
+
+        Assert.NotNull(await RevokedAtAsync(thief.RefreshToken));
+        Assert.Equal(0, await LiveTokenCountAsync(userId));
+    }
+
+    [Fact]
+    public async Task Refresh_AnExpiredTokenThatWasNeverRotated_FailsQuietly()
+    {
+        // Just a phone that slept too long: no second holder, nothing else to end.
+        var (userId, phone) = await RegisterAndLoginAsync("family-plain-expiry");
+        var tablet = await LoginAsync(userId);
+        await _dbContext.RefreshTokens
+            .Where(t => t.TokenHash == $"hash:{phone.RefreshToken}")
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.ExpiresAt, DateTimeOffset.UtcNow.AddDays(-1)));
+
+        Assert.False((await _authService.RefreshAsync(phone.RefreshToken)).Succeeded);
+
+        Assert.Null(await RevokedAtAsync(tablet.RefreshToken));
+    }
+
+    [Fact]
+    public async Task Refresh_AChainOlderThanTheAbsoluteLifetime_IsRefused_EvenWhileRotating()
+    {
+        var (userId, first) = await RegisterAndLoginAsync("family-lifetime");
+        var current = await RefreshAsync(first.RefreshToken);
+        await _dbContext.RefreshTokens
+            .Where(t => t.UserId == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(
+                t => t.FamilyStartedAt, DateTimeOffset.UtcNow - AuthService.AbsoluteSessionLifetime - TimeSpan.FromMinutes(1)));
+
+        Assert.False((await _authService.RefreshAsync(current.RefreshToken)).Succeeded);
+
+        // A fresh sign-in starts a new clock.
+        var again = await LoginAsync(userId);
+        Assert.True((await _authService.RefreshAsync(again.RefreshToken)).Succeeded);
+    }
+
+    [Fact]
+    public async Task Refresh_RotationsInheritTheFamily_AndASignInStartsANewOne()
+    {
+        var (userId, first) = await RegisterAndLoginAsync("family-inherit");
+        var second = await RefreshAsync(first.RefreshToken);
+        var third = await RefreshAsync(second.RefreshToken);
+        var other = await LoginAsync(userId);
+
+        var families = await _dbContext.RefreshTokens.AsNoTracking()
+            .Where(t => t.UserId == userId)
+            .ToDictionaryAsync(t => t.TokenHash, t => (t.FamilyId, t.FamilyStartedAt));
+
+        Assert.Equal(families[$"hash:{first.RefreshToken}"], families[$"hash:{second.RefreshToken}"]);
+        Assert.Equal(families[$"hash:{first.RefreshToken}"], families[$"hash:{third.RefreshToken}"]);
+        Assert.NotEqual(families[$"hash:{first.RefreshToken}"].FamilyId, families[$"hash:{other.RefreshToken}"].FamilyId);
+    }
+
+    [Fact]
+    public void GlobalFailureSignal_FiresOnceWhenTheThresholdIsCrossed_AndAgainNextMinute()
+    {
+        using var throttle = new LoginThrottle(_clock);
+
+        var fired = Enumerable.Range(0, 3 * LoginThrottle.GlobalFailureWarningThreshold).Count(_ => throttle.RecordFailure());
+        _clock.Advance(TimeSpan.FromMinutes(1));
+        var firedNextMinute = Enumerable.Range(0, LoginThrottle.GlobalFailureWarningThreshold).Count(_ => throttle.RecordFailure());
+
+        Assert.Equal(1, fired);
+        Assert.Equal(1, firedNextMinute);
+    }
+
+    [Fact]
+    public async Task Login_EveryFailureCountsTowardsTheGlobalSignal()
+    {
+        // Unknown address, wrong password and refused-while-locked all count: stuffing hits all three.
+        await FailLoginsAsync($"unknown-{Guid.NewGuid()}@example.com", LoginThrottle.MaxAttempts + 2);
+        var known = await RegisterAsync("global-signal");
+        await FailLoginsAsync(known, LoginThrottle.GlobalFailureWarningThreshold - LoginThrottle.MaxAttempts - 3);
+
+        // The one before the threshold was the last silent one; this one crosses it.
+        Assert.True(_loginThrottle.RecordFailure());
+    }
+
+    [Fact]
     public async Task Refresh_LoggedOutToken_IsNotRevivedByTheGrace()
     {
         // Logout revokes without a successor, so the grace can never bring a logged-out token back.
+        // The sign-in after it is a family of its own, and the replay says nothing about it.
         var (userId, tokens) = await RegisterAndLoginAsync("grace-logout");
         await _authService.LogoutAsync(userId, tokens.RefreshToken);
         var newSession = await LoginAsync(userId);
@@ -221,7 +330,7 @@ public class AuthServiceTests : IClassFixture<PostgresContainerFixture>, IAsyncL
         var replay = await _authService.RefreshAsync(tokens.RefreshToken);
 
         Assert.False(replay.Succeeded);
-        Assert.NotNull(await RevokedAtAsync(newSession.RefreshToken));
+        Assert.Null(await RevokedAtAsync(newSession.RefreshToken));
     }
 
     [Fact]

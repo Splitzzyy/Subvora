@@ -44,6 +44,14 @@ public class AuthService : IAuthService
     private static readonly TimeSpan RefreshReuseGrace = TimeSpan.FromMinutes(2);
 
     /// <summary>
+    /// How long one sign-in's refresh chain may live, however actively it rotates (RFC 9700 §4.14).
+    /// Rotation alone hands out a fresh 30 days on every use, so a stolen chain that reuse
+    /// detection never catches would otherwise outlive everything short of a password change.
+    /// The cost: an active user signs in again once a quarter.
+    /// </summary>
+    public static readonly TimeSpan AbsoluteSessionLifetime = TimeSpan.FromDays(90);
+
+    /// <summary>
     /// Verified against when the email is unknown, so a missing account costs the same ~250ms of
     /// BCrypt as a wrong password instead of answering instantly. Without it, response time alone
     /// tells an attacker which addresses are registered. Computed once at startup rather than
@@ -180,7 +188,7 @@ public class AuthService : IAuthService
         if (attempt > LoginThrottle.MaxAttempts)
         {
             _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
-            return AuthResult.Failed();
+            return FailLogin(attempt, userId: null);
         }
 
         var user = await _dbContext.Users.SingleOrDefaultAsync(u => u.Email == normalizedEmail, cancellationToken);
@@ -188,14 +196,12 @@ public class AuthService : IAuthService
         {
             // Deliberately does the work anyway - see DummyPasswordHash.
             _passwordHasher.Verify(request.Password, DummyPasswordHash.Value);
-            LogIfLockEngaged(attempt, userId: null);
-            return AuthResult.Failed();
+            return FailLogin(attempt, userId: null);
         }
 
         if (!_passwordHasher.Verify(request.Password, user.PasswordHash))
         {
-            LogIfLockEngaged(attempt, user.Id);
-            return AuthResult.Failed();
+            return FailLogin(attempt, user.Id);
         }
 
         _loginThrottle.Clear(normalizedEmail);
@@ -203,9 +209,21 @@ public class AuthService : IAuthService
         return AuthResult.Success(tokens);
     }
 
-    /// <summary>The last allowed attempt failed, so the next one is refused: said once, per lock.</summary>
-    private void LogIfLockEngaged(int attempt, Guid? userId)
+    /// <summary>
+    /// Every failed login, refused ones included, ends here. Logs when this failure engages the
+    /// per-address lock (the last allowed attempt failed: said once, per lock), and when failures
+    /// across all accounts reach the stuffing threshold.
+    /// </summary>
+    private AuthResult FailLogin(int attempt, Guid? userId)
     {
+        if (_loginThrottle.RecordFailure())
+        {
+            // No address, no user id: the point is the rate across accounts, not any one of them.
+            _logger.LogWarning(
+                "{FailureCount} failed logins across all accounts within one minute - possible credential stuffing.",
+                LoginThrottle.GlobalFailureWarningThreshold);
+        }
+
         if (attempt == LoginThrottle.MaxAttempts)
         {
             // Never the address: logs must not carry email addresses. An unknown address has no id.
@@ -215,6 +233,8 @@ public class AuthService : IAuthService
                 LoginThrottle.MaxAttempts,
                 userId?.ToString() ?? "unknown");
         }
+
+        return AuthResult.Failed();
     }
 
     public async Task<AuthResult> RefreshAsync(string presentedRefreshToken, CancellationToken cancellationToken = default)
@@ -233,8 +253,26 @@ public class AuthService : IAuthService
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (now - existingToken.FamilyStartedAt > AbsoluteSessionLifetime)
+        {
+            // The sign-in is too old, whoever holds it. Not a theft signal: nothing to revoke that
+            // this same check will not refuse next time too.
+            return AuthResult.Failed();
+        }
+
         if (existingToken.ExpiresAt <= now)
         {
+            // A rotated token is one this chain already moved past, so whoever presents it is not
+            // the holder of the live chain - most likely the real device, idle while a thief rotated
+            // a stolen copy first. That is theft at any age; ignoring it once the token expired let
+            // the thief's chain run on. The retention after expiry exists so this row is still here.
+            // Inside RefreshReuseGrace it is the same lost response the grace forgives below, landing
+            // just past expiry; it fails quietly like any expired token.
+            if (existingToken.ReplacedByTokenId is not null && now - existingToken.RevokedAt > RefreshReuseGrace)
+            {
+                return await RevokeFamilyAfterReuseAsync(existingToken, cancellationToken);
+            }
+
             // Simply too old. Not a theft signal, so the rest of the chain stays usable.
             return AuthResult.Failed();
         }
@@ -272,26 +310,38 @@ public class AuthService : IAuthService
 
                 // Either it was already rotated before we looked, or a concurrent caller rotated it
                 // between our read and our update. Both mean this token has been presented twice while
-                // still valid - revoke every token for the user rather than just this one. (Unless the
-                // replay is inside RefreshReuseGrace with an unused successor, handled just above: that
-                // is a lost response, not a second holder.) The winner commits its rotation and its new
-                // pair together, so the sweep below sees that pair and revokes it too.
-                //
-                // Logged because this is the one branch in the service that means "a credential may
-                // have been stolen", and it silently signs the user out of every device. Without a line
-                // here the support question - why was I logged out everywhere? - has no answer.
-                _logger.LogWarning(
-                    "Refresh token reuse detected for user {UserId}; revoking all active refresh tokens.",
-                    existingToken.UserId);
-
-                await RevokeAllActiveTokensForUserAsync(existingToken.UserId, cancellationToken);
-                return AuthResult.Failed();
+                // still valid - end its whole family rather than just this token. (Unless the replay is
+                // inside RefreshReuseGrace with an unused successor, handled just above: that is a lost
+                // response, not a second holder.) The winner commits its rotation and its new pair
+                // together, and the pair inherits the family, so the sweep sees it and revokes it too.
+                return await RevokeFamilyAfterReuseAsync(existingToken, cancellationToken);
             }
 
             var user = await _dbContext.Users.SingleAsync(u => u.Id == existingToken.UserId, cancellationToken);
-            var tokens = await IssueTokenPairAsync(user, cancellationToken, successorId);
+            var tokens = await IssueTokenPairAsync(user, cancellationToken, successorId, existingToken);
             return AuthResult.Success(tokens);
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reuse detection's verdict: the presented token's chain has two holders, and the server cannot
+    /// tell which is the thief, so the chain ends for both. Only this family - the user's other
+    /// devices descend from other sign-ins and say nothing about this theft.
+    /// </summary>
+    private async Task<AuthResult> RevokeFamilyAfterReuseAsync(RefreshToken presented, CancellationToken cancellationToken)
+    {
+        // Logged because this is the one branch in the service that means "a credential may have
+        // been stolen", and it silently signs a device out. Without a line here the support
+        // question - why was I logged out? - has no answer.
+        _logger.LogWarning(
+            "Refresh token reuse detected for user {UserId}; revoking refresh token family {FamilyId}.",
+            presented.UserId,
+            presented.FamilyId);
+
+        await _dbContext.RefreshTokens
+            .Where(t => t.UserId == presented.UserId && t.FamilyId == presented.FamilyId && t.RevokedAt == null)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow), cancellationToken);
+        return AuthResult.Failed();
     }
 
     /// <summary>
@@ -339,7 +389,7 @@ public class AuthService : IAuthService
             presented.UserId);
 
         var user = await _dbContext.Users.SingleAsync(u => u.Id == presented.UserId, cancellationToken);
-        return await IssueTokenPairAsync(user, cancellationToken, replacementId);
+        return await IssueTokenPairAsync(user, cancellationToken, replacementId, presented);
     }
 
     public async Task LogoutAsync(Guid userId, string presentedRefreshToken, CancellationToken cancellationToken = default)
@@ -639,10 +689,16 @@ public class AuthService : IAuthService
         return Convert.ToHexStringLower(hashBytes);
     }
 
-    private async Task<AuthTokenResponse> IssueTokenPairAsync(User user, CancellationToken cancellationToken, Guid? refreshTokenId = null)
+    /// <summary>
+    /// A rotation passes the token it replaces as <paramref name="rotatedFrom"/> and the pair joins
+    /// that token's family; without one, the pair starts a family of its own - a fresh sign-in.
+    /// </summary>
+    private async Task<AuthTokenResponse> IssueTokenPairAsync(
+        User user, CancellationToken cancellationToken, Guid? refreshTokenId = null, RefreshToken? rotatedFrom = null)
     {
         var accessToken = _jwtTokenService.GenerateAccessToken(user.Id, user.Email);
         var refreshToken = _jwtTokenService.GenerateRefreshToken();
+        var now = DateTimeOffset.UtcNow;
 
         _dbContext.RefreshTokens.Add(new RefreshToken
         {
@@ -651,7 +707,9 @@ public class AuthService : IAuthService
             UserId = user.Id,
             TokenHash = refreshToken.Hash,
             ExpiresAt = refreshToken.ExpiresAt,
-            CreatedAt = DateTimeOffset.UtcNow,
+            CreatedAt = now,
+            FamilyId = rotatedFrom?.FamilyId ?? Guid.NewGuid(),
+            FamilyStartedAt = rotatedFrom?.FamilyStartedAt ?? now,
         });
         await _dbContext.SaveChangesAsync(cancellationToken);
 

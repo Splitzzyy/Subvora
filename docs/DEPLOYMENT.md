@@ -371,3 +371,7 @@ These are accepted trade-offs of the free tier, not bugs to fix:
 - **`SCHEDULE_EXACT_ALARM` is declared without a fallback.** Irrelevant for sideloaded APKs; the day
   distribution moves to Play it becomes a declaration form, alongside a target-API floor and a
   privacy policy URL.
+- **Account deletion is in-app only.** Settings → Delete account calls `DELETE /api/v1/users/me`
+  with the current password. Play's User Data policy also wants a web link where someone without
+  the app installed can *request* deletion; there is no listing, so there is no page. Add one (and a
+  support address it can name) on the day distribution moves to Play.

@@ -198,6 +198,22 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
+    [Fact]
+    public async Task Register_WithABreachedPassword_Returns400SayingWhy_AndCreatesNoAccount()
+    {
+        var client = _factory.CreateClient();
+        var password = $"breached-{Guid.NewGuid():N}";
+        _factory.Services.GetRequiredService<FakeBreachedPasswordChecker>().Breached[password] = true;
+        var email = $"breached-{Guid.NewGuid()}@example.com";
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("data breach", await response.Content.ReadAsStringAsync());
+        using var scope = _factory.Services.CreateScope();
+        Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Users.AnyAsync(u => u.Email == email));
+    }
+
     [Theory]
     [InlineData("/api/v1/auth/register")]
     [InlineData("/api/v1/auth/login")]

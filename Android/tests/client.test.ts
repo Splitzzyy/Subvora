@@ -17,7 +17,7 @@ mock.module('expo-secure-store', {
     deleteItemAsync: async (key: string) => { store.delete(key); },
   },
 });
-const { api, ApiError, setSessionExpiredHandler, tokens } = await import('../src/api/client.ts');
+const { api, ApiError, errorMessage, fieldErrorMessage, setSessionExpiredHandler, tokens } = await import('../src/api/client.ts');
 
 type Reply = number | 'unreachable';
 let refreshReplies: Reply[] = [];
@@ -79,4 +79,14 @@ test('a refresh the server rejects ends the session', async () => {
   await assert.rejects(api('GET', '/api/v1/subscriptions'), (e) => e instanceof ApiError && e.status === 401);
   assert.equal(expired, 1);
   assert.equal(store.get('auth_refresh_token'), undefined);
+});
+
+test('a 400 naming a field is told apart from one refusing the whole request', () => {
+  const breached = new ApiError(400, { title: 'One or more validation errors occurred.', errors: { NewPassword: ['This password has appeared in a data breach.'] } });
+  const badCode = new ApiError(400, { title: 'Invalid or expired reset code.' });
+  assert.equal(fieldErrorMessage(breached), 'This password has appeared in a data breach.');
+  assert.equal(fieldErrorMessage(badCode), null);
+  assert.equal(fieldErrorMessage(new ApiError(0)), null);
+  // The general message still falls back to the title.
+  assert.equal(errorMessage(badCode), 'Invalid or expired reset code.');
 });
