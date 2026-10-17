@@ -1,5 +1,6 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { TextInput } from 'react-native';
 import { authApi, errorMessage } from '@/api';
 import * as haptics from '@/lib/haptics';
 import { requestReminderPermission } from '@/lib/reminders';
@@ -14,10 +15,17 @@ export default function Register() {
   const [confirm, setConfirm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  /** A mismatch belongs under the field that has to change, not in a banner above the form. */
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const passwordField = useRef<TextInput>(null);
+  const confirmField = useRef<TextInput>(null);
 
   const register = async () => {
     setError(null);
-    if (password !== confirm) return setError('Passwords do not match.');
+    if (password !== confirm) {
+      haptics.reject();
+      return setConfirmError('Passwords do not match.');
+    }
     setBusy(true);
     try {
       await authApi.register(email.trim(), password);
@@ -42,9 +50,12 @@ export default function Register() {
   return (
     <AuthScaffold title="Create account" subtitle="Track subscriptions, see your burn rate, never miss a renewal.">
       {error ? <Banner tone="error" text={error} actionLabel={error === 'Please log in to continue.' ? 'Sign in' : undefined} onAction={() => router.back()} /> : null}
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" />
-      <TextField label="Password" value={password} onChangeText={setPassword} secure autoComplete="new-password" />
-      <TextField label="Confirm password" value={confirm} onChangeText={setConfirm} secure autoComplete="new-password" onSubmitEditing={register} />
+      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address"
+        returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordField.current?.focus()} />
+      <TextField ref={passwordField} label="Password" value={password} onChangeText={(v) => { setPassword(v); setConfirmError(null); }} secure autoComplete="new-password"
+        returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => confirmField.current?.focus()} />
+      <TextField ref={confirmField} label="Confirm password" value={confirm} onChangeText={(v) => { setConfirm(v); setConfirmError(null); }} secure autoComplete="new-password"
+        error={confirmError} returnKeyType="go" onSubmitEditing={() => { if (!busy && email.trim() && password && confirm) void register(); }} />
       <Button label="Create account" size="lg" onPress={register} loading={busy} disabled={!email.trim() || !password || !confirm} />
       <Button label="I already have an account" variant="text" onPress={() => router.back()} />
     </AuthScaffold>

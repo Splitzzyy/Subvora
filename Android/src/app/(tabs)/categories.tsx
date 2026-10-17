@@ -91,6 +91,8 @@ export default function Categories() {
     }),
   });
 
+  const canAdd = !offline && !busy && !!name.trim();
+
   // Yours first - the half you can act on. System defaults are shared and read-only.
   const sections = [
     { title: 'Your categories', rows: (data ?? []).filter((c) => !c.isSystemDefault).sort(byName), editable: true },
@@ -103,8 +105,9 @@ export default function Categories() {
       {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
 
       <Card tone="default">
-        <TextField label="New category" value={name} onChangeText={setName} placeholder="e.g. Music" onSubmitEditing={add} returnKeyType="done" />
-        <Button label="Add category" icon="plus" variant="tonal" onPress={add} loading={busy === 'add'} disabled={offline || !!busy || !name.trim()} style={{ alignSelf: 'flex-end' }} />
+        {/* The keyboard's Done obeys the button: it must not send a blank name, or write while offline. */}
+        <TextField label="New category" value={name} onChangeText={setName} placeholder="e.g. Music" onSubmitEditing={() => { if (canAdd) void add(); }} returnKeyType="done" />
+        <Button label="Add category" icon="plus" variant="tonal" onPress={add} loading={busy === 'add'} disabled={!canAdd} style={{ alignSelf: 'flex-end' }} />
       </Card>
 
       <AsyncView

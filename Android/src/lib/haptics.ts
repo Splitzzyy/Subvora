@@ -16,3 +16,7 @@ export const confirm = () => safely(() => android
 export const reject = () => safely(() => android
   ? Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Reject)
   : Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+
+export const longPress = () => safely(() => android
+  ? Haptics.performAndroidHapticsAsync(Haptics.AndroidHaptics.Long_Press)
+  : Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium));

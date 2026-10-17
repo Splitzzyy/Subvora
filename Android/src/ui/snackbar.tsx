@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Animated, Keyboard, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useReducedMotion } from '@/lib/motion';
@@ -64,7 +64,13 @@ function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessag
     const settle = setTimeout(() => setKeyboard(Keyboard.isVisible() ? Keyboard.metrics()?.height ?? 0 : 0), 400);
     return () => { show.remove(); hide.remove(); clearTimeout(settle); };
   }, []);
-  const onDismiss = useCallback(() => dismissById(message.id), [dismissById, message.id]);
+  // Leaves the way it came (down and out) before the next one may show, rather than vanishing.
+  const leaving = useRef(false);
+  const onDismiss = useCallback(() => {
+    if (leaving.current) return;
+    leaving.current = true;
+    Animated.timing(enter, { toValue: 0, duration: motion.fadeMs, useNativeDriver: true }).start(() => dismissById(message.id));
+  }, [dismissById, message.id, enter]);
 
   // Announced once, by the live region below; an explicit announce as well read it twice.
   useEffect(() => {

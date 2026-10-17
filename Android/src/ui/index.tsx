@@ -1,5 +1,5 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useRef, useState } from 'react';
 import {
   Animated, Easing, Keyboard, Pressable, Switch, Text as RNText, TextInput, useWindowDimensions, View,
   type ColorValue, type PressableProps, type StyleProp, type TextInputProps, type TextProps, type ViewStyle,
@@ -263,7 +263,7 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
   if (!onPress && !onLongPress) return <View style={[style, { overflow: 'hidden' }]}>{body}{children}</View>;
   return (
     <Tap
-      onPress={onPress} onLongPress={onLongPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={style} scaleOnPress={false}
+      onPress={onPress} onLongPress={onLongPress && (() => { haptics.longPress(); onLongPress(); })} accessibilityRole="button" accessibilityLabel={accessibilityLabel} style={style} scaleOnPress={false}
       accessibilityActions={actions?.map((a, i) => ({ name: `action${i}`, label: a.label }))}
       onAccessibilityAction={(e) => actions?.[Number(e.nativeEvent.actionName.slice('action'.length))]?.run()}
     >
@@ -390,13 +390,40 @@ function WavyProgress() {
   );
 }
 
+/**
+ * Fades its content in once, on mount (key it to replay). `rise` adds a short upward settle, for a
+ * value that has just been swapped. Native driver; appears at once with reduced motion.
+ */
+export function FadeIn({ children, rise, style }: { children: React.ReactNode; rise?: boolean; style?: StyleProp<ViewStyle> }) {
+  const reduced = useReducedMotion();
+  const [p] = useState(() => new Animated.Value(reduced ? 1 : 0));
+  useEffect(() => {
+    if (!reduced) Animated.spring(p, { toValue: 1, ...motion.effectsDefault, useNativeDriver: true }).start();
+  }, [p, reduced]);
+  return (
+    <Animated.View style={[style, {
+      opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+      transform: rise ? [{ translateY: p.interpolate({ inputRange: [0, 1], outputRange: [space.sm, 0] }) }] : [],
+    }]}>
+      {children}
+    </Animated.View>
+  );
+}
+
 // ---- Inputs ----------------------------------------------------------------------------------
 
-export function TextField({ label, error, secure, style, ...props }: TextInputProps & { label: string; error?: string | null; secure?: boolean }) {
+export function TextField({ label, error, secure, style, ref, ...props }: TextInputProps & {
+  label: string; error?: string | null; secure?: boolean;
+  /** The inner input, so a form can move focus to the next field on the keyboard's Next. */
+  ref?: React.Ref<TextInput>;
+}) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
   const [hidden, setHidden] = useState(true);
   const input = useRef<TextInput>(null);
+  useImperativeHandle(ref, () => input.current as TextInput, []);
+  // Read-only (e.g. the address a reset code went to) must not look like it is waiting for input.
+  const locked = props.editable === false;
   // Android keeps the input focused when Back closes the keyboard; blur so the outline matches.
   useEffect(() => {
     if (!focused) return;
@@ -409,6 +436,7 @@ export function TextField({ label, error, secure, style, ...props }: TextInputPr
       <Pressable accessible={false} importantForAccessibility="no" onPress={() => input.current?.focus()} style={{
         backgroundColor: colors.surfaceContainerHighest, borderRadius: shape.medium, paddingHorizontal: space.lg, paddingTop: space.sm,
         borderWidth: 2, borderColor: error ? colors.error : focused ? colors.primary : 'transparent', flexDirection: 'row', alignItems: 'center',
+        opacity: locked ? 0.6 : 1,
       }}>
         <View style={{ flex: 1 }}>
           <Text variant="labelMedium" color={error ? colors.error : focused ? colors.primary : colors.onSurfaceVariant}>{label}</Text>
@@ -462,19 +490,30 @@ export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
   label: string; caption?: string; value: boolean; onValueChange: (v: boolean) => void; disabled?: boolean;
 }) {
   const { colors } = useTheme();
+  const toggle = (v: boolean) => { haptics.tick(); onValueChange(v); };
+  // The whole row is the target, as an M3 list item with a switch is; the switch is its indicator.
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, opacity: disabled ? 0.5 : 1 }}>
+    <Tap
+      onPress={() => toggle(!value)} disabled={disabled} radius={shape.medium} scaleOnPress={false}
+      accessibilityRole="switch" accessibilityLabel={label} accessibilityHint={caption} accessibilityState={{ checked: value, disabled: !!disabled }}
+      style={{
+        flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: TOUCH, opacity: disabled ? 0.5 : 1,
+        marginHorizontal: -space.sm, paddingHorizontal: space.sm, paddingVertical: space.xs,
+      }}
+    >
       <View style={{ flex: 1 }}>
         <Text variant="bodyLarge">{label}</Text>
         {caption ? <Text variant="bodyMedium" color={colors.onSurfaceVariant}>{caption}</Text> : null}
       </View>
       <Switch
-        value={value} disabled={disabled} accessibilityLabel={label}
-        onValueChange={(v) => { haptics.tick(); onValueChange(v); }}
-        trackColor={{ true: colors.primary, false: colors.surfaceContainerHighest }}
+        value={value} disabled={disabled} onValueChange={toggle}
+        accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+        // Off, the track is outlineVariant rather than the highest surface, which all but vanished
+        // on a card in dark mode (Android's switch takes no outline).
+        trackColor={{ true: colors.primary, false: colors.outlineVariant }}
         thumbColor={value ? colors.onPrimary : colors.outline}
       />
-    </View>
+    </Tap>
   );
 }
 

@@ -7,7 +7,7 @@ import { useLoader, useOffline } from '@/lib/hooks';
 import { asyncState } from '@/lib/loading';
 import { burnRateWarning, formatMoney, topCategoryShare, topSpendSummary } from '@/lib/logic';
 import { shape, space, useTheme } from '@/theme';
-import { Banner, Button, ButtonGroup, Card, EmptyState, ProgressBar, Text, Tile } from '@/ui';
+import { Banner, Button, ButtonGroup, Card, EmptyState, FadeIn, ProgressBar, Text, Tile } from '@/ui';
 import { RingMark } from '@/ui/brand';
 import { Screen } from '@/ui/layout';
 import { AsyncView, CachedBanner, DashboardSkeleton } from '@/ui/states';
@@ -67,10 +67,13 @@ export default function Dashboard() {
             <Card tone="primary" style={{ borderRadius: shape.extraLarge, paddingVertical: space.xxl + space.xs, gap: space.xl }}>
               <View style={{ gap: space.xs }}>
                 <Text variant="labelLarge" color={colors.onPrimaryContainer}>You spend</Text>
-                <Text variant="amountDisplay" color={colors.onPrimaryContainer} adjustsFontSizeToFit numberOfLines={1}>
-                  {formatMoney(data[period], data.homeCurrency)}
-                </Text>
-                <Text variant="titleMedium" color={colors.onPrimaryContainer}>{PERIOD_LABEL[period]} on subscriptions</Text>
+                {/* Re-keyed per period, so a new figure settles in instead of the digits snapping over. */}
+                <FadeIn key={period} rise style={{ gap: space.xs }}>
+                  <Text variant="amountDisplay" color={colors.onPrimaryContainer} adjustsFontSizeToFit numberOfLines={1}>
+                    {formatMoney(data[period], data.homeCurrency)}
+                  </Text>
+                  <Text variant="titleMedium" color={colors.onPrimaryContainer}>{PERIOD_LABEL[period]} on subscriptions</Text>
+                </FadeIn>
               </View>
               <ButtonGroup<Period>
                 onPrimaryContainer

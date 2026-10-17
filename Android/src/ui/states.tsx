@@ -5,7 +5,7 @@ import { errorDetail, type AsyncState } from '@/lib/loading';
 import { formatSavedAt } from '@/lib/logic';
 import { useReducedMotion } from '@/lib/motion';
 import { motion, shape, space, useTheme } from '@/theme';
-import { Banner, Button, Icon, Tap, Text, TILE_CORNER, TOUCH } from '.';
+import { Banner, Button, FadeIn, Icon, Tap, Text, TILE_CORNER, TOUCH } from '.';
 import { RingMark } from './brand';
 
 /**
@@ -23,14 +23,15 @@ export function AsyncView({ state, skeleton, empty, error, errorStatus, onRetry,
   children: React.ReactNode;
 }) {
   const showSkeleton = useDelayedLoading(state === 'loading');
-  if (showSkeleton) return <>{skeleton}</>;
-  switch (state) {
-    case 'loading': return null;
-    case 'empty': return <>{empty}</>;
-    case 'offline': return <OfflineState onRetry={onRetry} />;
-    case 'error': return <ErrorState message={error ?? 'Something went wrong.'} status={errorStatus} onRetry={onRetry} />;
-    default: return <>{children}</>;
-  }
+  if (!showSkeleton && state === 'loading') return null;
+  const body = showSkeleton ? skeleton
+    : state === 'empty' ? empty
+    : state === 'offline' ? <OfflineState onRetry={onRetry} />
+    : state === 'error' ? <ErrorState message={error ?? 'Something went wrong.'} status={errorStatus} onRetry={onRetry} />
+    : children;
+  // Each state fades in as it arrives, so the skeleton gives way to content rather than snapping.
+  // Keyed on the state alone: a reload over content stays put.
+  return <FadeIn key={showSkeleton ? 'skeleton' : state}>{body}</FadeIn>;
 }
 
 /**

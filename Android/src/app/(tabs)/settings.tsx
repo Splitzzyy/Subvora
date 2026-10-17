@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import Constants from 'expo-constants';
-import { View } from 'react-native';
+import { View, type TextInput } from 'react-native';
 import { API_BASE_URL, authApi, tokens, usersApi, writeErrorMessage } from '@/api';
 import { CURRENCIES, currencyOption } from '@/lib/currencies';
 import * as haptics from '@/lib/haptics';
@@ -40,6 +40,8 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [changing, setChanging] = useState(false);
+  const newPasswordField = useRef<TextInput>(null);
+  const canChangePassword = !offline && !changing && !!currentPassword && !!newPassword;
 
   // A stored code the list does not know must still be selectable, or Save would silently change it.
   const currencies = currency && !CURRENCIES.some((c) => c.value === currency) ? [currencyOption(currency), ...CURRENCIES] : CURRENCIES;
@@ -177,8 +179,10 @@ export default function Settings() {
         <Card>
           <Text variant="titleLargeEmphasized" accessibilityRole="header">Change password</Text>
           {passwordError ? <Banner tone="error" text={passwordError} /> : null}
-          <TextField label="Current password" value={currentPassword} onChangeText={setCurrentPassword} secure autoComplete="current-password" />
-          <TextField label="New password" value={newPassword} onChangeText={setNewPassword} secure autoComplete="new-password" />
+          <TextField label="Current password" value={currentPassword} onChangeText={setCurrentPassword} secure autoComplete="current-password"
+            returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => newPasswordField.current?.focus()} />
+          <TextField ref={newPasswordField} label="New password" value={newPassword} onChangeText={setNewPassword} secure autoComplete="new-password"
+            returnKeyType="done" onSubmitEditing={() => { if (canChangePassword) void changePassword(); }} />
           <Button label="Change password" variant="tonal" onPress={changePassword} loading={changing} disabled={offline || !currentPassword || !newPassword} style={{ alignSelf: 'flex-end' }} />
         </Card>
 

@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { isStatus, subscriptionsApi, writeErrorMessage, type Subscription } from '@/api';
 import { CACHE_KEYS } from '@/lib/cache';
@@ -26,6 +26,8 @@ export default function Subscriptions() {
   const { data, loading, error, errorStatus, cached, cachedAt, reload } = useLoader(subscriptionsApi.list, CACHE_KEYS.subscriptions);
   /** Which write is in flight ("pay:<id>", "delete:<id>"), or null. Any value blocks a second write. */
   const [busy, setBusy] = useState<string | null>(null);
+  /** The guard itself: state lags a render, and a fast double tap on Mark as paid lands in that gap. */
+  const inFlight = useRef(false);
   const [menuFor, setMenuFor] = useState<Subscription | null>(null);
   const [confirmDialog, confirm] = useConfirm();
 
@@ -36,7 +38,8 @@ export default function Subscriptions() {
 
   /** A second write landing on the first would, for mark-paid, advance the date two cycles. */
   const write = async (key: string, success: string, action: () => Promise<unknown>) => {
-    if (busy) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(key);
     try {
       await action();
@@ -48,6 +51,7 @@ export default function Subscriptions() {
       // Nothing is queued for later, so a failed settle must say so or the OVERDUE chip lies.
       snackbar({ tone: 'error', text: isStatus(e, 409) ? STALE_CHARGE : writeErrorMessage(e) });
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   };

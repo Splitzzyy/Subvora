@@ -111,6 +111,7 @@ export default function PaymentSources() {
   });
 
   const rows = data ?? [];
+  const canAdd = !offline && !busy && !!label.trim();
 
   return (
     <Screen title="Payment" subtitle="Where it's charged" refreshing={loading && !!data} onRefresh={reload}>
@@ -118,13 +119,14 @@ export default function PaymentSources() {
       {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
 
       <Card tone="default">
-        <TextField label="Label" value={label} onChangeText={setLabel} placeholder="e.g. HDFC Credit Card" onSubmitEditing={add} />
+        {/* The keyboard's Done obeys the button: no blank label, no write while offline. */}
+        <TextField label="Label" value={label} onChangeText={setLabel} placeholder="e.g. HDFC Credit Card" returnKeyType="done" onSubmitEditing={() => { if (canAdd) void add(); }} />
         <ButtonGroup<PaymentSourceType>
           value={sourceType}
           onChange={setSourceType}
           options={(Object.keys(TYPE_LABEL) as PaymentSourceType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))}
         />
-        <Button label="Add payment source" icon="plus" variant="tonal" onPress={add} loading={busy === 'add'} disabled={offline || !!busy || !label.trim()} style={{ alignSelf: 'flex-end' }} />
+        <Button label="Add payment source" icon="plus" variant="tonal" onPress={add} loading={busy === 'add'} disabled={!canAdd} style={{ alignSelf: 'flex-end' }} />
       </Card>
 
       <AsyncView
