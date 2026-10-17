@@ -152,6 +152,26 @@ export function topSpendSummary(items: { paymentSourceLabel: string; monthlyAmou
   return `${Math.round((top.monthlyAmount / total) * 100)}% of your monthly spend goes to ${top.paymentSourceLabel}.`;
 }
 
+/**
+ * The biggest category's share of monthly spend, for the dashboard ring. Null when there is nothing
+ * to divide (no categories, or nothing spent).
+ */
+export function topCategoryShare(items: { categoryName: string; monthlyAmount: number }[]): { name: string; share: number } | null {
+  const total = items.reduce((sum, item) => sum + item.monthlyAmount, 0);
+  if (items.length === 0 || total <= 0) return null;
+  const top = items.reduce((best, item) => (item.monthlyAmount > best.monthlyAmount ? item : best));
+  return { name: top.categoryName, share: top.monthlyAmount / total };
+}
+
+/** When the offline mirror was saved: "today, 14:05", "yesterday, 09:30" or "12 Oct, 18:00". */
+export function formatSavedAt(iso: string, now = new Date()): string {
+  const saved = new Date(iso);
+  const time = `${pad(saved.getHours())}:${pad(saved.getMinutes())}`;
+  const days = dayNumber(toDateOnly(now)) - dayNumber(toDateOnly(saved));
+  const day = days === 0 ? 'today' : days === 1 ? 'yesterday' : formatShortDate(toDateOnly(saved), toDateOnly(now));
+  return `${day}, ${time}`;
+}
+
 // ---- Subscription list -----------------------------------------------------------------------
 
 export interface ListedSubscription {

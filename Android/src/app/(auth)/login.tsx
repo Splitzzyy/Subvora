@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { View, type TextInput } from 'react-native';
 import { authApi, errorMessage, isStatus } from '@/api';
 import * as haptics from '@/lib/haptics';
 import { requestReminderPermission } from '@/lib/reminders';
@@ -14,6 +14,8 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const passwordField = useRef<TextInput>(null);
+  const canSubmit = !busy && !!email.trim() && !!password;
 
   const login = async () => {
     setError(null);
@@ -38,8 +40,11 @@ export default function Login() {
   return (
     <AuthScaffold title="Welcome back" subtitle="Every renewal, before it lands.">
       {error ? <Banner tone="error" text={error} /> : null}
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
-      <TextField label="Password" value={password} onChangeText={setPassword} secure autoComplete="current-password" onSubmitEditing={login} />
+      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address" textContentType="emailAddress"
+        returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordField.current?.focus()} />
+      {/* Go signs in only when the button could: never with a blank field or a sign-in already out. */}
+      <TextField ref={passwordField} label="Password" value={password} onChangeText={setPassword} secure autoComplete="current-password"
+        returnKeyType="go" onSubmitEditing={() => { if (canSubmit) void login(); }} />
       <Button label="Sign in" size="lg" onPress={login} loading={busy} disabled={!email.trim() || !password} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <Button label="Forgot password?" variant="text" onPress={() => router.push('/forgot-password')} />

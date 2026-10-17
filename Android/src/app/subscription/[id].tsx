@@ -1,24 +1,30 @@
 import { randomUUID } from 'expo-crypto';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, View } from 'react-native';
+import { View } from 'react-native';
 import {
-  categoriesApi, errorMessage, isStatus, paymentSourcesApi, subscriptionsApi, writeErrorMessage,
+  ApiError, categoriesApi, errorMessage, isStatus, paymentSourcesApi, subscriptionsApi, usersApi, writeErrorMessage,
   type CatalogMatchCandidate, type Category, type MatchConfidenceTier, type PaymentSource, type Subscription, type SubscriptionRequest,
 } from '@/api';
 import { CURRENCIES, currencyOption, DEFAULT_CURRENCY } from '@/lib/currencies';
 import * as haptics from '@/lib/haptics';
 import { useDebounced, useOffline } from '@/lib/hooks';
+import { asyncState } from '@/lib/loading';
 import { CYCLE_LABEL, CYCLES_ORDERED, nextBillingDate, todayDateOnly, type BillingCycle } from '@/lib/logic';
 import { useSession } from '@/lib/session';
-import { shape, useTheme } from '@/theme';
-import { Banner, Button, Card, Chip, Icon, IconButton, OfflineBanner, SelectField, Spinner, SwitchRow, Tap, Text, TextField, Tile } from '@/ui';
+import { shape, space, useTheme } from '@/theme';
+import { Banner, Button, Card, Chip, Icon, IconButton, OfflineBanner, ProgressBar, SelectField, SwitchRow, Tap, Text, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
-import { DateField, PickerSheet, type PickerOption } from '@/ui/sheets';
+import { DateField, PickerSheet, useConfirm, type PickerOption } from '@/ui/sheets';
+import { useSnackbar } from '@/ui/snackbar';
+import { AsyncView, FormSkeleton } from '@/ui/states';
 
 const MIN_RESOLVE_LENGTH = 3;
 const NONE = '__none__';
 const customCurrency = (q: string) => (/^[A-Za-z]{3}$/.test(q) ? currencyOption(q.toUpperCase()) : null);
+
+/** The editable values, as one comparable key: the form is dirty when it differs from the loaded one. */
+const formKey = (...values: unknown[]) => JSON.stringify(values);
 
 export default function SubscriptionDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,6 +32,9 @@ export default function SubscriptionDetail() {
   const { colors, category: categoryIdentity, payment } = useTheme();
   const { dataChanged } = useSession();
   const offline = useOffline();
+  const snackbar = useSnackbar();
+  const navigation = useNavigation();
+  const [confirmDialog, confirm] = useConfirm();
   const debounce = useDebounced(500);
 
   const today = todayDateOnly();
@@ -49,7 +58,15 @@ export default function SubscriptionDetail() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The record itself failed to load: nothing to edit, so the whole form gives way to an error state. */
+  const [loadFailure, setLoadFailure] = useState<{ message: string; status: number | null } | null>(null);
   const [picker, setPicker] = useState<'category' | 'payment' | 'currency' | null>(null);
+  /** Shown once Save is pressed with these missing; Save stays enabled so it can say what is wrong. */
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; cost?: string }>({});
+  /** Set before leaving on purpose (saved, deleted, discarded) so the unsaved-changes guard lets go. */
+  const leaving = useRef(false);
+  // The user's home currency, for a new subscription, unless they have picked one themselves.
+  const currencyTouched = useRef(false);
 
   // Not state: nothing renders them. The catalog link and the version this edit started from.
   const catalogId = useRef<string | null>(null);
@@ -57,6 +74,7 @@ export default function SubscriptionDetail() {
   // Fixed for the life of a create form, so tapping Save again after a timeout replays the create
   // the server may already have made rather than adding a second copy.
   const [createId] = useState(randomUUID);
+  const [pristine, setPristine] = useState(() => formKey('', '', DEFAULT_CURRENCY, 'Monthly', today, nextBillingDate(today, 'Monthly'), '', false, null, null));
   const nameRef = useRef(name);
   useEffect(() => { nameRef.current = name; }, [name]);
 
@@ -76,18 +94,24 @@ export default function SubscriptionDetail() {
     version.current = s.version;
     setSuggestions([]);
     setTier(null);
+    setPristine(formKey(s.customName, String(s.costAmount), s.currency, s.cycleCadence, s.purchaseDate, s.nextBillingDate,
+      String(s.alertDaysAdvance), s.isFreeTrial, s.categoryId, s.paymentSourceId));
   };
 
-  const fetchRecord = () => editId
+  /** `initial`: a failure replaces the form (there is nothing to edit); later reloads report in the banner. */
+  const fetchRecord = (initial = false) => editId
     ? subscriptionsApi.get(editId).then(apply, (e) => {
-      if (!isStatus(e, 404)) return setError(errorMessage(e));
+      if (!isStatus(e, 404)) {
+        const message = errorMessage(e);
+        return initial ? setLoadFailure({ message, status: e instanceof ApiError ? e.status : null }) : setError(message);
+      }
       // Deleted elsewhere - nothing left to edit.
       dataChanged();
       router.back();
     })
     : Promise.resolve();
 
-  useEffect(() => {
+  const load = () => {
     // All three GETs are independent, so they go out together; one failing still fills the others.
     const pickers = Promise.allSettled([categoriesApi.list(), paymentSourcesApi.list()]).then(([c, p]) => {
       if (c.status === 'fulfilled') setCategories(c.value);
@@ -95,7 +119,24 @@ export default function SubscriptionDetail() {
       const failure = [c, p].find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined;
       if (failure) setError(errorMessage(failure.reason));
     });
-    Promise.all([pickers, fetchRecord()]).then(() => setLoading(false));
+    // A new subscription starts in the user's home currency, not the app-wide default.
+    const home = editId ? Promise.resolve() : usersApi.me().then((me) => {
+      if (currencyTouched.current || !me.preferredCurrency) return;
+      setCurrency(me.preferredCurrency);
+      setPristine(formKey('', '', me.preferredCurrency, 'Monthly', today, nextBillingDate(today, 'Monthly'), '', false, null, null));
+    }, () => undefined);
+    Promise.all([pickers, fetchRecord(true), home]).then(() => setLoading(false));
+  };
+
+  const retry = () => {
+    setLoading(true);
+    setLoadFailure(null);
+    setError(null);
+    load();
+  };
+
+  useEffect(() => {
+    load();
     return debounce.cancel;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -146,14 +187,37 @@ export default function SubscriptionDetail() {
   const onPurchaseDate = (value: string) => { setPurchaseDate(value); setNextDate(nextBillingDate(value, cycle)); };
   const onCycle = (value: BillingCycle) => { setCycle(value); setNextDate(nextBillingDate(purchaseDate, value)); };
 
+  // ---- Leaving with unsaved changes ----
+
+  const dirty = formKey(name, cost, currency, cycle, purchaseDate, nextDate, alertDays, isFreeTrial, categoryId, paymentSourceId) !== pristine;
+
+  // Close, Android back and the modal swipe all come through here: confirm before dropping edits.
+  useEffect(() => navigation.addListener('beforeRemove', (e) => {
+    if (!dirty || leaving.current) return;
+    e.preventDefault();
+    confirm({
+      title: 'Discard changes?', body: "What you've entered here hasn't been saved.", confirmLabel: 'Discard', destructive: true,
+      onConfirm: () => { leaving.current = true; navigation.dispatch(e.data.action); },
+    });
+  }), [navigation, dirty, confirm]);
+
   // ---- Save / delete ----
 
   const amount = Number(cost.replace(',', '.'));
   const days = alertDays.trim() === '' ? null : Number(alertDays);
   const canSubmit = !offline && !busy && !loading;
-  const valid = name.trim() !== '' && cost.trim() !== '' && Number.isFinite(amount) && amount >= 0;
 
   const save = async () => {
+    // Say what is missing rather than greying the button out: a disabled Save explains nothing.
+    const problems = {
+      name: name.trim() === '' ? 'Enter a name.' : undefined,
+      cost: cost.trim() === '' || !Number.isFinite(amount) || amount < 0 ? 'Enter an amount, e.g. 9.99.' : undefined,
+    };
+    setFieldErrors(problems);
+    if (problems.name || problems.cost) {
+      haptics.reject();
+      return;
+    }
     setError(null);
     setBusy(true);
     const request: SubscriptionRequest = {
@@ -165,6 +229,8 @@ export default function SubscriptionDetail() {
       else await subscriptionsApi.create({ ...request, id: createId });
       haptics.confirm();
       dataChanged();
+      snackbar({ text: editId ? 'Changes saved.' : `${request.customName} added.` });
+      leaving.current = true;
       router.back();
     } catch (e) {
       haptics.reject();
@@ -186,28 +252,29 @@ export default function SubscriptionDetail() {
     }
   };
 
-  const remove = () => Alert.alert('Delete subscription', `Delete ${name.trim() || 'this subscription'}? This cannot be undone.`, [
-    { text: 'Cancel', style: 'cancel' },
-    {
-      text: 'Delete', style: 'destructive', onPress: async () => {
-        setError(null);
-        setBusy(true);
-        try {
-          await subscriptionsApi.remove(editId!);
-        } catch (e) {
-          // Already gone is the outcome the user asked for.
-          if (!isStatus(e, 404)) {
-            setError(writeErrorMessage(e));
-            setBusy(false);
-            return;
-          }
+  const remove = () => confirm({
+    title: 'Delete subscription', body: `Delete ${name.trim() || 'this subscription'}? This cannot be undone.`,
+    confirmLabel: 'Delete', destructive: true,
+    onConfirm: async () => {
+      setError(null);
+      setBusy(true);
+      try {
+        await subscriptionsApi.remove(editId!);
+      } catch (e) {
+        // Already gone is the outcome the user asked for.
+        if (!isStatus(e, 404)) {
+          setError(writeErrorMessage(e));
+          setBusy(false);
+          return;
         }
-        haptics.confirm();
-        dataChanged();
-        router.back();
-      },
+      }
+      haptics.confirm();
+      dataChanged();
+      snackbar({ text: `${name.trim() || 'Subscription'} deleted.` });
+      leaving.current = true;
+      router.back();
     },
-  ]);
+  });
 
   // ---- Pickers ----
 
@@ -215,14 +282,14 @@ export default function SubscriptionDetail() {
     { value: NONE, label: 'No category', icon: 'minus-circle-outline' },
     ...categories.map((c) => {
       const identity = categoryIdentity(c.name);
-      return { value: c.id, label: c.name, icon: identity.icon, iconColor: identity.color, iconBackground: identity.soft };
+      return { value: c.id, label: c.name, icon: identity.icon, iconColor: identity.ink, iconBackground: identity.soft };
     }),
   ];
   const paymentOptions: PickerOption[] = [
     { value: NONE, label: 'No payment source', icon: 'minus-circle-outline' },
     ...paymentSources.map((p) => {
       const identity = payment(p.sourceType);
-      return { value: p.id, label: p.label, icon: identity.icon, iconColor: identity.color, iconBackground: identity.soft };
+      return { value: p.id, label: p.label, icon: identity.icon, iconColor: identity.ink, iconBackground: identity.soft };
     }),
   ];
   const currencyOptions = CURRENCIES.some((c) => c.value === currency) ? CURRENCIES : [currencyOption(currency), ...CURRENCIES];
@@ -231,89 +298,105 @@ export default function SubscriptionDetail() {
   const categoryTile = categoryIdentity(selectedCategory?.name);
 
   return (
-    <Screen>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingTop: 8, paddingBottom: 8 }}>
+    <Screen header={(
+      // M3 full-screen dialog: close and the confirming action stay in reach above the scrolling form.
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, paddingHorizontal: space.lg }}>
         <IconButton icon="close" label="Close" onPress={() => router.back()} />
-        <Text variant="titleLarge" accessibilityRole="header" style={{ flex: 1 }}>{editId ? 'Edit subscription' : 'Add subscription'}</Text>
+        <Text variant="titleLargeEmphasized" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={1}>{editId ? 'Edit subscription' : 'Add subscription'}</Text>
+        <Button label="Save" variant="text" onPress={save} loading={busy} disabled={!canSubmit} />
       </View>
+    )}>
 
       {offline ? <OfflineBanner /> : null}
       {error ? <Banner tone="error" text={error} /> : null}
-      {loading && editId ? <Spinner /> : null}
+      {/* A new form is usable at once; only the category and payment pickers are still filling. */}
+      {loading && !editId ? <View style={{ paddingBottom: space.md }}><ProgressBar /></View> : null}
 
-      <View style={{ gap: 12, display: loading && editId ? 'none' : 'flex' }}>
-        <Card>
-          <Text variant="titleMedium" color={colors.primary}>Service</Text>
-          <TextField label="Name" value={name} onChangeText={onNameChange} placeholder="e.g. Netflix" autoCapitalize="words" />
-          {suggestions.length > 0 ? (
-            <View style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.lg, padding: 8, gap: 2 }}>
-              <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ paddingHorizontal: 8, paddingVertical: 4 }}>
-                {tier === 'AutoFill' ? 'Looks like one of these' : 'Did you mean'}
-              </Text>
-              {suggestions.map((s) => {
-                const identity = categoryIdentity(categories.find((c) => c.id === s.categoryId)?.name);
-                return (
-                  <Tap key={s.catalogId} radius={shape.md} accessibilityRole="button" accessibilityLabel={`Use ${s.providerName}`} onPress={() => pickSuggestion(s)}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 12, padding: 8 }}>
-                    <Tile letter={s.providerName[0]?.toUpperCase()} color={identity.color} background={identity.soft} size={32} />
-                    <Text variant="bodyLarge" style={{ flex: 1 }}>{s.providerName}</Text>
-                    <Icon name="arrow-top-left" size={20} color={colors.onSurfaceVariant} />
-                  </Tap>
-                );
-              })}
+      <AsyncView
+        state={editId ? asyncState({ hasData: !loading && !loadFailure, error: loadFailure?.message, errorStatus: loadFailure?.status }) : 'content'}
+        skeleton={<FormSkeleton />}
+        error={loadFailure?.message}
+        errorStatus={loadFailure?.status}
+        onRetry={retry}
+      >
+        <View style={{ gap: space.md }}>
+          <Card>
+            <Text variant="titleMedium" color={colors.primary}>Service</Text>
+            <TextField label="Name" value={name} onChangeText={(v) => { onNameChange(v); setFieldErrors((f) => ({ ...f, name: undefined })); }} placeholder="e.g. Netflix" autoCapitalize="words" error={fieldErrors.name} />
+            {suggestions.length > 0 ? (
+              <View style={{ backgroundColor: colors.surfaceContainerHigh, borderRadius: shape.medium, padding: space.sm, gap: space.xxs }}>
+                <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ paddingHorizontal: space.sm, paddingVertical: space.xs }}>
+                  {tier === 'AutoFill' ? 'Looks like one of these' : 'Did you mean'}
+                </Text>
+                {suggestions.map((s) => {
+                  const identity = categoryIdentity(categories.find((c) => c.id === s.categoryId)?.name);
+                  return (
+                    <Tap key={s.catalogId} radius={shape.small} accessibilityRole="button" accessibilityLabel={`Use ${s.providerName}`} onPress={() => pickSuggestion(s)}
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, padding: space.sm, minHeight: 48 }}>
+                      <Tile letter={s.providerName[0]?.toUpperCase()} color={identity.ink} background={identity.soft} size={32} />
+                      <Text variant="bodyLarge" style={{ flex: 1 }}>{s.providerName}</Text>
+                      <Icon name="arrow-top-left" size={20} color={colors.onSurfaceVariant} />
+                    </Tap>
+                  );
+                })}
+              </View>
+            ) : null}
+            <SelectField
+              label="Category" placeholder={loading ? 'Loading categories…' : 'No category'} disabled={loading}
+              value={selectedCategory?.name ?? null} onPress={() => setPicker('category')}
+              leading={<Tile icon={categoryTile.icon} color={categoryTile.ink} background={categoryTile.soft} size={32} />}
+            />
+          </Card>
+
+          <Card>
+            <Text variant="titleMedium" color={colors.primary}>Cost</Text>
+            <View style={{ flexDirection: 'row', gap: space.sm }}>
+              <TextField label="Amount" value={cost} onChangeText={(v) => { setCost(v); setFieldErrors((f) => ({ ...f, cost: undefined })); }} keyboardType="decimal-pad" placeholder="0.00" style={{ flex: 1 }} error={fieldErrors.cost} />
+              <View style={{ width: 128 }}>
+                <SelectField label="Currency" placeholder="" value={currency} onPress={() => setPicker('currency')} />
+              </View>
             </View>
-          ) : null}
-          <SelectField
-            label="Category" placeholder={loading ? 'Loading categories…' : 'No category'} disabled={loading}
-            value={selectedCategory?.name ?? null} onPress={() => setPicker('category')}
-            leading={<Tile icon={categoryTile.icon} color={categoryTile.color} background={categoryTile.soft} size={32} />}
-          />
-        </Card>
-
-        <Card>
-          <Text variant="titleMedium" color={colors.primary}>Cost</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextField label="Amount" value={cost} onChangeText={setCost} keyboardType="decimal-pad" placeholder="0.00" style={{ flex: 1 }} />
-            <View style={{ width: 128 }}>
-              <SelectField label="Currency" placeholder="" value={currency} onPress={() => setPicker('currency')} />
+            <Text variant="labelLarge" color={colors.onSurfaceVariant}>Billing cycle</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: space.sm }} accessibilityRole="radiogroup">
+              {CYCLES_ORDERED.map((c) => <Chip key={c} label={CYCLE_LABEL[c]} selected={cycle === c} onPress={() => onCycle(c)} />)}
             </View>
-          </View>
-          <Text variant="labelLarge" color={colors.onSurfaceVariant}>Billing cycle</Text>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }} accessibilityRole="radiogroup">
-            {CYCLES_ORDERED.map((c) => <Chip key={c} label={CYCLE_LABEL[c]} selected={cycle === c} onPress={() => onCycle(c)} />)}
-          </View>
-          <SelectField
-            label="Payment source" placeholder={loading ? 'Loading payment sources…' : 'No payment source'} disabled={loading}
-            value={selectedSource?.label ?? null} onPress={() => setPicker('payment')}
-            leading={<Icon name={selectedSource ? payment(selectedSource.sourceType).icon : 'credit-card-outline'} size={22} color={colors.onSurfaceVariant} />}
-          />
-          {!loading && paymentSources.length === 0 ? (
-            <Text variant="bodyMedium" color={colors.onSurfaceVariant}>No payment sources yet — add one on the Payment tab. Optional either way.</Text>
-          ) : null}
-          <SwitchRow label="Free trial" caption="Flag it so you remember to cancel before it converts." value={isFreeTrial} onValueChange={setIsFreeTrial} />
-        </Card>
+            <SelectField
+              label="Payment source" placeholder={loading ? 'Loading payment sources…' : 'No payment source'} disabled={loading}
+              value={selectedSource?.label ?? null} onPress={() => setPicker('payment')}
+              leading={<Icon name={selectedSource ? payment(selectedSource.sourceType).icon : 'credit-card-outline'} size={22} color={colors.onSurfaceVariant} />}
+            />
+            {!loading && paymentSources.length === 0 ? (
+              <Text variant="bodyMedium" color={colors.onSurfaceVariant}>No payment sources yet — add one on the Payment tab. Optional either way.</Text>
+            ) : null}
+            <SwitchRow label="Free trial" caption="Flag it so you remember to cancel before it converts." value={isFreeTrial} onValueChange={setIsFreeTrial} />
+          </Card>
 
-        <Card>
-          <Text variant="titleMedium" color={colors.primary}>Dates & reminders</Text>
-          <DateField label="Purchase date" value={purchaseDate} onChange={onPurchaseDate} />
-          <DateField label="Next billing date" value={nextDate} onChange={setNextDate} />
-          <Text variant="bodyMedium" color={colors.onSurfaceVariant}>One billing period after the purchase date. Change it if your provider bills on a different day.</Text>
-          <TextField
-            label="Remind me this many days ahead" value={alertDays} keyboardType="number-pad" placeholder="Your default"
-            onChangeText={(v) => setAlertDays(v.replace(/\D/g, ''))}
-          />
-        </Card>
+          <Card>
+            <Text variant="titleMedium" color={colors.primary}>Dates & reminders</Text>
+            <DateField label="Purchase date" value={purchaseDate} onChange={onPurchaseDate} />
+            <DateField label="Next billing date" value={nextDate} onChange={setNextDate} />
+            {/* Only while the date is still the derived one: not once picked by hand, or on a record whose date is its own. */}
+            {nextDate === nextBillingDate(purchaseDate, cycle) ? (
+              <Text variant="bodyMedium" color={colors.onSurfaceVariant}>One billing period after the purchase date. Change it if your provider bills on a different day.</Text>
+            ) : null}
+            <TextField
+              label="Remind me this many days ahead" value={alertDays} keyboardType="number-pad" placeholder="Your default"
+              onChangeText={(v) => setAlertDays(v.replace(/\D/g, ''))}
+            />
+          </Card>
 
-        <Button label={editId ? 'Save changes' : 'Save'} size="lg" icon="check" onPress={save} loading={busy} disabled={!canSubmit || !valid} />
-        {editId ? <Button label="Delete subscription" icon="delete-outline" variant="danger" onPress={remove} disabled={!canSubmit} /> : null}
-      </View>
+          <Button label={editId ? 'Save changes' : 'Save'} size="lg" icon="check" onPress={save} loading={busy} disabled={!canSubmit} />
+          {editId ? <Button label="Delete subscription" icon="delete-outline" variant="danger" onPress={remove} disabled={!canSubmit} /> : null}
+        </View>
+      </AsyncView>
 
       <PickerSheet visible={picker === 'category'} title="Category" options={categoryOptions} selected={categoryId ?? NONE}
         onSelect={(v) => setCategoryId(v === NONE ? null : v)} onClose={() => setPicker(null)} />
       <PickerSheet visible={picker === 'payment'} title="Payment source" options={paymentOptions} selected={paymentSourceId ?? NONE}
         onSelect={(v) => setPaymentSourceId(v === NONE ? null : v)} onClose={() => setPicker(null)} />
       <PickerSheet visible={picker === 'currency'} title="Currency" options={currencyOptions} selected={currency}
-        onSelect={setCurrency} onClose={() => setPicker(null)} searchable custom={customCurrency} />
+        onSelect={(v) => { currencyTouched.current = true; setCurrency(v); }} onClose={() => setPicker(null)} searchable custom={customCurrency} />
+      {confirmDialog}
     </Screen>
   );
 }

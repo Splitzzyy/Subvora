@@ -1,16 +1,16 @@
 import { randomUUID } from 'expo-crypto';
-import { useState } from 'react';
-import { Alert } from 'react-native';
+import { useRef, useState } from 'react';
 import { isStatus, paymentSourcesApi, writeErrorMessage, type PaymentSource, type PaymentSourceType } from '@/api';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
+import { asyncState } from '@/lib/loading';
 import { useSession } from '@/lib/session';
 import { useTheme } from '@/theme';
-import {
-  Banner, Button, ButtonGroup, Card, EmptyState, IconButton, ListItem, OfflineBanner, positionOf, ScreenHeader, SectionHeader, Spinner, TextField, Tile,
-} from '@/ui';
+import { Banner, Button, ButtonGroup, Card, EmptyState, IconButton, ListItem, OfflineBanner, positionOf, SectionHeader, TextField, Tile } from '@/ui';
 import { Screen } from '@/ui/layout';
-import { ActionSheet, PromptDialog } from '@/ui/sheets';
+import { ActionSheet, PromptDialog, useConfirm } from '@/ui/sheets';
+import { useSnackbar, type SnackbarMessage } from '@/ui/snackbar';
+import { AsyncView, ListSkeleton } from '@/ui/states';
 
 const EARLIER_ADD = 'Your earlier add went through before this change - it is in the list. Tap Add again to add this one as well.';
 
@@ -20,31 +20,49 @@ export default function PaymentSources() {
   const { payment } = useTheme();
   const { dataChanged } = useSession();
   const offline = useOffline();
-  const { data, loading, error, reload } = useLoader(paymentSourcesApi.list);
+  const snackbar = useSnackbar();
+  const { data, loading, error, errorStatus, reload } = useLoader(paymentSourcesApi.list);
   const [label, setLabel] = useState('');
   const [sourceType, setSourceType] = useState<PaymentSourceType>('Card');
-  const [writeError, setWriteError] = useState<string | null>(null);
+  /** Which write is in flight ('add', 'rename', 'delete', 'undo') for the spinners; the ref is the guard. */
+  const [busy, setBusy] = useState<string | null>(null);
+  const inFlight = useRef<string | null>(null);
+  const [confirmDialog, confirm] = useConfirm();
   const [menuFor, setMenuFor] = useState<PaymentSource | null>(null);
   const [renaming, setRenaming] = useState<PaymentSource | null>(null);
 
   /** Deletes and renames both move the dashboard's spend-by-account breakdown. */
-  const write = async (action: () => Promise<unknown>) => {
-    setWriteError(null);
+  const write = async (key: string, action: () => Promise<SnackbarMessage>) => {
+    if (inFlight.current) return false;
+    inFlight.current = key;
+    setBusy(key);
     try {
-      await action();
+      const result = await action();
       haptics.confirm();
       dataChanged();
+      snackbar(result);
     } catch (e) {
       haptics.reject();
-      setWriteError(isStatus(e, 409) ? EARLIER_ADD : writeErrorMessage(e));
+      snackbar({ tone: 'error', text: isStatus(e, 409) ? EARLIER_ADD : writeErrorMessage(e) });
+    } finally {
+      inFlight.current = null;
+      setBusy(null);
     }
+    return true;
+  };
+
+  /** An undo is never dropped silently: if another write is still saving, say so. */
+  const undo = (action: () => Promise<SnackbarMessage>) => {
+    void write('undo', action).then((started) => {
+      if (!started) snackbar({ tone: 'error', text: "Couldn't undo — another change is still saving. Try again." });
+    });
   };
 
   // One id per payment source being added: a retry after a lost response resends it and gets the
   // original back instead of a duplicate. Replaced only once the add has gone through.
   const [createId, setCreateId] = useState(randomUUID);
 
-  const add = () => write(async () => {
+  const add = () => write('add', async () => {
     try {
       await paymentSourcesApi.create(createId, label.trim(), sourceType);
     } catch (e) {
@@ -56,64 +74,89 @@ export default function PaymentSources() {
       }
       throw e;
     }
+    const added = label.trim();
     setCreateId(randomUUID());
     setLabel('');
     setSourceType('Card');
+    return { text: `${added} added.` };
   });
 
   // In place, not delete-and-recreate: that would detach every subscription that billed to it.
   const rename = (target: PaymentSource, value: string) => {
     setRenaming(null);
     if (!value.trim() || value.trim() === target.label) return;
-    void write(() => paymentSourcesApi.update(target.id, value.trim(), target.sourceType));
+    void write('rename', async () => {
+      await paymentSourcesApi.update(target.id, value.trim(), target.sourceType);
+      // The same in-place update reverses it cleanly, so a rename gets an undo.
+      return {
+        text: `Renamed to ${value.trim()}.`,
+        actionLabel: 'Undo',
+        onAction: () => undo(async () => {
+          await paymentSourcesApi.update(target.id, target.label, target.sourceType);
+          return { text: `Name changed back to ${target.label}.` };
+        }),
+      };
+    });
   };
 
-  const remove = (target: PaymentSource) => Alert.alert(
-    'Delete payment source',
-    `Delete "${target.label}"? Subscriptions billed to it will stay, without a payment source.`,
-    [{ text: 'Cancel', style: 'cancel' }, { text: 'Delete', style: 'destructive', onPress: () => write(() => paymentSourcesApi.remove(target.id)) }],
-  );
+  const remove = (target: PaymentSource) => confirm({
+    title: 'Delete payment source',
+    body: `Delete "${target.label}"? Subscriptions billed to it will stay, without a payment source.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+    onConfirm: () => void write('delete', async () => {
+      await paymentSourcesApi.remove(target.id);
+      return { text: `${target.label} deleted.` };
+    }),
+  });
 
   const rows = data ?? [];
+  const canAdd = !offline && !busy && !!label.trim();
 
   return (
-    <Screen refreshing={loading && !!data} onRefresh={reload}>
-      <ScreenHeader subtitle="Where it's charged" title="Payment" />
+    <Screen title="Payment" subtitle="Where it's charged" refreshing={loading && !!data} onRefresh={reload}>
       {offline ? <OfflineBanner /> : null}
-      {error ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
-      {writeError ? <Banner tone="error" text={writeError} /> : null}
+      {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
 
       <Card tone="default">
-        <TextField label="Label" value={label} onChangeText={setLabel} placeholder="e.g. HDFC Credit Card" onSubmitEditing={add} />
+        {/* The keyboard's Done obeys the button: no blank label, no write while offline. */}
+        <TextField label="Label" value={label} onChangeText={setLabel} placeholder="e.g. HDFC Credit Card" returnKeyType="done" onSubmitEditing={() => { if (canAdd) void add(); }} />
         <ButtonGroup<PaymentSourceType>
           value={sourceType}
           onChange={setSourceType}
           options={(Object.keys(TYPE_LABEL) as PaymentSourceType[]).map((t) => ({ value: t, label: TYPE_LABEL[t] }))}
         />
-        <Button label="Add payment source" icon="plus" variant="tonal" onPress={add} disabled={offline || !label.trim()} style={{ alignSelf: 'flex-end' }} />
+        <Button label="Add payment source" icon="plus" variant="tonal" onPress={add} loading={busy === 'add'} disabled={!canAdd} style={{ alignSelf: 'flex-end' }} />
       </Card>
 
-      {!data && loading ? <Spinner /> : null}
-      {data && rows.length === 0 ? (
-        <EmptyState icon="credit-card-plus-outline" title="No payment sources" body="Add the cards and accounts you pay from to see which one carries the most spend." />
-      ) : null}
+      <AsyncView
+        state={asyncState({ hasData: !!data, empty: rows.length === 0, error, errorStatus })}
+        skeleton={<ListSkeleton rows={3} />}
+        error={error}
+        errorStatus={errorStatus}
+        onRetry={reload}
+        empty={<EmptyState icon="credit-card-plus-outline" title="No payment sources" body="Add the cards and accounts you pay from to see which one carries the most spend." />}
+      >
+        <SectionHeader title="Your sources" summary={`${rows.length} ${rows.length === 1 ? 'source' : 'sources'}`} />
+        {rows.map((source, i) => {
+          const id = payment(source.sourceType);
+          return (
+            <ListItem
+              key={source.id}
+              position={positionOf(i, rows.length)}
+              title={source.label}
+              subtitle={TYPE_LABEL[source.sourceType]}
+              accessibilityLabel={`${source.label}, ${TYPE_LABEL[source.sourceType]}`}
+              leading={<Tile icon={id.icon} color={id.ink} background={id.soft} size={40} />}
+              onLongPress={offline ? undefined : () => setMenuFor(source)}
+              actions={offline ? undefined : [{ label: 'Rename or delete', run: () => setMenuFor(source) }]}
+              trailing={<IconButton icon="dots-vertical" label={`Manage ${source.label}`} onPress={() => setMenuFor(source)} disabled={offline} />}
+            />
+          );
+        })}
+      </AsyncView>
 
-      {rows.length > 0 ? <SectionHeader title="Your sources" summary={`${rows.length} ${rows.length === 1 ? 'source' : 'sources'}`} /> : null}
-      {rows.map((source, i) => {
-        const id = payment(source.sourceType);
-        return (
-          <ListItem
-            key={source.id}
-            position={positionOf(i, rows.length)}
-            title={source.label}
-            subtitle={TYPE_LABEL[source.sourceType]}
-            leading={<Tile icon={id.icon} color={id.color} background={id.soft} size={40} />}
-            onLongPress={offline ? undefined : () => setMenuFor(source)}
-            trailing={<IconButton icon="dots-vertical" label={`Manage ${source.label}`} onPress={() => setMenuFor(source)} disabled={offline} />}
-          />
-        );
-      })}
-
+      {confirmDialog}
       <ActionSheet
         title={menuFor?.label ?? null}
         onClose={() => setMenuFor(null)}

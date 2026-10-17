@@ -1,16 +1,19 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert } from 'react-native';
+import { useRef, useState } from 'react';
+import type { TextInput } from 'react-native';
 import { authApi, isStatus, writeErrorMessage } from '@/api';
 import { useOffline } from '@/lib/hooks';
+import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { Banner, Button, OfflineBanner, TextField } from '@/ui';
 import { AuthScaffold } from '@/ui/layout';
+import { useSnackbar } from '@/ui/snackbar';
 
 /** Two states on one screen: ask for a code, then spend it. The second step needs the first's email. */
 export default function ForgotPassword() {
   const offline = useOffline();
   const { signIn } = useSession();
+  const snackbar = useSnackbar();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -19,6 +22,9 @@ export default function ForgotPassword() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const passwordField = useRef<TextInput>(null);
+  const canRequest = !busy && !offline && !!email.trim();
+  const canReset = !busy && !offline && code.length === 6 && !!newPassword;
 
   const run = async (action: () => Promise<void>) => {
     setError(null);
@@ -45,9 +51,10 @@ export default function ForgotPassword() {
       // address may be keeping locked. The session change routes to the app on its own.
       if (session?.accessToken) {
         await signIn(session);
+        void requestReminderPermission();
         return;
       }
-      Alert.alert('Password reset', 'Sign in with your new password.');
+      snackbar({ text: 'Password reset. Sign in with your new password.' });
       router.back();
     } catch (e) {
       // One 400 for wrong, expired, used and over-limit - deliberately, so guessing learns nothing.
@@ -62,11 +69,14 @@ export default function ForgotPassword() {
       {offline ? <OfflineBanner /> : null}
       {info ? <Banner tone="info" text={info} /> : null}
       {error ? <Banner tone="error" text={error} /> : null}
-      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!codeSent} />
+      <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!codeSent}
+        returnKeyType="send" onSubmitEditing={() => { if (canRequest) void requestCode(); }} />
       {codeSent ? (
         <>
-          <TextField label="6-digit code" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" autoComplete="one-time-code" />
-          <TextField label="New password" value={newPassword} onChangeText={setNewPassword} secure autoComplete="new-password" />
+          <TextField label="6-digit code" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" autoComplete="one-time-code"
+            returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordField.current?.focus()} />
+          <TextField ref={passwordField} label="New password" value={newPassword} onChangeText={setNewPassword} secure autoComplete="new-password"
+            returnKeyType="done" onSubmitEditing={() => { if (canReset) void reset(); }} />
           <Button label="Reset password" size="lg" onPress={reset} loading={busy} disabled={offline || code.length !== 6 || !newPassword} />
           <Button label="Send a new code" variant="text" onPress={requestCode} disabled={busy || offline} />
         </>
