@@ -72,6 +72,16 @@ for (const [name, scheme] of [['light', light], ['dark', dark]] as const) {
     assert.deepEqual(failures, []);
   });
 
+  test(`${name} scheme: hero period switcher's unselected labels read on their wash`, () => {
+    // Unselected segments on the primaryContainer card (ButtonGroup onPrimaryContainer) are a wash
+    // over the card - onPrimaryContainer at 12% in light, black at 20% in dark - labelled in
+    // onPrimaryContainer.
+    const s = scheme as Record<string, string>;
+    const wash = over(name === 'dark' ? `${s.shadow}33` : `${s.onPrimaryContainer}1F`, s.primaryContainer);
+    const got = ratio(over(s.onPrimaryContainer, '#FFFFFF'), wash);
+    assert.ok(got >= BODY, `${got.toFixed(2)} < ${BODY}`);
+  });
+
   test(`${name} scheme: category and payment identities read on their own wash`, () => {
     // Tiles draw a letter or icon in the identity's ink on its translucent wash over a list row.
     const row = (scheme as Record<string, string>).surfaceContainer;

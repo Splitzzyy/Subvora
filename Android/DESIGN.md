@@ -22,9 +22,9 @@ React Native (Expo SDK 57, Expo Router) client for the same `/api/v1` backend th
 ## Shared UI
 
 - `Tap`: ripple plus a spring. Buttons and the FAB morph from pill to rounded square on press. Anything else scales on the native driver, and list rows don't scale at all.
-- `Button`: `loading` keeps the label and shows an inline indicator; there is a `textDanger` variant for dialogs.
+- `Button`: `loading` keeps the label and shows an inline indicator; there is a `textDanger` variant for dialogs. Disabled follows M3: content at 38% on a quiet container (outlined keeps a faint outline), so it cannot pass for a live tonal button.
 - `IconButton`, extended `Fab` (tells the snackbar while it is on screen).
-- `ButtonGroup`: `onPrimaryContainer` inverts the selected segment, which a `primary` fill would lose on a primary card. Labels wrap rather than truncate.
+- `ButtonGroup`: a change morphs: inner corners spring to full while fills and labels cross-fade. `onPrimaryContainer` inverts the selected segment, which a `primary` fill would lose on a primary card, and draws the others as a wash over the card (ink at 12% in light, black at 20% in dark; lightening the dark card fails 4.5:1). Labels wrap rather than truncate.
 - `ListItem` + `positionOf`: `actions` exposes a row's inner buttons to TalkBack, since a pressable row is a single focus stop.
 - `TextField`: errors are announced and included in the field's spoken label.
 - Also: `Card`, `Banner` (always icon + text), `Pill` (optional icon), `Chip`, `ProgressBar` (no value: wavy indeterminate variant), `Tile` (monogram; provider logos are not loaded), `EmptyState` (ring motif). Every control reaches a 48dp touch target.
@@ -35,9 +35,9 @@ React Native (Expo SDK 57, Expo Router) client for the same `/api/v1` backend th
   - **Announcing:** it is announced once, through a live region.
   - **Failures** stay until dismissed.
   - **Undo** appears for renames and the home currency, where the same call reverses the change. An undo that cannot run yet says so.
-- `ConfirmDialog` / `useConfirm()` (in `sheets.tsx`): the M3 basic dialog used for every confirmation: deletes, sign-out and discarding unsaved edits. The native `Alert` is not used, because the OEM themes it.
-- `src/ui/layout.tsx`: `Screen` has an optional large collapsing top app bar that runs under the status bar, and an optional fixed `header`. The add/edit form puts *Save* there, beside *Close*, as an M3 full-screen dialog does. `AuthScaffold` is the signed-out layout. The tab bar is a custom M3 navigation bar that becomes a navigation rail at ≥600dp.
-- `src/ui/sheets.tsx`: `Sheet` (the scrim fades while only the sheet rises; drag the handle or header down to close), `ActionSheet`, `PickerSheet`, `PromptDialog`, `ConfirmDialog`, `DateField`.
+- `ConfirmDialog` / `useConfirm()` (in `sheets.tsx`): the M3 basic dialog used for every confirmation: deletes, sign-out and discarding unsaved edits. The native `Alert` is not used, because the OEM themes it. Dialogs grow in from 90% on the spatial spring, dismiss on a scrim tap, and keep their content while fading out.
+- `src/ui/layout.tsx`: `Screen` has an optional large collapsing top app bar that runs under the status bar, and an optional fixed `header`. The add/edit form puts *Save* there, beside *Close*, as an M3 full-screen dialog does. `AuthScaffold` is the signed-out layout. The tab bar is a custom M3 navigation bar that becomes a navigation rail at ≥600dp. Its indicator grows out from the icon and fades (native driver), and destinations fade into each other rather than slide.
+- `src/ui/sheets.tsx`: `Sheet` (the scrim fades while only the sheet rises; drag the handle or header down to close), `ActionSheet` (keeps its last title and actions while it slides away), `PickerSheet` (opens scrolled to the current choice), `PromptDialog`, `ConfirmDialog`, `DateField`.
 - Approximations: stack transitions use native-stack `fade_from_bottom`/`slide_from_right` in place of shared-axis (a fade with reduced motion). The pull-to-refresh indicator is the native Android one, tinted from tokens. The dashboard ring shows the biggest category's share of monthly spend; the orb is decorative, because the dashboard has no next-billing data without an extra load.
 - `src/lib/haptics.ts`: semantic Android haptics, best effort.
 - Two Android quirks the components work around:

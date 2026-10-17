@@ -1,9 +1,10 @@
 import { Tabs } from 'expo-router';
 import type { BottomTabBarProps } from 'expo-router/tabs';
 import { useEffect, useState } from 'react';
-import { Keyboard, Pressable, useWindowDimensions, View } from 'react-native';
+import { Animated, Keyboard, Pressable, useWindowDimensions, View } from 'react-native';
 import * as haptics from '@/lib/haptics';
-import { space, useTheme } from '@/theme';
+import { useReducedMotion } from '@/lib/motion';
+import { motion, space, useTheme } from '@/theme';
 import { Icon, RAIL_MIN_WIDTH, Text, TOUCH, type IconName } from '@/ui';
 import { SubVoraMark } from '@/ui/brand';
 import { useObstruction } from '@/ui/obstructions';
@@ -33,6 +34,29 @@ function useKeyboardVisible() {
  * M3 navigation bar on phones, navigation rail from 600dp (tablets, unfolded foldables). The
  * selected destination gets the pill indicator behind its filled icon.
  */
+/**
+ * The pill behind the selected icon. It always has its colour and only fades (Android dropped the
+ * corner radius when a background appeared on an existing view), and grows out from the icon as
+ * M3's indicator does. Native driver: opacity and scale only.
+ */
+function ActiveIndicator({ focused }: { focused: boolean }) {
+  const { colors } = useTheme();
+  const reduced = useReducedMotion();
+  const [p] = useState(() => new Animated.Value(focused ? 1 : 0));
+  useEffect(() => {
+    if (reduced) p.setValue(focused ? 1 : 0);
+    else Animated.spring(p, { toValue: focused ? 1 : 0, ...motion.spatialFast, useNativeDriver: true }).start();
+  }, [focused, reduced, p]);
+  return (
+    <Animated.View style={{
+      position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: INDICATOR_HEIGHT / 2,
+      backgroundColor: colors.secondaryContainer,
+      opacity: p.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
+      transform: [{ scaleX: p.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+    }} />
+  );
+}
+
 function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & { rail: boolean }) {
   const { colors } = useTheme();
   const keyboard = useKeyboardVisible();
@@ -54,12 +78,7 @@ function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & 
         style={{ flex: rail ? undefined : 1, minHeight: TOUCH + space.lg, alignItems: 'center', justifyContent: 'center', gap: space.xs, paddingVertical: space.xs }}
       >
         <View style={{ width: 56, height: INDICATOR_HEIGHT, alignItems: 'center', justifyContent: 'center' }}>
-          {/* The pill always has its colour and fades in, rather than its background switching on:
-              Android dropped the corner radius when a background appeared on an existing view. */}
-          <View style={{
-            position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, borderRadius: INDICATOR_HEIGHT / 2,
-            backgroundColor: colors.secondaryContainer, opacity: focused ? 1 : 0,
-          }} />
+          <ActiveIndicator focused={focused} />
           <Icon name={focused ? d.selected : d.icon} size={24} color={focused ? colors.onSecondaryContainer : colors.onSurfaceVariant} />
         </View>
         <Text variant={focused ? 'labelMediumEmphasized' : 'labelMedium'} color={focused ? colors.onSurface : colors.onSurfaceVariant}
@@ -92,13 +111,15 @@ function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & 
 
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const reduced = useReducedMotion();
   const rail = useWindowDimensions().width >= RAIL_MIN_WIDTH;
   return (
     <Tabs
       // Back walks the tabs you actually visited before leaving the app, not straight to Home.
       backBehavior="history"
       tabBar={(props) => <NavigationBar {...props} rail={rail} />}
-      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.surface }, tabBarPosition: rail ? 'left' : 'bottom' }}
+      // M3 fades between top-level destinations rather than sliding: they are peers, not a sequence.
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.surface }, tabBarPosition: rail ? 'left' : 'bottom', animation: reduced ? 'none' : 'fade' }}
       screenListeners={{ tabPress: () => haptics.tick() }}
     >
       {Object.entries(DESTINATIONS).map(([name, { title }]) => <Tabs.Screen key={name} name={name} options={{ title }} />)}

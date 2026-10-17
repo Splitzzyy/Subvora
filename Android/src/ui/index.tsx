@@ -115,9 +115,17 @@ export function Button({ label, onPress, variant = 'filled', icon, loading, disa
   };
   const inactive = disabled || loading;
   const textual = variant === 'text' || variant === 'textDanger';
-  const { bg, fg, border } = inactive && !textual
-    ? { bg: colors.surfaceContainerHighest, fg: colors.onSurfaceVariant, border: undefined }
-    : palette[variant];
+  // M3 disabled: a quiet container with the content at 38%, so it cannot pass for a live tonal
+  // button; outlined keeps its shape as a faint outline. Loading keeps the label readable instead.
+  const off = !!disabled && !loading && !textual;
+  const { bg, fg, border } = off
+    ? variant === 'outlined'
+      ? { bg: 'transparent', fg: colors.onSurface, border: colors.outlineVariant }
+      : { bg: colors.surfaceContainerHighest, fg: colors.onSurface, border: undefined }
+    : inactive && !textual
+      ? { bg: colors.surfaceContainerHighest, fg: colors.onSurfaceVariant, border: undefined }
+      : palette[variant];
+  const dim = off ? { opacity: 0.38 } : null;
   return (
     <Tap
       accessibilityRole="button"
@@ -134,8 +142,8 @@ export function Button({ label, onPress, variant = 'filled', icon, loading, disa
       }, style]}
     >
       {loading ? <ExpressiveLoadingIndicator size={22} color={fg} label={`${label}, in progress`} />
-        : icon ? <Icon name={icon} size={20} color={fg} /> : null}
-      <Text variant={size === 'lg' ? 'titleMediumEmphasized' : 'labelLarge'} color={fg} style={{ textAlign: 'center', flexShrink: 1 }}>{label}</Text>
+        : icon ? <Icon name={icon} size={20} color={fg} style={dim} /> : null}
+      <Text variant={size === 'lg' ? 'titleMediumEmphasized' : 'labelLarge'} color={fg} style={[{ textAlign: 'center', flexShrink: 1 }, dim]}>{label}</Text>
     </Tap>
   );
 }
@@ -472,47 +480,88 @@ export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
 
 /**
  * M3 Expressive connected button group. Segments share small inner corners; the selected one
- * rounds fully and fills, so the choice reads by shape as well as colour.
+ * rounds fully and fills, so the choice reads by shape as well as colour. The change morphs: the
+ * corners spring between the two shapes while the fills and labels cross-fade.
  */
 export function ButtonGroup<T extends string>({ options, value, onChange, disabled, onPrimaryContainer }: {
   options: { value: T; label: string; icon?: IconName }[]; value: T; onChange: (v: T) => void; disabled?: boolean;
   /**
    * On a primaryContainer card a `primary` fill all but vanishes in dark mode (1.87:1), so the
-   * selected segment inverts to onPrimaryContainer with primaryContainer ink.
+   * selected segment inverts to onPrimaryContainer with primaryContainer ink, and the others are a
+   * translucent wash over the card rather than a dark surface block on a bright card.
    */
   onPrimaryContainer?: boolean;
 }) {
-  const { colors } = useTheme();
-  const selectedBg = onPrimaryContainer ? colors.onPrimaryContainer : colors.primary;
-  const selectedFg = onPrimaryContainer ? colors.primaryContainer : colors.onPrimary;
+  const { colors, isDark } = useTheme();
+  // Light: the card's own dark ink at 12%. Dark: that ink is white, and lightening the card would
+  // drop its labels below 4.5:1, so the wash is black at 20% instead.
+  const look: SegmentLook = onPrimaryContainer
+    ? {
+      selectedBg: colors.onPrimaryContainer, selectedFg: colors.primaryContainer, restFg: colors.onPrimaryContainer,
+      restBg: isDark ? colors.shadow : colors.onPrimaryContainer, restAlpha: isDark ? 0.2 : 0.12,
+    }
+    : { selectedBg: colors.primary, selectedFg: colors.onPrimary, restBg: colors.surfaceContainerHighest, restAlpha: 1, restFg: colors.onSurfaceVariant };
   return (
     <View accessibilityRole="radiogroup" style={{ flexDirection: 'row', gap: space.xxs, opacity: disabled ? 0.5 : 1 }}>
-      {options.map((option, i) => {
-        const selected = option.value === value;
-        const outer = TOUCH / 2;
-        const inner = selected ? outer : shape.extraSmall;
-        return (
-          <Tap
-            key={option.value}
-            disabled={disabled}
-            accessibilityRole="radio"
-            accessibilityState={{ selected, disabled: !!disabled }}
-            accessibilityLabel={option.label}
-            onPress={() => { haptics.tick(); onChange(option.value); }}
-            style={{
-              flex: 1, minHeight: TOUCH, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: space.xs + space.xxs, paddingHorizontal: space.xs,
-              backgroundColor: selected ? selectedBg : colors.surfaceContainerHighest,
-              borderTopLeftRadius: i === 0 ? outer : inner, borderBottomLeftRadius: i === 0 ? outer : inner,
-              borderTopRightRadius: i === options.length - 1 ? outer : inner, borderBottomRightRadius: i === options.length - 1 ? outer : inner,
-            }}
-          >
-            {option.icon ? <Icon name={selected ? 'check' : option.icon} size={18} color={selected ? selectedFg : colors.onSurfaceVariant} /> : null}
-            {/* Two lines rather than an ellipsis at large font sizes. */}
-            <Text variant="labelLarge" numberOfLines={2} style={{ textAlign: 'center', flexShrink: 1 }} color={selected ? selectedFg : colors.onSurfaceVariant}>{option.label}</Text>
-          </Tap>
-        );
-      })}
+      {options.map((option, i) => (
+        <Segment
+          key={option.value} label={option.label} icon={option.icon} look={look} disabled={disabled}
+          selected={option.value === value} first={i === 0} last={i === options.length - 1}
+          onPress={() => { haptics.tick(); onChange(option.value); }}
+        />
+      ))}
     </View>
+  );
+}
+
+interface SegmentLook { selectedBg: ColorValue; selectedFg: ColorValue; restBg: ColorValue; restAlpha: number; restFg: ColorValue }
+
+function Segment({ label, icon, look, selected, first, last, disabled, onPress }: {
+  label: string; icon?: IconName; look: SegmentLook; selected: boolean; first: boolean; last: boolean; disabled?: boolean; onPress: () => void;
+}) {
+  const reduced = useReducedMotion();
+  const [p] = useState(() => new Animated.Value(selected ? 1 : 0));
+  useEffect(() => {
+    if (reduced) p.setValue(selected ? 1 : 0);
+    // JS driver: corner radius has no native-driver support, and the fades share the one value.
+    else Animated.spring(p, { toValue: selected ? 1 : 0, ...motion.spatialFast, useNativeDriver: false }).start();
+  }, [selected, reduced, p]);
+
+  // Fades use the clamped value; the spring's overshoot belongs to the shape alone.
+  const t = p.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' });
+  const outer = TOUCH / 2;
+  const inner = p.interpolate({ inputRange: [0, 1], outputRange: [shape.extraSmall, outer], extrapolate: 'clamp' });
+  const corners = {
+    borderTopLeftRadius: first ? outer : inner, borderBottomLeftRadius: first ? outer : inner,
+    borderTopRightRadius: last ? outer : inner, borderBottomRightRadius: last ? outer : inner,
+  };
+  const fill = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, ...corners } as const;
+  const content = (on: boolean) => (
+    <>
+      {icon ? <Icon name={on ? 'check' : icon} size={18} color={on ? look.selectedFg : look.restFg} /> : null}
+      {/* Two lines rather than an ellipsis at large font sizes. */}
+      <Text variant="labelLarge" numberOfLines={2} style={{ textAlign: 'center', flexShrink: 1 }} color={on ? look.selectedFg : look.restFg}>{label}</Text>
+    </>
+  );
+  const row = { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.xs + space.xxs } as const;
+  return (
+    <Tap
+      disabled={disabled}
+      accessibilityRole="radio"
+      accessibilityState={{ selected, disabled: !!disabled }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      // The morph is the press feedback; a scale on top would fight it.
+      scaleOnPress={false}
+      style={{ flex: 1, minHeight: TOUCH, justifyContent: 'center', paddingHorizontal: space.xs, ...corners }}
+    >
+      {/* Both fills always carry their colour and only fade: Android drops a view's corner radius
+          when a background first appears on it. */}
+      <Animated.View style={[fill, { backgroundColor: look.restBg, opacity: t.interpolate({ inputRange: [0, 1], outputRange: [look.restAlpha, 0] }) }]} />
+      <Animated.View style={[fill, { backgroundColor: look.selectedBg, opacity: t }]} />
+      <Animated.View style={[row, { opacity: t.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>{content(false)}</Animated.View>
+      <Animated.View style={[row, { position: 'absolute', left: space.xs, right: space.xs, top: 0, bottom: 0, opacity: t }]}>{content(true)}</Animated.View>
+    </Tap>
   );
 }
 
