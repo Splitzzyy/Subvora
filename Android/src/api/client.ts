@@ -11,8 +11,13 @@ export const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'https://subvora
 
 /** A sleeping free-tier instance swallows connections; 30s beats fetch's open-ended wait. */
 const REQUEST_TIMEOUT_MS = 30_000;
-/** Shorter: a refresh runs inside another request's 401 retry, so its wait stacks on top. */
-const REFRESH_TIMEOUT_MS = 15_000;
+/**
+ * Longer, though its wait stacks on the 401'd request's: a refresh is the first query after Neon
+ * suspends, and a timed-out one has usually rotated the token anyway. Both attempts timing out
+ * leaves this device holding the old token, which the server reads as theft once its 2-minute
+ * reuse grace has passed - the next refresh signs the user out. Two 60s attempts stay inside it.
+ */
+const REFRESH_TIMEOUT_MS = 60_000;
 
 const ACCESS_KEY = 'auth_access_token';
 const REFRESH_KEY = 'auth_refresh_token';
