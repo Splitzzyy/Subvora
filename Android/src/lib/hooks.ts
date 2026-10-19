@@ -43,6 +43,12 @@ export function useLoader<T>(fetcher: () => Promise<T>, cacheKey?: CacheKey) {
     setLoading(true);
     setError(null);
     setErrorStatus(null);
+    // First load: paint the mirror now rather than a skeleton for the whole round trip, which a
+    // sleeping server or a suspended database stretches to 10-60s. The fetch below replaces it.
+    if (cacheKey && loadedVersion.current === null) {
+      const mirror = await readCache<T>(cacheKey);
+      if (mirror) setData((current) => current ?? mirror.data);
+    }
     try {
       const result = await fetcher();
       setData(result);
