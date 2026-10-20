@@ -44,8 +44,11 @@ services:
 
       - key: Smtp__Host
         value: smtp-relay.brevo.com
+      # Not 587: Render's free instances block outbound SMTP on 25, 465 and 587 (since Sept 2025),
+      # so every send timed out and reset codes never arrived. Brevo's relay also listens on 2525,
+      # with STARTTLS, so SmtpEmailSender needs no change.
       - key: Smtp__Port
-        value: "587"
+        value: "2525"
       - key: Smtp__Username
         sync: false
       - key: Smtp__Password

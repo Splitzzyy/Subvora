@@ -95,7 +95,12 @@ addresses have accounts. Two things make it visible instead:
 
 - `EmailDispatchBackgroundService` logs `SMTP is not configured (...) - no email will be delivered`
   once at boot when `Smtp__Host` or `Smtp__FromAddress` is unset. Check the Render log after a deploy.
-- A send that fails later logs `Could not deliver an email to {Recipient}` at warning level.
+- A send that fails later logs `Could not deliver an email ({Subject})` at warning level.
+
+**Use port 2525, not 587.** Render's free instances block outbound SMTP on ports 25, 465 and 587,
+so a send on 587 times out and shows up only as that warning. Brevo's relay accepts STARTTLS on
+2525; `render.yaml` sets it, but an existing service keeps whatever `Smtp__Port` its dashboard
+has, so change it there too (Environment → `Smtp__Port` = `2525` → save, which redeploys).
 
 If neither line appears and mail still does not arrive, the send reached Brevo and the problem is
 there: an unverified `Smtp__FromAddress`, the account password used instead of the SMTP key, or the
