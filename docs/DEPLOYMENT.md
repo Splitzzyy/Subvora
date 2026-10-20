@@ -17,14 +17,15 @@ repo is iOS-specific enough to block adding it later.
 | PostgreSQL 16 | Neon | 0.5 GB storage, scale-to-zero compute |
 | Outbound SMTP | Brevo relay | 300 emails/day |
 | Exchange rates | open.er-api.com (ExchangeRate-API open access) | no key, no account — already hardcoded in `Program.cs`; terms ask for attribution |
-| Android APK | GitHub Releases | unlimited |
+| Android APK + AAB | GitHub Releases | unlimited |
+| Privacy policy, account deletion page | GitHub Pages (`site/`, `.github/workflows/pages.yml`) | unlimited for a public repo |
 | Keep-warm ping | cron-job.org | 5-minute interval |
 
 No container registry: Render builds the image from the repo. No push service, no object storage,
 no cache — see the architectural rules in [CLAUDE.md](../CLAUDE.md).
 
-**Costs nothing recurring.** Deliberately excluded: Apple Developer Program, Google Play Console
-($25 one-time), custom domain.
+**Costs nothing recurring.** Deliberately excluded: Apple Developer Program, custom domain.
+Google Play Console is a $25 one-time fee.
 
 ## Prerequisites
 
@@ -215,7 +216,8 @@ git push origin v2.0.0
 ```
 
 `.github/workflows/release-android.yml` builds the React Native app in `Android/` into a signed APK
-(arm64 + armv7, JS bundle embedded) and attaches it to a GitHub Release. The retired MAUI client in
+and AAB (arm64 + armv7, JS bundle embedded) and attaches both to a GitHub Release. The APK is for
+sideloading; the AAB is what you upload to Google Play. The retired MAUI client in
 `src/SubVora.Mobile` is not built or released any more.
 
 ### Upgrading from the MAUI app
@@ -233,6 +235,21 @@ What users notice: the app is new, and they **sign in once** (tokens moved from 
 to `expo-secure-store`). Their data is on the server, so nothing is lost. The offline cache rebuilds
 on the first load, and reminders are rescheduled once the subscription list loads.
 Users download it and sideload; `adb install -r <apk>` for a device on your desk.
+
+### Google Play
+
+Upload the release's `.aab` in Play Console by hand. Two settings matter and cannot be undone:
+
+- **App signing key: upload your own.** On the first release choose *Use a different key → Upload
+  private key from Java keystore* and export the `production` keystore with the PEPK tool Play
+  offers. A Google-generated key would sign Play builds differently from the GitHub APK, and Android
+  refuses an update across signatures, so sideloaded users could only switch by uninstalling.
+- **Package name `com.subvora.mobile`**, same rule as above.
+
+The listing's privacy policy and account deletion URLs are the pages in `site/`, published by
+`.github/workflows/pages.yml` to `https://splitzzyy.github.io/Subvora/privacy.html` and
+`https://splitzzyy.github.io/Subvora/delete-account.html` (one-time: repo Settings → Pages → Source:
+GitHub Actions). Deletion requests by email are handled by hand: delete the user row and reply.
 
 ### Tag from `main` or you will have to start over
 
@@ -371,7 +388,8 @@ These are accepted trade-offs of the free tier, not bugs to fix:
 - **`SCHEDULE_EXACT_ALARM` is declared without a fallback.** Irrelevant for sideloaded APKs; the day
   distribution moves to Play it becomes a declaration form, alongside a target-API floor and a
   privacy policy URL.
-- **Account deletion is in-app only.** Settings → Delete account calls `DELETE /api/v1/users/me`
-  with the current password. Play's User Data policy also wants a web link where someone without
-  the app installed can *request* deletion; there is no listing, so there is no page. Add one (and a
-  support address it can name) on the day distribution moves to Play.
+- **Account deletion without the app is manual.** Settings → Delete account calls
+  `DELETE /api/v1/users/me` with the current password. For Play's User Data policy,
+  `site/delete-account.html` lets someone without the app request deletion by email; that request
+  is carried out by hand (`DELETE FROM users WHERE email = ...` - the cascade takes the rest) within
+  the 7 days the page promises.

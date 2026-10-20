@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SubVora Privacy Policy</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 720px; margin: 0 auto; padding: 24px 16px; color: #1b1b21; background: #fcf8ff; }
+  h1, h2 { line-height: 1.25; }
+  a { color: #5b3fd6; }
+  @media (prefers-color-scheme: dark) { body { color: #e5e1ec; background: #0b0a1f; } a { color: #b9a6ff; } }
+</style>
+</head>
+<body>
+<h1>SubVora Privacy Policy</h1>
+<p>Effective 20 October 2026</p>
+
+<p>SubVora is a subscription tracker for Android. This policy explains what the app stores, why, and how to delete it.
+Questions: <a href="mailto:gaurav2000ashish@gmail.com">gaurav2000ashish@gmail.com</a>.</p>
+
+<h2>What we store</h2>
+<ul>
+  <li><strong>Account:</strong> your email address and a bcrypt hash of your password. We never store the password itself.</li>
+  <li><strong>What you enter:</strong> subscriptions (name, cost, currency, billing cycle, dates, paid status, reminder days),
+    your own categories, payment source labels (for example "HDFC card" — a name you type, never a card number), and your home currency.</li>
+  <li><strong>Sign-in tokens:</strong> so you stay signed in. They expire, and are deleted with your account.</li>
+  <li><strong>Password reset codes:</strong> short-lived, only when you ask to reset your password.</li>
+</ul>
+<p>We do not collect your location, contacts, bank details, card numbers, or device identifiers. The app has no ads, no analytics, and no tracking SDKs.</p>
+
+<h2>How it is used</h2>
+<p>Only to run the app: show your subscriptions, compute spending totals, and email you a password reset code when you ask for one.
+We do not sell your data or share it for advertising.</p>
+
+<h2>On your phone</h2>
+<p>The app keeps a copy of your data on the device so it can be viewed offline, and stores sign-in tokens in Android's secure storage.
+Renewal reminders are scheduled locally by the app — nothing is pushed from a server. Uninstalling the app removes all of this.</p>
+
+<h2>Services we rely on</h2>
+<ul>
+  <li><strong>Render</strong> (United States) hosts the server.</li>
+  <li><strong>Neon</strong> hosts the database.</li>
+  <li><strong>Brevo</strong> sends password reset emails, so it receives your email address when you request one.</li>
+  <li><strong>Have I Been Pwned</strong> checks whether a new password appears in known breaches. Only the first 5 characters of the password's SHA-1 hash are sent, never the password or your email.</li>
+  <li><strong>open.er-api.com</strong> supplies currency exchange rates. No user data is sent.</li>
+  <li><strong>jsDelivr</strong> serves brand logos shown in the app. Like any website, it sees your device's IP address when a logo loads.</li>
+</ul>
+<p>All traffic between the app and the server is encrypted (HTTPS).</p>
+
+<h2>Deleting your data</h2>
+<p>In the app: <strong>Settings → Delete account</strong>, then confirm with your password. Your account and everything linked to it
+are deleted from the database immediately. Without the app, see <a href="delete-account.html">how to request deletion</a>.</p>
+
+<h2>Children</h2>
+<p>SubVora is not directed at children under 13 and we do not knowingly collect their data.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, the new version will be posted on this page with a new effective date.</p>
+</body>
+</html>
