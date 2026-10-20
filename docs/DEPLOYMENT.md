@@ -385,9 +385,17 @@ These are accepted trade-offs of the free tier, not bugs to fix:
   per-IP limit has collapsed into one shared bucket.
 - **Per-account row caps**: 500 subscriptions, 100 own categories, 50 payment sources. One account
   cannot fill the shared 0.5 GB database, and every list stays small enough not to paginate.
-- **`SCHEDULE_EXACT_ALARM` is declared without a fallback.** Irrelevant for sideloaded APKs; the day
-  distribution moves to Play it becomes a declaration form, alongside a target-API floor and a
-  privacy policy URL.
+- **Renewal reminders use inexact alarms.** The app declares no exact-alarm permission (so Play has
+  no exact-alarm declaration to fill), and `expo-notifications` falls back to
+  `setAndAllowWhileIdle`: a reminder can arrive late while the phone dozes. Fine for a reminder days
+  ahead of a charge; don't add `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM` for it - Play reserves those
+  for alarm-clock and calendar apps. The notification permissions (`POST_NOTIFICATIONS`,
+  `RECEIVE_BOOT_COMPLETED`, `WAKE_LOCK`, `VIBRATE`) stay.
+- **Unused permissions are stripped** via `android.blockedPermissions` in `Android/app.json`:
+  `SYSTEM_ALERT_WINDOW` and the storage pair (Expo template defaults) and
+  `com.google.android.c2dm.permission.RECEIVE` (FCM, pulled in by `expo-notifications`; there is no
+  push). Reviewers question permissions an app does not use. Check the list after an Expo upgrade:
+  Play Console → App bundle explorer, or `aapt2 dump permissions <apk>`.
 - **Account deletion without the app is manual.** Settings → Delete account calls
   `DELETE /api/v1/users/me` with the current password. For Play's User Data policy,
   `site/delete-account.html` lets someone without the app request deletion by email; that request
