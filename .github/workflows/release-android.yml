@@ -75,19 +75,25 @@ jobs:
             || { echo "::error::Generated build.gradle lacks the expected applicationId/versionCode."; grep -n "applicationId\|versionCode\|versionName" android/app/build.gradle; exit 1; }
 
       # EXPO_PUBLIC_API_URL is left unset on purpose: the client defaults to the deployed API.
-      # Phones only - the emulator ABIs would roughly double the APK.
-      - name: Build release APK
+      # Phones only - the emulator ABIs would roughly double the APK. The APK is for GitHub Releases
+      # (sideloading); the AAB is what Google Play accepts. One invocation builds both from one compile.
+      - name: Build release APK and AAB
         working-directory: Android/android
-        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
+        run: ./gradlew assembleRelease bundleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
 
-      # The generated project signs release builds with the debug key; apksigner replaces that
-      # signature with the production one.
-      - name: Sign APK
+      # The generated project signs release builds with the debug key. apksigner replaces that
+      # signature on the APK. The AAB is a signed JAR, so it takes jarsigner, which adds a signer
+      # rather than replacing one: the debug signature is stripped first, since Play rejects a bundle
+      # with two signers. Same production key for both, so it doubles as Play's upload key and
+      # (uploaded via PEPK) its app signing key, keeping Play builds and GitHub APKs updatable over
+      # each other.
+      - name: Sign APK and AAB
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
+        # detect-secrets reads jarsigner's `-keypass:env NAME` as a password literal; it names an env var.
+        run: | # pragma: allowlist secret
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n 1)/apksigner"
           "$apksigner" sign \
             --ks "$RUNNER_TEMP/subvora-release.keystore" --ks-key-alias "$KEY_ALIAS" \
@@ -96,9 +102,20 @@ jobs:
             android/app/build/outputs/apk/release/app-release.apk
           "$apksigner" verify --print-certs "$RUNNER_TEMP/SubVora-${GITHUB_REF_NAME}.apk"
 
-      - name: Attach APK to release
+          aab="$RUNNER_TEMP/SubVora-${GITHUB_REF_NAME}.aab"
+          cp android/app/build/outputs/bundle/release/app-release.aab "$aab"
+          zip -q -d "$aab" 'META-INF/*.SF' 'META-INF/*.RSA'
+          jarsigner -keystore "$RUNNER_TEMP/subvora-release.keystore" \
+            -storepass:env KEYSTORE_PASSWORD -keypass:env KEY_PASSWORD \
+            "$aab" "$KEY_ALIAS"
+          jarsigner -verify "$aab"
+          signers="$(keytool -printcert -jarfile "$aab" | grep -c '^Signer #')"
+          [ "$signers" -eq 1 ] || { echo "::error::AAB has $signers signers, expected 1."; exit 1; }
+
+      - name: Attach APK and AAB to release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "$GITHUB_REF_NAME" --generate-notes --verify-tag || true
           gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/SubVora-${GITHUB_REF_NAME}.apk" --clobber
+          gh release upload "$GITHUB_REF_NAME" "$RUNNER_TEMP/SubVora-${GITHUB_REF_NAME}.aab" --clobber
