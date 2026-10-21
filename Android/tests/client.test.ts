@@ -82,9 +82,9 @@ test('a refresh the server rejects ends the session', async () => {
 });
 
 test('a 400 naming a field is told apart from one refusing the whole request', () => {
-  const breached = new ApiError(400, { title: 'One or more validation errors occurred.', errors: { NewPassword: ['This password has appeared in a data breach.'] } });
+  const tooShort = new ApiError(400, { title: 'One or more validation errors occurred.', errors: { NewPassword: ['Password must be at least 8 characters.'] } });
   const badCode = new ApiError(400, { title: 'Invalid or expired reset code.' });
-  assert.equal(fieldErrorMessage(breached), 'This password has appeared in a data breach.');
+  assert.equal(fieldErrorMessage(tooShort), 'Password must be at least 8 characters.');
   assert.equal(fieldErrorMessage(badCode), null);
   assert.equal(fieldErrorMessage(new ApiError(0)), null);
   // The general message still falls back to the title.

@@ -34,7 +34,7 @@ public class IdempotentCreateTests : IClassFixture<ApiWebApplicationFactory>
     {
         var client = (factory ?? _factory).CreateClient();
         var email = $"idempotent-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple"; // pragma: allowlist secret
+        const string password = "Correct-horse-battery-staple1"; // pragma: allowlist secret
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         var login = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password });

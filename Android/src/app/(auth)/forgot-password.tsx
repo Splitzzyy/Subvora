@@ -58,7 +58,7 @@ export default function ForgotPassword() {
       router.back();
     } catch (e) {
       // One 400 for wrong, expired, used and over-limit - deliberately, so guessing learns nothing. A
-      // 400 naming a field is the new password itself (too short, or found in a breach) instead.
+      // 400 naming a field is the new password itself (too short) instead.
       setError(fieldErrorMessage(e) ?? (isStatus(e, 400)
         ? "That code isn't valid. It may have expired or already been used - request a new one if you need to."
         : writeErrorMessage(e)));

@@ -23,7 +23,7 @@ namespace SubVora.Api.Tests;
 /// </summary>
 public class UserQuotaTests : IClassFixture<ApiWebApplicationFactory>
 {
-    private const string Password = "correct-horse-battery-staple"; // pragma: allowlist secret
+    private const string Password = "Correct-horse-battery-staple1"; // pragma: allowlist secret
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

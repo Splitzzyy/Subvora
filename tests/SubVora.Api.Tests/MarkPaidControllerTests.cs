@@ -34,7 +34,7 @@ public class MarkPaidControllerTests : IClassFixture<ApiWebApplicationFactory>
         var email = $"markpaid-{Guid.NewGuid()}@example.com";
         // Throwaway literal for a throwaway account in an ephemeral Testcontainers database, the
         // same one every other controller test here registers with.
-        const string password = "correct-horse-battery-staple"; // pragma: allowlist secret
+        const string password = "Correct-horse-battery-staple1"; // pragma: allowlist secret
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         var login = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password });

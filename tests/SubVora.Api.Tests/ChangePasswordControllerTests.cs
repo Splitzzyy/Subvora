@@ -7,8 +7,8 @@ namespace SubVora.Api.Tests;
 
 public class ChangePasswordControllerTests : IClassFixture<ApiWebApplicationFactory>
 {
-    private const string OriginalPassword = "correct-horse-battery-staple";  // pragma: allowlist secret
-    private const string NewPassword = "an-entirely-different-passphrase";   // pragma: allowlist secret
+    private const string OriginalPassword = "Correct-horse-battery-staple1";  // pragma: allowlist secret
+    private const string NewPassword = "An-entirely-different-passphrase1";   // pragma: allowlist secret
 
     private readonly ApiWebApplicationFactory _factory;
 
