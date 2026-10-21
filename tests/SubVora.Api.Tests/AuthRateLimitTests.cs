@@ -74,8 +74,8 @@ public class AuthRateLimitTests : IClassFixture<ApiWebApplicationFactory>
         // behind one IP. A few logins from that IP must not 429 everyone's refresh.
         var client = WithLimits(authPermitLimit: 3).CreateClient();
         var email = $"rate-refresh-{Guid.NewGuid()}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" }); // pragma: allowlist secret
-        var login = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "correct-horse-battery-staple" }); // pragma: allowlist secret
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" }); // pragma: allowlist secret
+        var login = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "Correct-horse-battery-staple1" }); // pragma: allowlist secret
         var tokens = await login.Content.ReadFromJsonAsync<AuthTokenResponse>();
 
         await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "wrong-password" });

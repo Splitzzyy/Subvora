@@ -174,7 +174,7 @@ function firstValidationMessage(body: unknown): string | null {
 }
 
 /**
- * The message of a 400 that names a field (a new password too short, or found in a breach), else
+ * The message of a 400 that names a field (a new password too short), else
  * null - so a screen can tell that apart from a 400 refusing the request as a whole.
  */
 export const fieldErrorMessage = (error: unknown) =>

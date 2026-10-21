@@ -21,7 +21,7 @@ public class UsersControllerTests : IClassFixture<ApiWebApplicationFactory>
     private async Task<HttpClient> CreateAuthenticatedClientAsync(string email)
     {
         var client = _factory.CreateClient();
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
@@ -119,7 +119,7 @@ public class UsersControllerTests : IClassFixture<ApiWebApplicationFactory>
 
     // ---- DELETE /users/me (#251) ------------------------------------------------------------
 
-    private const string Password = "correct-horse-battery-staple"; // pragma: allowlist secret
+    private const string Password = "Correct-horse-battery-staple1"; // pragma: allowlist secret
 
     private async Task<(HttpClient Client, AuthTokenResponse Tokens, Guid UserId, string Email)> SignUpWithDataAsync()
     {

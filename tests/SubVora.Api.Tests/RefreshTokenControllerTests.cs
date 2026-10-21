@@ -16,7 +16,7 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
         _factory = factory;
     }
 
-    private static async Task<AuthTokenResponse> RegisterAndLoginAsync(HttpClient client, string email, string password = "correct-horse-battery-staple")
+    private static async Task<AuthTokenResponse> RegisterAndLoginAsync(HttpClient client, string email, string password = "Correct-horse-battery-staple1")
     {
         var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
@@ -29,7 +29,7 @@ public class RefreshTokenControllerTests : IClassFixture<ApiWebApplicationFactor
         return tokens!;
     }
 
-    private static async Task<AuthTokenResponse> LoginAsync(HttpClient client, string email, string password = "correct-horse-battery-staple")
+    private static async Task<AuthTokenResponse> LoginAsync(HttpClient client, string email, string password = "Correct-horse-battery-staple1")
     {
         var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password });
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);

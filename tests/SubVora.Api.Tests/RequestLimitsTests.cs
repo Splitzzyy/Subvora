@@ -11,7 +11,7 @@ namespace SubVora.Api.Tests;
 /// <summary>Limits that apply to every request, not to one endpoint: the body-size cap and the global rate limiter.</summary>
 public class RequestLimitsTests : IClassFixture<ApiWebApplicationFactory>
 {
-    private const string Password = "correct-horse-battery-staple"; // pragma: allowlist secret
+    private const string Password = "Correct-horse-battery-staple1"; // pragma: allowlist secret
 
     private readonly ApiWebApplicationFactory _factory;
 

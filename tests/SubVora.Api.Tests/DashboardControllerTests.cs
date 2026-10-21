@@ -28,7 +28,7 @@ public class DashboardControllerTests : IClassFixture<ApiWebApplicationFactory>
     private async Task<HttpClient> CreateAuthenticatedClientAsync(string email)
     {
         var client = _factory.CreateClient();
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);

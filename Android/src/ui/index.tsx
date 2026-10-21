@@ -412,8 +412,10 @@ export function FadeIn({ children, rise, style }: { children: React.ReactNode; r
 
 // ---- Inputs ----------------------------------------------------------------------------------
 
-export function TextField({ label, error, secure, style, ref, ...props }: TextInputProps & {
+export function TextField({ label, error, supporting, secure, style, ref, ...props }: TextInputProps & {
   label: string; error?: string | null; secure?: boolean;
+  /** M3 supporting text under the field; an error takes its place. */
+  supporting?: string;
   /** The inner input, so a form can move focus to the next field on the keyboard's Next. */
   ref?: React.Ref<TextInput>;
 }) {
@@ -458,7 +460,8 @@ export function TextField({ label, error, secure, style, ref, ...props }: TextIn
         </View>
         {secure ? <IconButton icon={hidden ? 'eye-outline' : 'eye-off-outline'} label={hidden ? 'Show password' : 'Hide password'} onPress={() => setHidden((h) => !h)} /> : null}
       </Pressable>
-      {error ? <Text variant="labelMedium" color={colors.error} accessibilityLiveRegion="polite" style={{ paddingHorizontal: space.lg }}>{error}</Text> : null}
+      {error ? <Text variant="labelMedium" color={colors.error} accessibilityLiveRegion="polite" style={{ paddingHorizontal: space.lg }}>{error}</Text>
+        : supporting ? <Text variant="labelMedium" color={colors.onSurfaceVariant} style={{ paddingHorizontal: space.lg }}>{supporting}</Text> : null}
     </View>
   );
 }

@@ -69,14 +69,6 @@ builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<ForgotPasswordRequest>, ForgotPasswordRequestValidator>();
 builder.Services.AddScoped<IValidator<ResetPasswordRequest>, ResetPasswordRequestValidator>();
 builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();
-// Register, change and reset refuse a password from a public breach (k-anonymity range API; only a
-// 5-character SHA-1 prefix leaves). Short timeout because it sits on those requests' path, and the
-// client fails open, so an outage costs the check, never a sign-up.
-builder.Services.AddHttpClient<IBreachedPasswordChecker, PwnedPasswordsClient>(client =>
-{
-    client.BaseAddress = new Uri("https://api.pwnedpasswords.com/");
-    client.Timeout = TimeSpan.FromSeconds(5);
-});
 // Requests enqueue and return; a background service does the SMTP round trip. Sending inline made
 // response time and status depend on whether the address existed, which is exactly what
 // forgot-password and register are written to hide - see QueuedEmailSender.

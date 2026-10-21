@@ -24,7 +24,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
     public async Task Register_WithValidEmailAndPassword_Returns202AndCreatesAUsableAccount()
     {
         var client = _factory.CreateClient();
-        var request = new RegisterRequest { Email = $"register-{Guid.NewGuid()}@example.com", Password = "correct-horse-battery-staple" };
+        var request = new RegisterRequest { Email = $"register-{Guid.NewGuid()}@example.com", Password = "Correct-horse-battery-staple1" };
 
         var response = await client.PostAsJsonAsync("/api/v1/auth/register", request);
 
@@ -40,7 +40,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         // The whole point: a caller must not be able to test which addresses have accounts, so a
         // duplicate cannot differ by status, by body, or by anything else on the wire.
         var client = _factory.CreateClient();
-        var request = new RegisterRequest { Email = $"duplicate-{Guid.NewGuid()}@example.com", Password = "correct-horse-battery-staple" };
+        var request = new RegisterRequest { Email = $"duplicate-{Guid.NewGuid()}@example.com", Password = "Correct-horse-battery-staple1" };
 
         var first = await client.PostAsJsonAsync("/api/v1/auth/register", request);
         var second = await client.PostAsJsonAsync("/api/v1/auth/register", request);
@@ -62,7 +62,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         var email = $"welcome-{Guid.NewGuid()}@example.com";
         var emailSender = _factory.Services.GetRequiredService<FakeEmailSender>();
 
-        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         var sent = Assert.Single(emailSender.SentEmails, e => e.ToEmail == email);
@@ -77,10 +77,10 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         var email = $"notice-{Guid.NewGuid()}@example.com";
         var emailSender = _factory.Services.GetRequiredService<FakeEmailSender>();
 
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
         var beforeSecond = emailSender.SentEmails.Count(e => e.ToEmail == email);
 
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "a-completely-different-password" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "A-completely-different-password1" });
 
         Assert.Equal(beforeSecond + 1, emailSender.SentEmails.Count(e => e.ToEmail == email));
     }
@@ -92,12 +92,12 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         // password has to be worthless against the existing account.
         var client = _factory.CreateClient();
         var email = $"takeover-{Guid.NewGuid()}@example.com";
-        const string originalPassword = "correct-horse-battery-staple";
+        const string originalPassword = "Correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = originalPassword });
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "attacker-chosen-password" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Attacker-chosen-password1" });
 
-        var attacker = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "attacker-chosen-password" });
+        var attacker = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "Attacker-chosen-password1" });
         var owner = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = originalPassword });
 
         Assert.Equal(HttpStatusCode.Unauthorized, attacker.StatusCode);
@@ -109,7 +109,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
     {
         var client = _factory.CreateClient();
         var email = $"login-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
@@ -148,7 +148,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         var client = _factory.CreateClient();
         var email = $"wrongpass-{Guid.NewGuid()}@example.com";
 
-        var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        var registerResponse = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
         Assert.Equal(HttpStatusCode.Accepted, registerResponse.StatusCode);
 
         var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "wrong-password" });
@@ -163,7 +163,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         // answer must be byte-for-byte the wrong-password one, or "locked" becomes its own signal.
         var client = _factory.CreateClient();
         var email = $"lockout-{Guid.NewGuid()}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
 
         HttpResponseMessage wrong = null!;
         for (var i = 0; i < 10; i++)
@@ -172,7 +172,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
             Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
         }
 
-        var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "correct-horse-battery-staple" });
+        var locked = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "Correct-horse-battery-staple1" });
 
         Assert.Equal(HttpStatusCode.Unauthorized, locked.StatusCode);
         Assert.Equal(await wrong.Content.ReadAsStringAsync(), await locked.Content.ReadAsStringAsync());
@@ -193,23 +193,29 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
     {
         var client = _factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = "not-an-email", Password = "correct-horse-battery-staple" });
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = "not-an-email", Password = "Correct-horse-battery-staple1" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
-    [Fact]
-    public async Task Register_WithABreachedPassword_Returns400SayingWhy_AndCreatesNoAccount()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Register_WithAWeakPassword_Returns400NamingTheField_AndCreatesNoAccount(bool common)
     {
+        // The client shows the first message under "errors" (fieldErrorMessage), so the rule's own
+        // wording has to reach it there, not just a generic title.
         var client = _factory.CreateClient();
-        var password = $"breached-{Guid.NewGuid():N}";
-        _factory.Services.GetRequiredService<FakeBreachedPasswordChecker>().Breached[password] = true;
-        var email = $"breached-{Guid.NewGuid()}@example.com";
+        var email = $"weak-{Guid.NewGuid()}@example.com";
+        var password = common ? string.Concat("Pass", "word1!") : new string('x', 12);
 
         var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("data breach", await response.Content.ReadAsStringAsync());
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var messages = body.RootElement.GetProperty("errors").EnumerateObject()
+            .SelectMany(field => field.Value.EnumerateArray().Select(m => m.GetString()));
+        Assert.Contains(common ? PasswordRules.CommonMessage : PasswordRules.RequirementsMessage, messages);
         using var scope = _factory.Services.CreateScope();
         Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Users.AnyAsync(u => u.Email == email));
     }
@@ -226,7 +232,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         var client = _factory.CreateClient();
         var email = new string('a', 250) + "@example.com";
 
-        var response = await client.PostAsJsonAsync(path, new { email, password = "correct-horse-battery-staple", code = "123456", newPassword = "correct-horse-battery-staple" });  // pragma: allowlist secret
+        var response = await client.PostAsJsonAsync(path, new { email, password = "Correct-horse-battery-staple1", code = "123456", newPassword = "Correct-horse-battery-staple1" });  // pragma: allowlist secret
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -239,7 +245,7 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
         // silent path as a sequential duplicate rather than surfacing a 500.
         var client = _factory.CreateClient();
         var email = $"register-race-{Guid.NewGuid()}@example.com";
-        var request = new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" };
+        var request = new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" };
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ =>
             client.PostAsJsonAsync("/api/v1/auth/register", request)));

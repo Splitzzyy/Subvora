@@ -91,7 +91,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"forgot-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
 
@@ -108,8 +108,8 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-valid-{Guid.NewGuid()}@example.com";
-        const string oldPassword = "correct-horse-battery-staple";
-        const string newPassword = "new-correct-horse-battery-staple";
+        const string oldPassword = "Correct-horse-battery-staple1";
+        const string newPassword = "New-correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = oldPassword });
         var code = await RequestResetCodeAsync(client, email);
@@ -128,14 +128,14 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         // would otherwise leave the user with no session anywhere straight after the reset.
         var client = _factory.CreateClient();
         var email = $"reset-signs-in-{Guid.NewGuid()}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
         for (var i = 0; i < 10; i++)
         {
             await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = "wrong-password" });  // pragma: allowlist secret
         }
 
         var code = await RequestResetCodeAsync(client, email);
-        var resetResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "new-correct-horse-battery-staple" });
+        var resetResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "New-correct-horse-battery-staple1" });
 
         Assert.Equal(HttpStatusCode.OK, resetResponse.StatusCode);
         var session = await resetResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
@@ -149,8 +149,8 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-revokes-{Guid.NewGuid()}@example.com";
-        const string oldPassword = "correct-horse-battery-staple";
-        const string newPassword = "new-correct-horse-battery-staple";
+        const string oldPassword = "Correct-horse-battery-staple1";
+        const string newPassword = "New-correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = oldPassword });
         var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = oldPassword });
@@ -179,14 +179,14 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-failed-keeps-session-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         var loginResponse = await client.PostAsJsonAsync("/api/v1/auth/login", new LoginRequest { Email = email, Password = password });
         var session = await loginResponse.Content.ReadFromJsonAsync<AuthTokenResponse>();
         await RequestResetCodeAsync(client, email);
 
-        var wrongCodeResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "new-password-123" });
+        var wrongCodeResponse = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "New-password-123" });
         Assert.Equal(HttpStatusCode.BadRequest, wrongCodeResponse.StatusCode);
 
         var refreshResponse = await client.PostAsJsonAsync("/api/v1/auth/refresh", new RefreshRequest { RefreshToken = session!.RefreshToken });
@@ -198,7 +198,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-expired-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         var code = await RequestResetCodeAsync(client, email);
@@ -212,7 +212,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
             await dbContext.SaveChangesAsync();
         }
 
-        var response = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "new-password-123" });
+        var response = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "New-password-123" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -222,12 +222,12 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-wrong-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         await RequestResetCodeAsync(client, email);
 
-        var response = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "new-password-123" });
+        var response = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "New-password-123" });
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         using var scope = _factory.Services.CreateScope();
@@ -242,19 +242,19 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-lockout-{Guid.NewGuid()}@example.com";
-        const string password = "correct-horse-battery-staple";
+        const string password = "Correct-horse-battery-staple1";
 
         await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
         var code = await RequestResetCodeAsync(client, email);
 
         for (var i = 0; i < 5; i++)
         {
-            var wrongAttempt = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "new-password-123" });
+            var wrongAttempt = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = "000000", NewPassword = "New-password-123" });
             Assert.Equal(HttpStatusCode.BadRequest, wrongAttempt.StatusCode);
         }
 
         // Even the correct code is rejected now - the code is locked out after 5 failed attempts.
-        var finalAttempt = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "new-password-123" });
+        var finalAttempt = await client.PostAsJsonAsync("/api/v1/auth/reset-password", new ResetPasswordRequest { Email = email, Code = code, NewPassword = "New-password-123" });
         Assert.Equal(HttpStatusCode.BadRequest, finalAttempt.StatusCode);
     }
 
@@ -266,7 +266,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         // bounded one code.
         var client = _factory.CreateClient();
         var email = $"reset-supersede-{Guid.NewGuid()}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
 
         var firstCode = await RequestResetCodeAsync(client, email);
         await StepPastResetCooldownAsync(email);
@@ -274,12 +274,12 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         Assert.NotEqual(firstCode, secondCode);
 
         var withOldCode = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
-            new ResetPasswordRequest { Email = email, Code = firstCode, NewPassword = "old-code-should-not-work" });
+            new ResetPasswordRequest { Email = email, Code = firstCode, NewPassword = "Old-code-should-not-work1" });
 
         Assert.Equal(HttpStatusCode.BadRequest, withOldCode.StatusCode);
 
         var withNewCode = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
-            new ResetPasswordRequest { Email = email, Code = secondCode, NewPassword = "new-code-should-work" });
+            new ResetPasswordRequest { Email = email, Code = secondCode, NewPassword = "New-code-should-work1" });
 
         Assert.Equal(HttpStatusCode.OK, withNewCode.StatusCode);
     }
@@ -289,7 +289,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
     {
         var client = _factory.CreateClient();
         var email = $"reset-live-count-{Guid.NewGuid()}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
 
         await RequestResetCodeAsync(client, email);
         await StepPastResetCooldownAsync(email);
@@ -311,7 +311,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         // the code already in the owner's inbox, which a second request used to retire.
         var client = _factory.CreateClient();
         var email = $"reset-cooldown-{Guid.NewGuid()}@example.com";
-        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "correct-horse-battery-staple" });
+        await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = "Correct-horse-battery-staple1" });
         var code = await RequestResetCodeAsync(client, email);
 
         var repeat = await client.PostAsJsonAsync("/api/v1/auth/forgot-password", new ForgotPasswordRequest { Email = email });
@@ -321,7 +321,7 @@ public class PasswordResetControllerTests : IClassFixture<ApiWebApplicationFacto
         Assert.Single(ResetCodesSentTo(email));
 
         var reset = await client.PostAsJsonAsync("/api/v1/auth/reset-password",
-            new ResetPasswordRequest { Email = email, Code = code, NewPassword = "first-code-still-works" }); // pragma: allowlist secret
+            new ResetPasswordRequest { Email = email, Code = code, NewPassword = "First-code-still-works1" }); // pragma: allowlist secret
         Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
     }
 }

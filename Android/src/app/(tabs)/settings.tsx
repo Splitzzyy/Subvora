@@ -6,7 +6,7 @@ import { CURRENCIES, currencyOption } from '@/lib/currencies';
 import * as haptics from '@/lib/haptics';
 import { useLoader, useOffline } from '@/lib/hooks';
 import { asyncState } from '@/lib/loading';
-import { currencySymbol, initialOf } from '@/lib/logic';
+import { currencySymbol, initialOf, PASSWORD_HINT } from '@/lib/logic';
 import { useSession } from '@/lib/session';
 import { space, supportsDynamicColor, useTheme, type ThemeMode } from '@/theme';
 import { Banner, Button, ButtonGroup, Card, OfflineBanner, SelectField, SwitchRow, Text, TextField, Tile } from '@/ui';
@@ -213,7 +213,7 @@ export default function Settings() {
           <TextField label="Current password" value={currentPassword} onChangeText={setCurrentPassword} secure autoComplete="current-password"
             returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => newPasswordField.current?.focus()} />
           <TextField ref={newPasswordField} label="New password" value={newPassword} onChangeText={setNewPassword} secure autoComplete="new-password"
-            returnKeyType="done" onSubmitEditing={() => { if (canChangePassword) void changePassword(); }} />
+            supporting={PASSWORD_HINT} returnKeyType="done" onSubmitEditing={() => { if (canChangePassword) void changePassword(); }} />
           <Button label="Change password" variant="tonal" onPress={changePassword} loading={changing} disabled={offline || !currentPassword || !newPassword} style={{ alignSelf: 'flex-end' }} />
         </Card>
 

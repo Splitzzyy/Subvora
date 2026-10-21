@@ -61,12 +61,6 @@ public class ApiWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLi
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<FakeEmailSender>();
             services.AddSingleton<IEmailSender>(sp => sp.GetRequiredService<FakeEmailSender>());
-
-            // Never the real corpus: tests would depend on the network, and their passwords are
-            // exactly the kind it lists.
-            services.RemoveAll<IBreachedPasswordChecker>();
-            services.AddSingleton<FakeBreachedPasswordChecker>();
-            services.AddSingleton<IBreachedPasswordChecker>(sp => sp.GetRequiredService<FakeBreachedPasswordChecker>());
         });
     }
 
