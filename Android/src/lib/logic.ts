@@ -183,6 +183,9 @@ export interface ListedSubscription {
 
 export const UNCATEGORISED = 'Uncategorised';
 
+/** Shown under every new-password field. The rule itself is the server's (PasswordRules.NewPassword); this only describes it. */
+export const PASSWORD_HINT = 'At least 8 characters, with an uppercase and a lowercase letter, a number and a symbol.'; // pragma: allowlist secret
+
 const byName = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' });
 
 /**

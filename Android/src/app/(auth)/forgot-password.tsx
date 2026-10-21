@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import { authApi, fieldErrorMessage, isStatus, writeErrorMessage } from '@/api';
 import { useOffline } from '@/lib/hooks';
+import { PASSWORD_HINT } from '@/lib/logic';
 import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { Banner, Button, OfflineBanner, TextField } from '@/ui';
@@ -77,7 +78,7 @@ export default function ForgotPassword() {
           <TextField label="6-digit code" value={code} onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} keyboardType="number-pad" autoComplete="one-time-code"
             returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordField.current?.focus()} />
           <TextField ref={passwordField} label="New password" value={newPassword} onChangeText={setNewPassword} secure autoComplete="new-password"
-            returnKeyType="done" onSubmitEditing={() => { if (canReset) void reset(); }} />
+            supporting={PASSWORD_HINT} returnKeyType="done" onSubmitEditing={() => { if (canReset) void reset(); }} />
           <Button label="Reset password" size="lg" onPress={reset} loading={busy} disabled={offline || code.length !== 6 || !newPassword} />
           <Button label="Send a new code" variant="text" onPress={requestCode} disabled={busy || offline} />
         </>

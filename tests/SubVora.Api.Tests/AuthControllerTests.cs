@@ -199,6 +199,28 @@ public class AuthControllerTests : IClassFixture<ApiWebApplicationFactory>
     }
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Register_WithAWeakPassword_Returns400NamingTheField_AndCreatesNoAccount(bool common)
+    {
+        // The client shows the first message under "errors" (fieldErrorMessage), so the rule's own
+        // wording has to reach it there, not just a generic title.
+        var client = _factory.CreateClient();
+        var email = $"weak-{Guid.NewGuid()}@example.com";
+        var password = common ? string.Concat("Pass", "word1!") : new string('x', 12);
+
+        var response = await client.PostAsJsonAsync("/api/v1/auth/register", new RegisterRequest { Email = email, Password = password });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var body = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var messages = body.RootElement.GetProperty("errors").EnumerateObject()
+            .SelectMany(field => field.Value.EnumerateArray().Select(m => m.GetString()));
+        Assert.Contains(common ? PasswordRules.CommonMessage : PasswordRules.RequirementsMessage, messages);
+        using var scope = _factory.Services.CreateScope();
+        Assert.False(await scope.ServiceProvider.GetRequiredService<AppDbContext>().Users.AnyAsync(u => u.Email == email));
+    }
+
+    [Theory]
     [InlineData("/api/v1/auth/register")]
     [InlineData("/api/v1/auth/login")]
     [InlineData("/api/v1/auth/forgot-password")]

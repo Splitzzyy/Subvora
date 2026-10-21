@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import { authApi, errorMessage } from '@/api';
 import * as haptics from '@/lib/haptics';
+import { PASSWORD_HINT } from '@/lib/logic';
 import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { Banner, Button, TextField } from '@/ui';
@@ -53,7 +54,7 @@ export default function Register() {
       <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="email" keyboardType="email-address"
         returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => passwordField.current?.focus()} />
       <TextField ref={passwordField} label="Password" value={password} onChangeText={(v) => { setPassword(v); setConfirmError(null); }} secure autoComplete="new-password"
-        returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => confirmField.current?.focus()} />
+        supporting={PASSWORD_HINT} returnKeyType="next" submitBehavior="submit" onSubmitEditing={() => confirmField.current?.focus()} />
       <TextField ref={confirmField} label="Confirm password" value={confirm} onChangeText={(v) => { setConfirm(v); setConfirmError(null); }} secure autoComplete="new-password"
         error={confirmError} returnKeyType="go" onSubmitEditing={() => { if (!busy && email.trim() && password && confirm) void register(); }} />
       <Button label="Create account" size="lg" onPress={register} loading={busy} disabled={!email.trim() || !password || !confirm} />
