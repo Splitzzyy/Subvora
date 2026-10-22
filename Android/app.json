@@ -3,7 +3,7 @@
     "name": "SubVora",
     "slug": "subvora",
     "scheme": "subvora",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "orientation": "portrait",
     "icon": "./assets/brand/icon.png",
     "userInterfaceStyle": "automatic",
