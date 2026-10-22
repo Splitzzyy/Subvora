@@ -92,6 +92,7 @@ builder.Services.AddScoped<IValidator<ResolveSubscriptionRequest>, ResolveSubscr
 
 // Scoped, not singleton - depends on IFxRateService, which holds a scoped DbContext.
 builder.Services.AddScoped<BurnRateCalculator>();
+builder.Services.AddScoped<HomeCurrencyProjector>();
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IValidator<UpdateUserProfileRequest>, UpdateUserProfileRequestValidator>();
 builder.Services.AddScoped<IValidator<DeleteAccountRequest>, DeleteAccountRequestValidator>();

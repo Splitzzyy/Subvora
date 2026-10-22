@@ -32,6 +32,7 @@ public class SubscriptionsController : ControllerBase
     private readonly ICategoryRepository _categoryRepository;
     private readonly IPaymentSourceRepository _paymentSourceRepository;
     private readonly IUserRepository _userRepository;
+    private readonly HomeCurrencyProjector _homeCurrencyProjector;
 
     public SubscriptionsController(
         ISubscriptionRepository subscriptionRepository,
@@ -41,7 +42,8 @@ public class SubscriptionsController : ControllerBase
         ISubscriptionCatalogSearchRepository catalogSearchRepository,
         ICategoryRepository categoryRepository,
         IPaymentSourceRepository paymentSourceRepository,
-        IUserRepository userRepository)
+        IUserRepository userRepository,
+        HomeCurrencyProjector homeCurrencyProjector)
     {
         _subscriptionRepository = subscriptionRepository;
         _createValidator = createValidator;
@@ -51,9 +53,11 @@ public class SubscriptionsController : ControllerBase
         _categoryRepository = categoryRepository;
         _paymentSourceRepository = paymentSourceRepository;
         _userRepository = userRepository;
+        _homeCurrencyProjector = homeCurrencyProjector;
     }
 
     /// <summary>Lists the authenticated user's subscriptions.</summary>
+    /// <remarks>Each row carries its cost converted to the caller's home currency (HomeCurrencyAmount, -Monthly, -Yearly), null where no rate is cached.</remarks>
     /// <response code="200">Returns the caller's subscriptions.</response>
     /// <response code="401">The caller is not authenticated.</response>
     [HttpGet]
@@ -61,7 +65,9 @@ public class SubscriptionsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetAll(CancellationToken cancellationToken)
     {
-        var subscriptions = await _subscriptionRepository.GetAllForUserAsync(GetUserId(), cancellationToken);
+        var userId = GetUserId();
+        var subscriptions = await _subscriptionRepository.GetAllForUserAsync(userId, cancellationToken);
+        await _homeCurrencyProjector.ProjectAsync(subscriptions, await HomeCurrencyAsync(userId, cancellationToken), cancellationToken);
         return Ok(subscriptions);
     }
 
@@ -76,8 +82,15 @@ public class SubscriptionsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken)
     {
-        var subscription = await _subscriptionRepository.GetByIdAsync(id, GetUserId(), cancellationToken);
-        return subscription is null ? NotFound() : Ok(subscription);
+        var userId = GetUserId();
+        var subscription = await _subscriptionRepository.GetByIdAsync(id, userId, cancellationToken);
+        if (subscription is null)
+        {
+            return NotFound();
+        }
+
+        await _homeCurrencyProjector.ProjectAsync([subscription], await HomeCurrencyAsync(userId, cancellationToken), cancellationToken);
+        return Ok(subscription);
     }
 
     /// <summary>Creates a subscription for the authenticated user.</summary>
@@ -376,4 +389,8 @@ public class SubscriptionsController : ControllerBase
         && existing.IsFreeTrial == attempted.IsFreeTrial;
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    /// <summary>The caller's preferred currency, with DashboardController's INR fallback so the two never disagree.</summary>
+    private async Task<string> HomeCurrencyAsync(Guid userId, CancellationToken cancellationToken) =>
+        await _userRepository.GetPreferredCurrencyAsync(userId, cancellationToken) ?? "INR";
 }
