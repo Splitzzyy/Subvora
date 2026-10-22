@@ -225,13 +225,16 @@ export function groupSubscriptions<T extends ListedSubscription>(subs: T[], toda
   }
   return [...groups.entries()]
     .map(([title, rows]) => {
-      const data = [...rows].sort((a, b) => a.nextBillingDate.localeCompare(b.nextBillingDate) || byName(a.customName, b.customName));
+      // Inactive rows go last: a paused plan's stale date is neither first in the group nor its "next".
+      const data = [...rows].sort((a, b) => Number(b.isActive) - Number(a.isActive)
+        || a.nextBillingDate.localeCompare(b.nextBillingDate) || byName(a.customName, b.customName));
       const overdue = data.filter((s) => isOverdue(s, today)).length;
       const count = `${data.length} ${data.length === 1 ? 'subscription' : 'subscriptions'}`;
+      const next = data[0].isActive ? data[0].nextBillingDate : null;
       return {
         title,
-        next: data[0].nextBillingDate,
-        summary: overdue > 0 ? `${count} · ${overdue} overdue` : `${count} · next ${describeRelative(data[0].nextBillingDate, today)}`,
+        next: next ?? '9999-12-31',
+        summary: overdue > 0 ? `${count} · ${overdue} overdue` : next ? `${count} · next ${describeRelative(next, today)}` : `${count} · inactive`,
         data,
       };
     })
@@ -271,10 +274,12 @@ export function sectionByDue<T extends ListedSubscription>(subs: T[], today = to
 
 /**
  * Most expensive first, by the server's monthly figure in the home currency. Rows it could not
- * convert, and one-time purchases (no monthly figure), go last by name.
+ * convert, and one-time purchases (no monthly figure), go after them by name; inactive ones, which
+ * cost nothing, last.
  */
 export function sortByCost<T extends ListedSubscription & { homeCurrencyMonthly?: number | null }>(subs: T[]) {
   return [...subs].sort((a, b) => {
+    if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
     const [x, y] = [a.homeCurrencyMonthly ?? null, b.homeCurrencyMonthly ?? null];
     if (x !== null && y !== null && x !== y) return y - x;
     if ((x === null) !== (y === null)) return x === null ? 1 : -1;

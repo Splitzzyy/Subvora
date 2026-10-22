@@ -152,7 +152,7 @@ export default function Categories() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm, paddingVertical: space.sm, paddingHorizontal: space.sm }}>
           <IconButton icon="arrow-left" label="Back" onPress={() => router.back()} />
           <Text variant="titleLargeEmphasized" accessibilityRole="header" style={{ flex: 1 }} numberOfLines={1}>Categories</Text>
-          <Button label="New" icon="plus" variant="text" onPress={() => setAdding(true)} disabled={offline} />
+          <Button label="Add" icon="plus" variant="text" onPress={() => setAdding(true)} disabled={offline} />
         </View>
       )}
     >

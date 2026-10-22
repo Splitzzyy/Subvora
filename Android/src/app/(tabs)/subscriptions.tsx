@@ -111,15 +111,18 @@ export default function Subscriptions() {
             {section.data.map((sub, i) => {
               const overdue = isOverdue(sub);
               const id = category(sub.categoryName);
+              // Sorted by monthly cost: say what that is where the price alone does not.
+              const perMonth = sort === 'cost' && sub.cycleCadence !== 'Monthly' && sub.homeCurrencyMonthly != null && sub.homeCurrency
+                ? `≈ ${formatMoney(sub.homeCurrencyMonthly, sub.homeCurrency)} a month` : null;
               const equivalent = homeEquivalent(sub);
               const price = `${formatMoney(sub.costAmount, sub.currency)} · ${CYCLE_LABEL[sub.cycleCadence]}`;
               const soon = !overdue && sub.isActive && daysUntil(sub.nextBillingDate) <= DUE_SOON_DAYS;
-              const when = overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}` : `Renews ${describeRelative(sub.nextBillingDate)}`;
+              const when = overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}` : `${sub.isFreeTrial ? 'Trial ends' : 'Renews'} ${describeRelative(sub.nextBillingDate)}`;
               return (
                 <ListItem
                   key={sub.id}
                   position={positionOf(i, section.data.length)}
-                  accessibilityLabel={`${sub.customName}, ${price}${equivalent ? `, ${equivalent}` : ''}, ${when}`}
+                  accessibilityLabel={`${sub.customName}, ${price}${equivalent ? `, ${equivalent}` : ''}${perMonth ? `, ${perMonth}` : ''}, ${when}`}
                   onPress={() => router.push(`/subscription/${sub.id}`)}
                   onLongPress={() => setMenuFor(sub)}
                   // The row is one TalkBack stop; its buttons are offered as actions instead.
@@ -140,6 +143,8 @@ export default function Subscriptions() {
                       <Text variant="amountLabel" color={colors.onSurfaceVariant} numberOfLines={1}>
                         {equivalent ? `${price} · ${equivalent}` : price}
                       </Text>
+                      {/* Its own line: beside a yearly price and the trailing date it was cut off. */}
+                      {perMonth ? <Text variant="labelMedium" color={colors.onSurfaceVariant} numberOfLines={1}>{perMonth}</Text> : null}
                       {/* The trailing slot holds Mark paid, so the date that is owed goes here. Never colour alone: it says so. */}
                       {overdue ? <Text variant="labelMedium" color={colors.renewalWarning} numberOfLines={1}>{`Was due ${formatLongDate(sub.nextBillingDate)}`}</Text> : null}
                     </View>

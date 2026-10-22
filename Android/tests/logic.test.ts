@@ -70,6 +70,20 @@ test('groups order by soonest billing and say when something is overdue', () => 
   assert.equal(groups[1].summary, '1 subscription · next tomorrow');
 });
 
+test('groups put inactive rows last and never call their stale date "next"', () => {
+  const sub = (customName: string, categoryName: string, nextBillingDate: string, isActive = true) =>
+    ({ customName, categoryName, nextBillingDate, isActive });
+  const groups = groupSubscriptions([
+    sub('Hotstar', 'Entertainment', '2026-09-30', false),
+    sub('Spotify', 'Entertainment', '2026-10-20'),
+    sub('Old gym', 'Fitness', '2026-08-01', false),
+  ], '2026-10-15');
+  assert.deepEqual(groups.map((g) => g.title), ['Entertainment', 'Fitness']);
+  assert.deepEqual(groups[0].data.map((s) => s.customName), ['Spotify', 'Hotstar']);
+  assert.equal(groups[0].summary, '2 subscriptions · next in 5 days');
+  assert.equal(groups[1].summary, '1 subscription · inactive');
+});
+
 test('reminders skip the past and inactive, keep the nearest 64, fire at 09:00', () => {
   const base = { costAmount: 199, currency: 'INR', cycleCadence: 'Monthly' as const, alertDaysAdvance: 3, isActive: true };
   const now = new Date(2026, 9, 15, 10, 0);
@@ -118,6 +132,8 @@ test('cost sort puts unconverted and one-time rows last', () => {
     row('B', '2026-11-01', { homeCurrencyMonthly: 100 }), row('None', '2026-11-01'), row('A', '2026-11-01', { homeCurrencyMonthly: 1900 }),
   ]);
   assert.deepEqual(sorted.map((s) => s.customName), ['A', 'B', 'None']);
+  const paused = sortByCost([row('Off', '2026-11-01', { homeCurrencyMonthly: 5000, isActive: false }), row('On', '2026-11-01', { homeCurrencyMonthly: 10 })]);
+  assert.deepEqual(paused.map((s) => s.customName), ['On', 'Off']);
 });
 
 test('search folds case and accents; filters narrow by category or source', () => {

@@ -38,7 +38,7 @@ export default function SubscriptionDetails() {
   const facts: { icon: IconName; label: string; value: string; tone?: 'warning' }[] = sub ? [
     {
       icon: 'calendar-refresh-outline',
-      label: sub.cycleCadence === 'OneTime' ? 'Due' : 'Next charge',
+      label: sub.cycleCadence === 'OneTime' ? 'Due' : sub.isFreeTrial ? 'Trial ends' : 'Next charge',
       value: overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}`
         // Past a fortnight describeRelative is the date itself; say it once.
         : daysUntil(sub.nextBillingDate, today) <= 14 ? `${formatDayDate(sub.nextBillingDate, today)} · ${describeRelative(sub.nextBillingDate, today)}`

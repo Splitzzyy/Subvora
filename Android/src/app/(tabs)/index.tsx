@@ -106,7 +106,7 @@ export default function Dashboard() {
                   const id = category(sub.categoryName);
                   // Short: the row also holds Mark paid, and a full date with the year was cut off.
                   const when = overdue ? `Overdue since ${formatShortDate(sub.nextBillingDate)}`
-                    : `${formatDayDate(sub.nextBillingDate)} · ${describeRelative(sub.nextBillingDate)}`;
+                    : `${sub.isFreeTrial ? 'Trial ends ' : ''}${formatDayDate(sub.nextBillingDate)} · ${describeRelative(sub.nextBillingDate)}`;
                   const equivalent = homeEquivalent(sub);
                   return (
                     <Tap key={sub.id} radius={shape.medium} scaleOnPress={false} onPress={() => router.push(`/subscription/${sub.id}`)}
