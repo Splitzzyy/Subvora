@@ -50,6 +50,22 @@ export const formatLongDate = (value: string) => {
   return `${d} ${MONTHS[m - 1]} ${y}`;
 };
 
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** "Sun 25 Oct", or "Sun 10 Jan 2027" outside the current year: for dates people plan around. */
+export const formatDayDate = (value: string, today = todayDateOnly()) =>
+  `${WEEKDAYS[parseDateOnly(value).getDay()]} ${formatShortDate(value, today)}`;
+
+/** Whole days from today to `value`: negative in the past, 0 today. */
+export const daysUntil = (value: string, today = todayDateOnly()) => dayNumber(value) - dayNumber(today);
+
+/** The date a reminder `daysAhead` before `billingDate` lands on. */
+export function reminderDate(billingDate: string, daysAhead: number): string {
+  const date = parseDateOnly(billingDate);
+  date.setDate(date.getDate() - daysAhead);
+  return toDateOnly(date);
+}
+
 /** .NET AddMonths semantics: 31 Jan + 1 month is 28/29 Feb, not 3 Mar. */
 function addMonths(value: string, months: number): string {
   const [y, m, d] = value.split('-').map(Number);
@@ -120,6 +136,15 @@ export function formatMoney(amount: number, code?: string | null): string {
   const symbol = currencySymbol(code);
   if (!symbol) return formatNumber(amount);
   return /^[A-Z]{3}$/.test(symbol) ? `${symbol} ${formatNumber(amount)}` : `${symbol}${formatNumber(amount)}`;
+}
+
+/**
+ * "≈ ₹1,900" beside a foreign-currency price, from the server's read-time conversion (#292). Null
+ * when the price is already in the home currency or the server had no rate - never converted here.
+ */
+export function homeEquivalent(sub: { currency: string; homeCurrency?: string | null; homeCurrencyAmount?: number | null }): string | null {
+  if (!sub.homeCurrency || sub.homeCurrencyAmount == null) return null;
+  return sub.homeCurrency.toUpperCase() === sub.currency.toUpperCase() ? null : `≈ ${formatMoney(sub.homeCurrencyAmount, sub.homeCurrency)}`;
 }
 
 /** First character, surrogate-safe, for the letter tile that stands in for a provider logo. */
@@ -213,6 +238,62 @@ export function groupSubscriptions<T extends ListedSubscription>(subs: T[], toda
     .sort((a, b) => a.next.localeCompare(b.next) || byName(a.title, b.title));
 }
 
+/** How far ahead "due soon" looks, on Home and in the list's middle section. */
+export const DUE_SOON_DAYS = 7;
+
+/**
+ * What is about to charge: overdue first (oldest first), then active subscriptions due within the
+ * next `windowDays`, soonest first. Read-only - nothing here moves a date.
+ */
+export function dueSoon<T extends ListedSubscription>(subs: T[], today = todayDateOnly(), windowDays = DUE_SOON_DAYS) {
+  const byDate = (a: T, b: T) => a.nextBillingDate.localeCompare(b.nextBillingDate) || byName(a.customName, b.customName);
+  const active = subs.filter((s) => s.isActive);
+  return {
+    overdue: active.filter((s) => isOverdue(s, today)).sort(byDate),
+    upcoming: active.filter((s) => { const d = daysUntil(s.nextBillingDate, today); return d >= 0 && d <= windowDays; }).sort(byDate),
+  };
+}
+
+/** The list's default sections: Overdue, Next 7 days, Later, then anything inactive. Empty ones are left out. */
+export function sectionByDue<T extends ListedSubscription>(subs: T[], today = todayDateOnly()) {
+  const { overdue, upcoming } = dueSoon(subs, today);
+  const placed = new Set<T>([...overdue, ...upcoming]);
+  const byDate = (a: T, b: T) => a.nextBillingDate.localeCompare(b.nextBillingDate) || byName(a.customName, b.customName);
+  const later = subs.filter((s) => s.isActive && !placed.has(s)).sort(byDate);
+  const inactive = subs.filter((s) => !s.isActive).sort((a, b) => byName(a.customName, b.customName));
+  return [
+    { title: 'Overdue', data: overdue },
+    { title: `Next ${DUE_SOON_DAYS} days`, data: upcoming },
+    { title: 'Later', data: later },
+    { title: 'Inactive', data: inactive },
+  ].filter((s) => s.data.length > 0);
+}
+
+/**
+ * Most expensive first, by the server's monthly figure in the home currency. Rows it could not
+ * convert, and one-time purchases (no monthly figure), go last by name.
+ */
+export function sortByCost<T extends ListedSubscription & { homeCurrencyMonthly?: number | null }>(subs: T[]) {
+  return [...subs].sort((a, b) => {
+    const [x, y] = [a.homeCurrencyMonthly ?? null, b.homeCurrencyMonthly ?? null];
+    if (x !== null && y !== null && x !== y) return y - x;
+    if ((x === null) !== (y === null)) return x === null ? 1 : -1;
+    return byName(a.customName, b.customName);
+  });
+}
+
+export interface SubscriptionFilter { query?: string; categoryId?: string | null; paymentSourceId?: string | null }
+
+/** Name search (case- and accent-blind) plus an optional category or payment-source filter. */
+export function filterSubscriptions<T extends ListedSubscription & { categoryId?: string | null; paymentSourceId?: string | null }>(subs: T[], filter: SubscriptionFilter) {
+  const fold = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const q = fold(filter.query?.trim() ?? '');
+  return subs.filter((s) =>
+    (!q || fold(s.customName).includes(q))
+    && (!filter.categoryId || s.categoryId === filter.categoryId)
+    && (!filter.paymentSourceId || s.paymentSourceId === filter.paymentSourceId));
+}
+
 // ---- Renewal reminders -----------------------------------------------------------------------
 
 /** iOS keeps at most 64 pending local notifications; enforced here so the nearest are the ones kept. */
@@ -263,3 +344,47 @@ export function planReminders(subs: RemindableSubscription[], now: Date) {
  * transient error. Those leave the tokens alone so the next request can try again.
  */
 export const refreshEndsSession = (status: number) => status === 400 || status === 401 || status === 403;
+
+
+// ---- Sign-in cooldown ------------------------------------------------------------------------
+
+/** Wrong passwords allowed for one address within the window before Sign in pauses. */
+export const SIGN_IN_MAX_FAILURES = 3;
+export const SIGN_IN_WINDOW_MS = 15 * 60_000;
+export const SIGN_IN_COOLDOWN_MS = 15 * 60_000;
+
+/**
+ * Local to the device and the same for every address, existing or not, so it reveals nothing the
+ * server's single 401 does not; the server keeps its own, later lockout. `failures` are the times
+ * (ms) of rejected sign-ins for one address. Locked from the 3rd failure inside 15 minutes until
+ * 15 minutes after it.
+ */
+export function signInCooldown(failures: number[], now: number): { locked: boolean; remainingMs: number; recent: number } {
+  const recent = failures.filter((t) => t <= now && now - t < SIGN_IN_WINDOW_MS + SIGN_IN_COOLDOWN_MS).sort((a, b) => a - b);
+  // The lock starts at the failure that makes three inside one window.
+  for (let i = SIGN_IN_MAX_FAILURES - 1; i < recent.length; i++) {
+    if (recent[i] - recent[i - SIGN_IN_MAX_FAILURES + 1] < SIGN_IN_WINDOW_MS) {
+      const until = recent[i] + SIGN_IN_COOLDOWN_MS;
+      if (until > now) return { locked: true, remainingMs: until - now, recent: recent.length };
+    }
+  }
+  return { locked: false, remainingMs: 0, recent: recent.filter((t) => now - t < SIGN_IN_WINDOW_MS).length };
+}
+
+/** "14:59" for the Sign in countdown. */
+export const formatCountdown = (ms: number) => {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${pad(total % 60)}`;
+};
+
+// ---- Category ring ---------------------------------------------------------------------------
+
+/** Each category's share of monthly spend, largest first; empty when nothing is spent. */
+export function categoryShares<T extends { categoryName: string; monthlyAmount: number }>(items: T[]): (T & { share: number })[] {
+  const total = items.reduce((sum, item) => sum + Math.max(0, item.monthlyAmount), 0);
+  if (total <= 0) return [];
+  return items
+    .filter((item) => item.monthlyAmount > 0)
+    .map((item) => ({ ...item, share: item.monthlyAmount / total }))
+    .sort((a, b) => b.share - a.share);
+}

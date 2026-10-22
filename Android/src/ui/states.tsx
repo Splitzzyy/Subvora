@@ -35,14 +35,18 @@ export function AsyncView({ state, skeleton, empty, error, errorStatus, onRetry,
 }
 
 /**
- * Over the offline mirror: "Offline" only when nothing answered (status 0 or no network); a server
- * error or rate limit with the phone online says the refresh failed instead, and offers Retry.
+ * Over the offline mirror, saying why it is showing. "Offline" only when the phone has no network,
+ * where retrying cannot help. No answer with the phone online is the server (a sleeping free-tier
+ * host, mostly) and must not send people off to fix their Wi-Fi; that, and any other failure,
+ * offers Retry.
  */
 export function CachedBanner({ savedAt, status, offline, onRetry }: { savedAt: string | null; status: number | null; offline: boolean; onRetry: () => void }) {
-  const since = savedAt ? `data from ${formatSavedAt(savedAt)}` : 'last synced data';
-  return offline || status === 0
-    ? <Banner tone="warning" text={`Offline — showing ${since}.`} />
-    : <Banner tone="warning" text={`Couldn't refresh — showing ${since}.`} actionLabel="Retry" onAction={onRetry} />;
+  const since = savedAt ? formatSavedAt(savedAt) : null;
+  if (offline) return <Banner tone="warning" icon="wifi-off" text={`You're offline — showing ${since ? `data from ${since}` : 'last synced data'}.`} />;
+  const shown = since ? `Showing data from ${since}.` : 'Showing last synced data.';
+  return status === 0
+    ? <Banner tone="warning" icon="cloud-off-outline" text={`Can't reach SubVora right now. ${shown}`} actionLabel="Retry" onAction={onRetry} />
+    : <Banner tone="warning" text={`Couldn't refresh. ${shown}`} actionLabel="Retry" onAction={onRetry} />;
 }
 
 /** Plain-language failure with Retry; the status sits behind "More info", never a raw error. */

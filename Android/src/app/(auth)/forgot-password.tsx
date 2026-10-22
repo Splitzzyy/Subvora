@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import type { TextInput } from 'react-native';
 import { authApi, fieldErrorMessage, isStatus, writeErrorMessage } from '@/api';
@@ -6,6 +6,7 @@ import { useOffline } from '@/lib/hooks';
 import { PASSWORD_HINT } from '@/lib/logic';
 import { requestReminderPermission } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
+import { clearFailures } from '@/lib/signInAttempts';
 import { Banner, Button, OfflineBanner, TextField } from '@/ui';
 import { AuthScaffold } from '@/ui/layout';
 import { useSnackbar } from '@/ui/snackbar';
@@ -15,7 +16,9 @@ export default function ForgotPassword() {
   const offline = useOffline();
   const { signIn } = useSession();
   const snackbar = useSnackbar();
-  const [email, setEmail] = useState('');
+  // Sign-in hands over the address it was given, so "Reset password" there needs no retyping.
+  const params = useLocalSearchParams<{ email?: string }>();
+  const [email, setEmail] = useState(params.email ?? '');
   const [code, setCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   // Never unset: going back would discard a code the user may already have received.
@@ -50,8 +53,12 @@ export default function ForgotPassword() {
       const session = await authApi.resetPassword(email.trim(), code.trim(), newPassword);
       // Signed straight in: recovery must not depend on login, which someone guessing at this
       // address may be keeping locked. The session change routes to the app on its own.
+      // A new password ends this address's sign-in cooldown on this device (#290).
+      void clearFailures(email);
       if (session?.accessToken) {
         await signIn(session);
+        // After signIn, which clears messages from before (#285): this one is about the new session.
+        snackbar({ text: "Password changed. You're signed in." });
         void requestReminderPermission();
         return;
       }
@@ -71,7 +78,9 @@ export default function ForgotPassword() {
       {offline ? <OfflineBanner /> : null}
       {info ? <Banner tone="info" text={info} /> : null}
       {error ? <Banner tone="error" text={error} /> : null}
+      {/* Marked as the username, so the password manager saves the new password under this address (#289). */}
       <TextField label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" editable={!codeSent}
+        autoComplete="email" textContentType="emailAddress"
         returnKeyType="send" onSubmitEditing={() => { if (canRequest) void requestCode(); }} />
       {codeSent ? (
         <>

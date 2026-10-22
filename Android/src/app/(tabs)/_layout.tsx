@@ -9,11 +9,13 @@ import { Icon, RAIL_MIN_WIDTH, Text, TOUCH, type IconName } from '@/ui';
 import { SubVoraMark } from '@/ui/brand';
 import { useObstruction } from '@/ui/obstructions';
 
+/**
+ * Three destinations (#279): the places people go every time. Categories and Payment sources are
+ * set-up lists, reached from Settings.
+ */
 const DESTINATIONS: Record<string, { title: string; icon: IconName; selected: IconName }> = {
   index: { title: 'Home', icon: 'home-variant-outline', selected: 'home-variant' },
-  subscriptions: { title: 'Subs', icon: 'calendar-sync-outline', selected: 'calendar-sync' },
-  categories: { title: 'Categories', icon: 'shape-outline', selected: 'shape' },
-  payments: { title: 'Payment', icon: 'credit-card-outline', selected: 'credit-card' },
+  subscriptions: { title: 'Subscriptions', icon: 'calendar-sync-outline', selected: 'calendar-sync' },
   settings: { title: 'Settings', icon: 'cog-outline', selected: 'cog' },
 };
 
@@ -68,7 +70,10 @@ function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & 
     const d = DESTINATIONS[route.name] ?? { title: route.name, icon: 'circle-outline', selected: 'circle' };
     const onPress = () => {
       const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
-      if (!focused && !event.defaultPrevented) navigation.navigate(route.name, route.params);
+      if (event.defaultPrevented) return;
+      if (!focused) navigation.navigate(route.name, route.params);
+      // Settings is a stack: its tab, tapped again, goes back to its top.
+      else if ((route.state?.index ?? 0) > 0) navigation.navigate(route.name, { screen: 'index' });
     };
     return (
       <Pressable
@@ -82,7 +87,7 @@ function NavigationBar({ state, navigation, insets, rail }: BottomTabBarProps & 
           <Icon name={focused ? d.selected : d.icon} size={24} color={focused ? colors.onSecondaryContainer : colors.onSurfaceVariant} />
         </View>
         <Text variant={focused ? 'labelMediumEmphasized' : 'labelMedium'} color={focused ? colors.onSurface : colors.onSurfaceVariant}
-          // Five labels share a phone's width; with large text they shrink to fit rather than truncate.
+          // With large text the labels shrink to fit rather than truncate.
           numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} maxFontSizeMultiplier={1.3}>{d.title}</Text>
       </Pressable>
     );

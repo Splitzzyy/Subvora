@@ -8,7 +8,7 @@ import { useObstructions } from './obstructions';
 
 export interface SnackbarMessage {
   text: string;
-  /** Failures stay until dismissed: "this change wasn't saved" must not time out unread. */
+  /** Failures stay longer (ERROR_MS) and carry a close button. */
   tone?: 'default' | 'error';
   /** Only for actions an existing API call reverses cleanly (e.g. undoing a rename). */
   actionLabel?: string;
@@ -16,35 +16,50 @@ export interface SnackbarMessage {
 }
 
 const SnackbarContext = createContext<(message: SnackbarMessage) => void>(() => undefined);
+const ClearContext = createContext<() => void>(() => undefined);
 
 /** Write results, app-wide: one host at the root, so a message survives the screen that raised it closing. */
 export const useSnackbar = () => useContext(SnackbarContext);
 
+/**
+ * Drops every queued and visible message. The session calls it whenever it signs in or out, so a
+ * message about one session never shows over the next one (an old "wasn't saved" sat on top of
+ * the sign-in form, and in front of "Account deleted.").
+ */
+export const useClearSnackbars = () => useContext(ClearContext);
+
 let nextId = 0;
 
 /**
- * One snackbar at a time, in order (M3). A queue rather than a slot: a later success must never
- * replace an unread "this change wasn't saved".
+ * One snackbar at a time, in order (M3). A new message supersedes any error still waiting or on
+ * screen: an error has had its say once something newer happened, and queuing the newer message
+ * behind it hid results like "Account deleted." behind a minutes-old failure.
  */
 export function SnackbarProvider({ children }: { children: React.ReactNode }) {
   const [queue, setQueue] = useState<(SnackbarMessage & { id: number })[]>([]);
-  const show = useCallback((message: SnackbarMessage) => setQueue((q) => (
+  const show = useCallback((message: SnackbarMessage) => setQueue((q) => {
+    const rest = q.filter((m) => m.tone !== 'error');
     // The same message twice in a row says nothing new.
-    q.some((m) => m.text === message.text) ? q : [...q, { ...message, id: ++nextId }]
-  )), []);
+    return rest.some((m) => m.text === message.text) ? rest : [...rest, { ...message, id: ++nextId }];
+  }), []);
+  const clear = useCallback(() => setQueue([]), []);
   // Stable, so the shown snackbar's timer is not restarted by unrelated re-renders.
   const dismiss = useCallback((id: number) => setQueue((q) => q.filter((m) => m.id !== id)), []);
   const current = queue[0];
   return (
     <SnackbarContext.Provider value={show}>
-      {children}
-      {current ? <Snackbar key={current.id} message={current} onDismiss={dismiss} /> : null}
+      <ClearContext.Provider value={clear}>
+        {children}
+        {current ? <Snackbar key={current.id} message={current} onDismiss={dismiss} /> : null}
+      </ClearContext.Provider>
     </SnackbarContext.Provider>
   );
 }
 
 const DURATION_MS = 4000;
 const WITH_ACTION_MS = 8000;
+/** Long enough to read a failure and reach Retry, short enough that it never outlives the moment. */
+const ERROR_MS = 10000;
 
 function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessage & { id: number }; onDismiss: (id: number) => void }) {
   const { colors } = useTheme();
@@ -77,8 +92,7 @@ function Snackbar({ message, onDismiss: dismissById }: { message: SnackbarMessag
     (reduced
       ? Animated.timing(enter, { toValue: 1, duration: motion.fadeMs, useNativeDriver: true })
       : Animated.spring(enter, { toValue: 1, ...motion.spatialDefault, useNativeDriver: true })).start();
-    if (error) return;
-    const timer = setTimeout(onDismiss, message.actionLabel ? WITH_ACTION_MS : DURATION_MS);
+    const timer = setTimeout(onDismiss, error ? ERROR_MS : message.actionLabel ? WITH_ACTION_MS : DURATION_MS);
     return () => clearTimeout(timer);
   }, [enter, reduced, error, message, onDismiss]);
 

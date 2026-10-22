@@ -55,3 +55,27 @@ export async function syncReminders(subscriptions: Subscription[]) {
 }
 
 export const cancelReminders = () => Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
+
+/** Whether reminders can be shown, for Settings (#282); `canAskAgain` false means only system settings can change it. */
+export async function reminderPermission(): Promise<{ granted: boolean; canAskAgain: boolean }> {
+  try {
+    const { granted, canAskAgain } = await Notifications.getPermissionsAsync();
+    return { granted, canAskAgain };
+  } catch {
+    return { granted: false, canAskAgain: false };
+  }
+}
+
+/** One local notification a few seconds out, so people can see what a reminder looks like. Local only - no push service. */
+export async function sendTestReminder(): Promise<boolean> {
+  try {
+    await ensureChannel();
+    await Notifications.scheduleNotificationAsync({
+      content: { title: 'Subscription renewing soon', body: 'This is how SubVora reminds you before a charge lands.' },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 3, channelId: CHANNEL_ID },
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

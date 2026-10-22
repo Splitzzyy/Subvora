@@ -11,6 +11,7 @@ import * as haptics from '@/lib/haptics';
 import { useIsFocused } from 'expo-router';
 import { ExpressiveLoadingIndicator, RingMark } from './brand';
 import { useObstruction } from './obstructions';
+import { useReveal } from './reveal';
 
 export type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 export const Icon = MaterialCommunityIcons;
@@ -167,8 +168,12 @@ export function IconButton({ icon, onPress, label, tone = 'standard', disabled }
   );
 }
 
-/** Extended FAB, bottom-right. Squarer when pressed, through Tap's morph. */
-export function Fab({ icon, label, onPress, disabled }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
+/**
+ * FAB, bottom-right. Extended (icon and label) by default; `compact` is the 56dp square-ish button
+ * with the label for TalkBack only, for lists where a wide button would sit on the last row.
+ * Squarer when pressed, through Tap's morph.
+ */
+export function Fab({ icon, label, onPress, disabled, compact }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean; compact?: boolean }) {
   const { colors } = useTheme();
   // Tab screens stay mounted, so "on screen" is focus, not mount.
   useObstruction('fab', useIsFocused());
@@ -178,12 +183,12 @@ export function Fab({ icon, label, onPress, disabled }: { icon: IconName; label:
         accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!disabled }} onPress={onPress} disabled={disabled}
         radius={shape.medium} pressedRadius={shape.large}
         style={{
-          minHeight: 56, paddingHorizontal: space.xl, flexDirection: 'row', alignItems: 'center', gap: space.md,
+          minHeight: 56, minWidth: 56, paddingHorizontal: compact ? 0 : space.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.md,
           backgroundColor: colors.primaryContainer, elevation: 3, opacity: disabled ? 0.6 : 1,
         }}
       >
         <Icon name={icon} size={24} color={colors.onPrimaryContainer} />
-        <Text variant="titleMediumEmphasized" color={colors.onPrimaryContainer}>{label}</Text>
+        {compact ? null : <Text variant="titleMediumEmphasized" color={colors.onPrimaryContainer}>{label}</Text>}
       </Tap>
     </View>
   );
@@ -274,8 +279,8 @@ export function ListItem({ leading, title, subtitle, trailing, onPress, onLongPr
 }
 
 /**
- * Squircle tile behind an icon or letter - the monogram that stands in for a provider logo. Logos
- * are not loaded (the catalog's are remote SVGs); if they ever are, fade them in over this.
+ * Squircle tile behind an icon or letter - the monogram that stands in for a provider logo where
+ * there is none (see Logo in ./logo, which draws catalog marks on the same tile).
  */
 export const TILE_CORNER = 0.34;
 export function Tile({ icon, letter, color, background, size = 44 }: { icon?: IconName; letter?: string; color: ColorValue; background: ColorValue; size?: number }) {
@@ -290,7 +295,7 @@ export function Tile({ icon, letter, color, background, size = 44 }: { icon?: Ic
 
 type BannerTone = 'error' | 'warning' | 'info' | 'success';
 
-export function Banner({ tone, text, actionLabel, onAction }: { tone: BannerTone; text: string; actionLabel?: string; onAction?: () => void }) {
+export function Banner({ tone, text, actionLabel, onAction, icon: iconOverride }: { tone: BannerTone; text: string; actionLabel?: string; onAction?: () => void; icon?: IconName }) {
   const { colors } = useTheme();
   const map: Record<BannerTone, { bg: ColorValue; fg: ColorValue; icon: IconName }> = {
     error: { bg: colors.errorContainer, fg: colors.onErrorContainer, icon: 'alert-circle-outline' },
@@ -298,7 +303,8 @@ export function Banner({ tone, text, actionLabel, onAction }: { tone: BannerTone
     info: { bg: colors.secondaryContainer, fg: colors.onSecondaryContainer, icon: 'information-outline' },
     success: { bg: colors.successContainer, fg: colors.onSuccessContainer, icon: 'check-circle-outline' },
   };
-  const { bg, fg, icon } = map[tone];
+  const { bg, fg } = map[tone];
+  const icon = iconOverride ?? map[tone].icon;
   return (
     <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: bg, borderRadius: shape.medium, paddingVertical: space.md, paddingHorizontal: space.lg, marginBottom: space.md }}>
       <Icon name={icon} size={22} color={fg} accessibilityElementsHidden importantForAccessibility="no" />
@@ -424,6 +430,7 @@ export function TextField({ label, error, supporting, secure, style, ref, ...pro
   const [hidden, setHidden] = useState(true);
   const input = useRef<TextInput>(null);
   useImperativeHandle(ref, () => input.current as TextInput, []);
+  const reveal = useReveal();
   // Read-only (e.g. the address a reset code went to) must not look like it is waiting for input.
   const locked = props.editable === false;
   // Android keeps the input focused when Back closes the keyboard; blur so the outline matches.
@@ -453,7 +460,7 @@ export function TextField({ label, error, supporting, secure, style, ref, ...pro
             placeholderTextColor={colors.onSurfaceVariant}
             cursorColor={colors.primary}
             selectionColor={colors.primary}
-            onFocus={(e) => { setFocused(true); props.onFocus?.(e); }}
+            onFocus={(e) => { setFocused(true); reveal?.(input.current); props.onFocus?.(e); }}
             onBlur={(e) => { setFocused(false); props.onBlur?.(e); }}
             style={[typescale.bodyLarge, { color: colors.onSurface, paddingVertical: space.xs + space.xxs, paddingHorizontal: 0 }]}
           />
@@ -521,9 +528,11 @@ export function SwitchRow({ label, caption, value, onValueChange, disabled }: {
 }
 
 /**
- * M3 Expressive connected button group. Segments share small inner corners; the selected one
- * rounds fully and fills, so the choice reads by shape as well as colour. The change morphs: the
- * corners spring between the two shapes while the fills and labels cross-fade.
+ * M3 Expressive connected button group - the app's one control for "pick one of these" (#283).
+ * Segments share small inner corners; the selected one rounds fully, fills and gets a tick, so the
+ * choice reads by shape and mark as well as colour. The change morphs: the corners spring between
+ * the two shapes while the fills and labels cross-fade. Long option lists wrap into rows by passing
+ * several groups that share one value.
  */
 export function ButtonGroup<T extends string>({ options, value, onChange, disabled, onPrimaryContainer }: {
   options: { value: T; label: string; icon?: IconName }[]; value: T; onChange: (v: T) => void; disabled?: boolean;
@@ -580,7 +589,8 @@ function Segment({ label, icon, look, selected, first, last, disabled, onPress }
   const fill = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, ...corners } as const;
   const content = (on: boolean) => (
     <>
-      {icon ? <Icon name={on ? 'check' : icon} size={18} color={on ? look.selectedFg : look.restFg} /> : null}
+      {/* The selected segment always carries a tick, so the choice never rests on colour alone. */}
+      {on ? <Icon name="check" size={18} color={look.selectedFg} /> : icon ? <Icon name={icon} size={18} color={look.restFg} /> : null}
       {/* Two lines rather than an ellipsis at large font sizes. */}
       <Text variant="labelLarge" numberOfLines={2} style={{ textAlign: 'center', flexShrink: 1 }} color={on ? look.selectedFg : look.restFg}>{label}</Text>
     </>
@@ -603,26 +613,6 @@ function Segment({ label, icon, look, selected, first, last, disabled, onPress }
       <Animated.View style={[fill, { backgroundColor: look.selectedBg, opacity: t }]} />
       <Animated.View style={[row, { opacity: t.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>{content(false)}</Animated.View>
       <Animated.View style={[row, { position: 'absolute', left: space.xs, right: space.xs, top: 0, bottom: 0, opacity: t }]}>{content(true)}</Animated.View>
-    </Tap>
-  );
-}
-
-export function Chip({ label, selected, onPress, icon, disabled }: { label: string; selected: boolean; onPress: () => void; icon?: IconName; disabled?: boolean }) {
-  const { colors } = useTheme();
-  return (
-    <Tap
-      onPress={() => { haptics.tick(); onPress(); }} disabled={disabled} radius={shape.extraSmall} pressedRadius={shape.medium}
-      accessibilityRole="radio" accessibilityState={{ selected, disabled: !!disabled }} accessibilityLabel={label}
-      hitSlop={{ top: (TOUCH - 36) / 2, bottom: (TOUCH - 36) / 2 }}
-      style={{
-        minHeight: 36, paddingHorizontal: space.md + space.xxs, flexDirection: 'row', alignItems: 'center', gap: space.xs + space.xxs,
-        // Unselected sits on the card colour rather than 'transparent': Android drops the corner radius
-        // when a background first appears on a view, which squared the chip on selection.
-        backgroundColor: selected ? colors.secondaryContainer : colors.surfaceContainerLow, borderWidth: selected ? 0 : 1, borderColor: colors.outline,
-      }}
-    >
-      {selected ? <Icon name="check" size={18} color={colors.onSecondaryContainer} /> : icon ? <Icon name={icon} size={18} color={colors.onSurfaceVariant} /> : null}
-      <Text variant="labelLarge" color={selected ? colors.onSecondaryContainer : colors.onSurfaceVariant}>{label}</Text>
     </Tap>
   );
 }
