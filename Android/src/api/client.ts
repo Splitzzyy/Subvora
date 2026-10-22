@@ -180,6 +180,18 @@ function firstValidationMessage(body: unknown): string | null {
 export const fieldErrorMessage = (error: unknown) =>
   error instanceof ApiError && error.status === 400 ? firstFieldMessage(error.body) : null;
 
+// ---- Connectivity --------------------------------------------------------------------------
+// Status 0 means no response arrived. With the phone offline that is the network; with it online
+// it is the server (the free tier sleeps and wakes slowly), and "offline" sent people off to fix
+// Wi-Fi that was working. The root layout keeps this in step with NetInfo.
+
+let deviceOffline = false;
+export const setDeviceOffline = (offline: boolean) => { deviceOffline = offline; };
+export const isDeviceOffline = () => deviceOffline;
+
+/** No response arrived and the phone is online: the server is the problem, not the connection. */
+export const isServerUnreachable = (error: unknown) => error instanceof ApiError && error.status === 0 && !deviceOffline;
+
 /**
  * What to tell the user about a failed read. Anything that is not an ApiError is a defect in this
  * app and is rethrown rather than dressed up as a network problem.
@@ -187,7 +199,7 @@ export const fieldErrorMessage = (error: unknown) =>
 export function errorMessage(error: unknown): string {
   if (!(error instanceof ApiError)) throw error;
   switch (error.status) {
-    case 0: return 'You appear to be offline.';
+    case 0: return deviceOffline ? 'You appear to be offline.' : "Couldn't reach SubVora. Try again in a moment.";
     case 400: return firstValidationMessage(error.body) ?? 'Please check your input and try again.';
     case 401: return 'Session expired, please log in again.';
     case 404: return 'Not found.';
@@ -196,11 +208,15 @@ export function errorMessage(error: unknown): string {
   }
 }
 
-/** Same, for a write. Nothing is queued for later, so an offline failure must say the change was lost. */
+/** Same, for a write. Nothing is queued for later, so a write with no answer must say the change was lost. */
 export function writeErrorMessage(error: unknown): string {
-  return error instanceof ApiError && error.status === 0
+  if (!(error instanceof ApiError) || error.status !== 0) return errorMessage(error);
+  return deviceOffline
     ? "You're offline — this change wasn't saved. Try again once you're connected."
-    : errorMessage(error);
+    : "Couldn't reach SubVora, so this change wasn't saved. Try again in a moment.";
 }
+
+/** A write that got no answer: worth a Retry, which resends the same request (ids and versions included). */
+export const isRetryable = (error: unknown) => error instanceof ApiError && error.status === 0;
 
 export const isStatus = (error: unknown, status: number) => error instanceof ApiError && error.status === status;

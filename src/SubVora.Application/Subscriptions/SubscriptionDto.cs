@@ -39,4 +39,26 @@ public class SubscriptionDto
     /// overwriting it. Clients that ignore this field keep the previous last-write-wins behaviour.
     /// </summary>
     public uint Version { get; set; }
+
+    /// <summary>
+    /// The caller's home currency, set alongside the converted amounts below on the list and
+    /// single-subscription reads. Null where no conversion was attempted (writes, older servers).
+    /// </summary>
+    public string? HomeCurrency { get; set; }
+
+    /// <summary>
+    /// One charge in <see cref="HomeCurrency"/>, converted at read time with the same cached rates
+    /// the burn rate uses - display only, never written back over <see cref="CostAmount"/>. Null
+    /// when the pair has no rate (the same subscriptions the burn rate lists as unresolved).
+    /// </summary>
+    public decimal? HomeCurrencyAmount { get; set; }
+
+    /// <summary>
+    /// Yearly cost in <see cref="HomeCurrency"/>: one charge times the charges per year (Weekly 52,
+    /// Monthly 12, Quarterly 4, Yearly 1) - the burn rate's rule. Null for OneTime and when unconverted.
+    /// </summary>
+    public decimal? HomeCurrencyYearly { get; set; }
+
+    /// <summary><see cref="HomeCurrencyYearly"/> / 12, as the burn rate derives its monthly figure.</summary>
+    public decimal? HomeCurrencyMonthly { get; set; }
 }

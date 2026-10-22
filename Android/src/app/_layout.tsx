@@ -4,7 +4,9 @@ import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useCallback, useEffect, useState } from 'react';
 import { View } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { setDeviceOffline } from '@/api';
 import { SessionProvider, useSession } from '@/lib/session';
 import { useReducedMotion } from '@/lib/motion';
 import { ThemeProvider, useTheme } from '@/theme';
@@ -28,6 +30,9 @@ function RootStack() {
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(surfaceHex).catch(() => undefined);
   }, [surfaceHex]);
+
+  // Lets the API client tell "offline" from "the server didn't answer" in its messages.
+  useEffect(() => NetInfo.addEventListener((s) => setDeviceOffline(s.isConnected === false)), []);
 
   useEffect(() => {
     const timer = setTimeout(() => setTimedOut(true), SPLASH_TIMEOUT_MS);
@@ -61,7 +66,9 @@ function RootStack() {
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.surface }, animation: reduced ? 'fade' : 'fade_from_bottom' }}>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="subscription/[id]" options={{ presentation: 'modal', animation: reduced ? 'fade' : 'fade_from_bottom' }} />
+          <Stack.Screen name="subscription/[id]" options={{ animation: reduced ? 'fade' : 'slide_from_right' }} />
+          <Stack.Screen name="subscription/new" options={{ presentation: 'modal', animation: reduced ? 'fade' : 'fade_from_bottom' }} />
+          <Stack.Screen name="subscription/edit/[id]" options={{ presentation: 'modal', animation: reduced ? 'fade' : 'fade_from_bottom' }} />
         </Stack.Protected>
         <Stack.Protected guard={!signedIn}>
           <Stack.Screen name="(auth)" />
@@ -77,11 +84,12 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <SessionProvider>
-          <SnackbarProvider>
+        {/* Outside the session, which clears it on every sign-in and sign-out. */}
+        <SnackbarProvider>
+          <SessionProvider>
             <RootStack />
-          </SnackbarProvider>
-        </SessionProvider>
+          </SessionProvider>
+        </SnackbarProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

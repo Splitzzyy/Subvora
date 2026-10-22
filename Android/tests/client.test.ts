@@ -90,3 +90,14 @@ test('a 400 naming a field is told apart from one refusing the whole request', (
   // The general message still falls back to the title.
   assert.equal(errorMessage(badCode), 'Invalid or expired reset code.');
 });
+
+test('no answer reads as offline only when the phone is offline', async () => {
+  const { setDeviceOffline, writeErrorMessage } = await import('../src/api/client.ts');
+  setDeviceOffline(false);
+  assert.match(writeErrorMessage(new ApiError(0)), /^Couldn't reach SubVora, so this change wasn't saved/);
+  assert.match(errorMessage(new ApiError(0)), /^Couldn't reach SubVora/);
+  setDeviceOffline(true);
+  assert.match(writeErrorMessage(new ApiError(0)), /^You're offline — this change wasn't saved/);
+  assert.equal(errorMessage(new ApiError(0)), 'You appear to be offline.');
+  setDeviceOffline(false);
+});

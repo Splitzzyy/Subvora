@@ -47,6 +47,15 @@ export interface Subscription {
   isFreeTrial: boolean;
   isActive: boolean;
   createdAt: string;
+  /**
+   * The cost in the user's home currency, converted by the server at read time (#292) - display
+   * only. Absent from writes, an older API or an older mirror; null where no rate is cached.
+   * Yearly and monthly count cycles (Monthly 12, Weekly 52...) and are null for one-time purchases.
+   */
+  homeCurrency?: string | null;
+  homeCurrencyAmount?: number | null;
+  homeCurrencyMonthly?: number | null;
+  homeCurrencyYearly?: number | null;
 }
 
 export interface SubscriptionRequest {

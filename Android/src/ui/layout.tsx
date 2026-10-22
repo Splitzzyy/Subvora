@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { Animated, KeyboardAvoidingView, RefreshControl, StyleSheet, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Animated, Keyboard, KeyboardAvoidingView, RefreshControl, ScrollView, StyleSheet, View, type TextInput } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { brand, shape, space, useTheme } from '@/theme';
 import { ScreenHeader, Text } from '.';
 import { SubVoraMark } from './brand';
+import { RevealContext } from './reveal';
 
 /**
  * Where the large title has scrolled away and the small top bar takes over: its container turns
@@ -13,6 +14,13 @@ import { SubVoraMark } from './brand';
 const COLLAPSE_FROM = 48;
 const BAR_SOLID = 60;
 const COLLAPSE_TO = 96;
+
+/**
+ * How much must show below a focused field: the next field and the screen's main button (~76 +
+ * ~56dp plus gaps). Shrinking the screen for the keyboard is not enough on its own - nothing
+ * scrolled, so a field low on the page and the button under it stayed behind the keyboard.
+ */
+const REVEAL_BELOW = 160;
 
 /**
  * Scrolling tab/detail screen with pull-to-refresh. Leaves room at the bottom for a FAB. With a
@@ -33,7 +41,43 @@ export function Screen({ children, refreshing, onRefresh, overlay, title, subtit
   // screen position; without this it under-shrank by exactly that much, and a field focused low on
   // the screen (Settings' new password, the form's reminder days) sat behind the keyboard.
   const [top, setTop] = useState(insets.top);
+
+  // ---- Keep the focused field above the keyboard ----
+  const scroller = useRef<ScrollView>(null);
+  const offset = useRef(0);
+  const keyboardTop = useRef<number | null>(null);
+  const focused = useRef<TextInput | null>(null);
+  const [keyboardUp, setKeyboardUp] = useState(false);
+  const reveal = useCallback(() => {
+    const input = focused.current;
+    const kbTop = keyboardTop.current;
+    if (!input || kbTop === null) return;
+    input.measureInWindow((_x, y, _w, h) => {
+      // Never past the point where the field's own top would leave the visible area.
+      const room = kbTop - space.sm;
+      const delta = Math.min(y + h + REVEAL_BELOW - room, y - (top + space.lg));
+      if (delta > 0) scroller.current?.scrollTo({ y: offset.current + delta, animated: true });
+    });
+  }, [top]);
+  useEffect(() => {
+    // After a frame: the extra bottom room below has to exist before there is anywhere to scroll to.
+    const show = Keyboard.addListener('keyboardDidShow', (e) => { keyboardTop.current = e.endCoordinates.screenY; setKeyboardUp(true); setTimeout(reveal, 60); });
+    const hide = Keyboard.addListener('keyboardDidHide', () => { keyboardTop.current = null; setKeyboardUp(false); });
+    return () => { show.remove(); hide.remove(); };
+  }, [reveal]);
+  // Where the content is scrolled to, for scrolling on from there.
+  useEffect(() => {
+    const id = scrollY.addListener(({ value }) => { offset.current = value; });
+    return () => scrollY.removeListener(id);
+  }, [scrollY]);
+  const onFocusField = useCallback((input: TextInput | null) => {
+    focused.current = input;
+    // Moving between fields with the keyboard already up fires no keyboard event.
+    if (keyboardTop.current !== null) setTimeout(reveal, 50);
+  }, [reveal]);
+
   return (
+    <RevealContext.Provider value={onFocusField}>
     <View style={{ flex: 1, backgroundColor: colors.surface }}>
       {header ? (
         // M3 top app bar: flat on the surface at rest, surfaceContainer once content scrolls under
@@ -49,10 +93,12 @@ export function Screen({ children, refreshing, onRefresh, overlay, title, subtit
       <View style={{ flex: 1 }} onLayout={(e) => setTop(e.nativeEvent.layout.y)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior="height" keyboardVerticalOffset={top}>
           <Animated.ScrollView
+            ref={scroller}
             keyboardShouldPersistTaps="handled"
             scrollEventThrottle={16}
-            onScroll={title || header ? Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }) : undefined}
-            contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: (overlay ? 104 : space.xxxl) + insets.bottom }}
+            onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true })}
+            // With the keyboard up there must be something left to scroll, or a short form cannot lift its last field.
+            contentContainerStyle={{ paddingHorizontal: space.lg, paddingBottom: (overlay ? 104 : space.xxxl) + insets.bottom + (keyboardUp ? REVEAL_BELOW : 0) }}
             // The native Android indicator; it cannot be swapped for the Expressive one, so it is tinted from the tokens.
             refreshControl={onRefresh ? (
               <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} colors={[colors.primary]} progressBackgroundColor={colors.surfaceContainerHigh} />
@@ -85,6 +131,7 @@ export function Screen({ children, refreshing, onRefresh, overlay, title, subtit
         </Animated.View>
       ) : null}
     </View>
+    </RevealContext.Provider>
   );
 }
 

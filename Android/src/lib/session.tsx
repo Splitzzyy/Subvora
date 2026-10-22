@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiError, authApi, setSessionExpiredHandler, tokens, type AuthTokenResponse } from '@/api';
+import { useClearSnackbars } from '@/ui/snackbar';
 import { clearCache } from './cache';
 import { cancelReminders } from './reminders';
 
@@ -24,14 +25,19 @@ const SessionContext = createContext<Session | null>(null);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('loading');
   const [dataVersion, setDataVersion] = useState(0);
+  const clearSnackbars = useClearSnackbars();
 
-  /** Ends the local session exactly like an explicit sign-out: tokens, mirror and reminders go. */
+  /**
+   * Ends the local session exactly like an explicit sign-out: tokens, mirror, reminders and any
+   * message about this session go. A message raised after this returns ("Account deleted.") shows.
+   */
   const endLocally = useCallback(async () => {
     await tokens.clear();
     await clearCache();
     await cancelReminders();
+    clearSnackbars();
     setStatus('signedOut');
-  }, []);
+  }, [clearSnackbars]);
 
   useEffect(() => {
     setSessionExpiredHandler(() => { void endLocally(); });
@@ -45,6 +51,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     endLocally,
     signIn: async (t) => {
       await tokens.save(t);
+      clearSnackbars();
       setStatus('signedIn');
     },
     signOut: async () => {
@@ -56,7 +63,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       }
       await endLocally();
     },
-  }), [status, dataVersion, endLocally]);
+  }), [status, dataVersion, endLocally, clearSnackbars]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

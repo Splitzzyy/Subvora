@@ -70,6 +70,20 @@ test('groups order by soonest billing and say when something is overdue', () => 
   assert.equal(groups[1].summary, '1 subscription · next tomorrow');
 });
 
+test('groups put inactive rows last and never call their stale date "next"', () => {
+  const sub = (customName: string, categoryName: string, nextBillingDate: string, isActive = true) =>
+    ({ customName, categoryName, nextBillingDate, isActive });
+  const groups = groupSubscriptions([
+    sub('Hotstar', 'Entertainment', '2026-09-30', false),
+    sub('Spotify', 'Entertainment', '2026-10-20'),
+    sub('Old gym', 'Fitness', '2026-08-01', false),
+  ], '2026-10-15');
+  assert.deepEqual(groups.map((g) => g.title), ['Entertainment', 'Fitness']);
+  assert.deepEqual(groups[0].data.map((s) => s.customName), ['Spotify', 'Hotstar']);
+  assert.equal(groups[0].summary, '2 subscriptions · next in 5 days');
+  assert.equal(groups[1].summary, '1 subscription · inactive');
+});
+
 test('reminders skip the past and inactive, keep the nearest 64, fire at 09:00', () => {
   const base = { costAmount: 199, currency: 'INR', cycleCadence: 'Monthly' as const, alertDaysAdvance: 3, isActive: true };
   const now = new Date(2026, 9, 15, 10, 0);
@@ -91,4 +105,75 @@ test('only a rejected refresh token ends the session', () => {
   for (const status of [400, 401, 403]) assert.equal(refreshEndsSession(status), true, `${status}`);
   // Rate-limited or a server waking from a cold start: a transient error, not a verdict.
   for (const status of [429, 500, 502, 503, 504]) assert.equal(refreshEndsSession(status), false, `${status}`);
+});
+
+// ---- Android UX review (#275, #278, #284, #290, #292) ----------------------------------------
+
+const { categoryShares, dueSoon, filterSubscriptions, formatCountdown, formatDayDate, homeEquivalent, reminderDate, sectionByDue, signInCooldown, sortByCost } =
+  await import('../src/lib/logic.ts');
+
+const row = (customName: string, nextBillingDate: string, extra: Record<string, unknown> = {}) =>
+  ({ customName, nextBillingDate, isActive: true, categoryName: null, ...extra });
+
+test('due soon: overdue first, then the next 7 days, active only', () => {
+  const today = '2026-10-22';
+  const subs = [
+    row('Later', '2026-11-08'), row('Netflix', '2026-10-25'), row('iCloud', '2026-10-18'),
+    row('ChatGPT', '2026-10-28'), row('Paused', '2026-10-20', { isActive: false }), row('Edge', '2026-10-29'),
+  ];
+  const { overdue, upcoming } = dueSoon(subs, today);
+  assert.deepEqual(overdue.map((s) => s.customName), ['iCloud']);
+  assert.deepEqual(upcoming.map((s) => s.customName), ['Netflix', 'ChatGPT', 'Edge']);
+  assert.deepEqual(sectionByDue(subs, today).map((s) => [s.title, s.data.length]), [['Overdue', 1], ['Next 7 days', 3], ['Later', 1], ['Inactive', 1]]);
+});
+
+test('cost sort puts unconverted and one-time rows last', () => {
+  const sorted = sortByCost([
+    row('B', '2026-11-01', { homeCurrencyMonthly: 100 }), row('None', '2026-11-01'), row('A', '2026-11-01', { homeCurrencyMonthly: 1900 }),
+  ]);
+  assert.deepEqual(sorted.map((s) => s.customName), ['A', 'B', 'None']);
+  const paused = sortByCost([row('Off', '2026-11-01', { homeCurrencyMonthly: 5000, isActive: false }), row('On', '2026-11-01', { homeCurrencyMonthly: 10 })]);
+  assert.deepEqual(paused.map((s) => s.customName), ['On', 'Off']);
+});
+
+test('search folds case and accents; filters narrow by category or source', () => {
+  const subs = [row('Café Coffee', '2026-11-01', { categoryId: 'c1' }), row('Netflix', '2026-11-01', { categoryId: 'c2', paymentSourceId: 'p1' })];
+  assert.deepEqual(filterSubscriptions(subs, { query: 'cafe' }).map((s) => s.customName), ['Café Coffee']);
+  assert.deepEqual(filterSubscriptions(subs, { categoryId: 'c2' }).map((s) => s.customName), ['Netflix']);
+  assert.deepEqual(filterSubscriptions(subs, { paymentSourceId: 'p1', query: 'NET' }).map((s) => s.customName), ['Netflix']);
+});
+
+test('reminder dates and weekday dates', () => {
+  assert.equal(reminderDate('2026-10-28', 3), '2026-10-25');
+  assert.equal(reminderDate('2026-03-02', 7), '2026-02-23');
+  assert.equal(formatDayDate('2026-10-25', '2026-10-22'), 'Sun 25 Oct');
+  assert.equal(formatDayDate('2027-01-10', '2026-10-22'), 'Sun 10 Jan 2027');
+});
+
+test('the home-currency line appears only for a converted foreign price', () => {
+  assert.equal(homeEquivalent({ currency: 'USD', homeCurrency: 'INR', homeCurrencyAmount: 1900 }), '≈ ₹1,900.00');
+  assert.equal(homeEquivalent({ currency: 'INR', homeCurrency: 'INR', homeCurrencyAmount: 649 }), null);
+  assert.equal(homeEquivalent({ currency: 'CHF', homeCurrency: 'INR', homeCurrencyAmount: null }), null);
+  assert.equal(homeEquivalent({ currency: 'USD' }), null);
+});
+
+test('sign-in cooldown: three failures inside 15 minutes pause sign-in for 15 minutes', () => {
+  const min = 60_000;
+  const t0 = 1_000_000_000_000;
+  assert.equal(signInCooldown([t0, t0 + min], t0 + 2 * min).locked, false);
+  const locked = signInCooldown([t0, t0 + min, t0 + 2 * min], t0 + 3 * min);
+  assert.equal(locked.locked, true);
+  assert.equal(locked.remainingMs, 14 * min);
+  // Over by itself once the 15 minutes from the third failure have passed.
+  assert.equal(signInCooldown([t0, t0 + min, t0 + 2 * min], t0 + 17 * min).locked, false);
+  // Three failures spread over more than 15 minutes never lock.
+  assert.equal(signInCooldown([t0, t0 + 10 * min, t0 + 20 * min], t0 + 21 * min).locked, false);
+  assert.equal(formatCountdown(14 * min + 59_000), '14:59');
+  assert.equal(formatCountdown(0), '0:00');
+});
+
+test('category shares: largest first, nothing when nothing is spent', () => {
+  const shares = categoryShares([{ categoryName: 'Fitness', monthlyAmount: 25 }, { categoryName: 'Productivity', monthlyAmount: 75 }]);
+  assert.deepEqual(shares.map((s) => [s.categoryName, s.share]), [['Productivity', 0.75], ['Fitness', 0.25]]);
+  assert.deepEqual(categoryShares([{ categoryName: 'X', monthlyAmount: 0 }]), []);
 });

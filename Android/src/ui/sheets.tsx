@@ -6,6 +6,7 @@ import { formatLongDate, parseDateOnly, toDateOnly } from '@/lib/logic';
 import { useReducedMotion } from '@/lib/motion';
 import { motion, shape, space, useTheme } from '@/theme';
 import { Button, Icon, IconButton, SelectField, Tap, Text, TextField, type IconName } from '.';
+import { RevealContext } from './reveal';
 
 /**
  * Modal bottom sheet. The scrim fades in on its own while only the sheet rises (spatial spring), and
@@ -65,7 +66,8 @@ export function Sheet({ visible, title, onClose, children }: { visible: boolean;
               <IconButton icon="close" label={`Close ${title}`} onPress={onClose} />
             </View>
           </View>
-          {children}
+          {/* The sheet rises above the keyboard itself; its fields must not scroll the page behind. */}
+          <RevealContext.Provider value={null}>{children}</RevealContext.Provider>
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
@@ -211,7 +213,7 @@ function DialogFrame({ onDismiss, children }: { onDismiss: () => void; children:
         opacity: enter.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }),
         transform: [{ scale: enter.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) }],
       }}>
-        {children}
+        <RevealContext.Provider value={null}>{children}</RevealContext.Provider>
       </Animated.View>
     </KeyboardAvoidingView>
   );
