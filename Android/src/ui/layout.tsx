@@ -60,7 +60,8 @@ export function Screen({ children, refreshing, onRefresh, overlay, title, subtit
     });
   }, [top]);
   useEffect(() => {
-    const show = Keyboard.addListener('keyboardDidShow', (e) => { keyboardTop.current = e.endCoordinates.screenY; setKeyboardUp(true); reveal(); });
+    // After a frame: the extra bottom room below has to exist before there is anywhere to scroll to.
+    const show = Keyboard.addListener('keyboardDidShow', (e) => { keyboardTop.current = e.endCoordinates.screenY; setKeyboardUp(true); setTimeout(reveal, 60); });
     const hide = Keyboard.addListener('keyboardDidHide', () => { keyboardTop.current = null; setKeyboardUp(false); });
     return () => { show.remove(); hide.remove(); };
   }, [reveal]);

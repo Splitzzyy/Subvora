@@ -5,7 +5,7 @@ import { subscriptionsApi } from '@/api';
 import { useLoader } from '@/lib/hooks';
 import { asyncState } from '@/lib/loading';
 import {
-  CYCLE_LABEL, describeRelative, formatDayDate, formatLongDate, formatMoney, isOverdue, reminderDate, todayDateOnly, type BillingCycle,
+  CYCLE_LABEL, daysUntil, describeRelative, formatDayDate, formatLongDate, formatMoney, isOverdue, reminderDate, todayDateOnly, type BillingCycle,
 } from '@/lib/logic';
 import { useSubscriptionActions } from '@/lib/subscriptionActions';
 import { shape, space, useTheme } from '@/theme';
@@ -39,7 +39,10 @@ export default function SubscriptionDetails() {
     {
       icon: 'calendar-refresh-outline',
       label: sub.cycleCadence === 'OneTime' ? 'Due' : 'Next charge',
-      value: overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}` : `${formatDayDate(sub.nextBillingDate, today)} · ${describeRelative(sub.nextBillingDate, today)}`,
+      value: overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}`
+        // Past a fortnight describeRelative is the date itself; say it once.
+        : daysUntil(sub.nextBillingDate, today) <= 14 ? `${formatDayDate(sub.nextBillingDate, today)} · ${describeRelative(sub.nextBillingDate, today)}`
+        : formatDayDate(sub.nextBillingDate, today),
       tone: overdue ? 'warning' : undefined,
     },
     {

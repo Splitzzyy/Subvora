@@ -136,9 +136,13 @@ export default function Subscriptions() {
                     </View>
                   }
                   subtitle={
-                    <Text variant="amountLabel" color={colors.onSurfaceVariant} numberOfLines={1}>
-                      {equivalent ? `${price} · ${equivalent}` : price}
-                    </Text>
+                    <View>
+                      <Text variant="amountLabel" color={colors.onSurfaceVariant} numberOfLines={1}>
+                        {equivalent ? `${price} · ${equivalent}` : price}
+                      </Text>
+                      {/* The trailing slot holds Mark paid, so the date that is owed goes here. Never colour alone: it says so. */}
+                      {overdue ? <Text variant="labelMedium" color={colors.renewalWarning} numberOfLines={1}>{`Was due ${formatLongDate(sub.nextBillingDate)}`}</Text> : null}
+                    </View>
                   }
                   trailing={overdue ? (
                     <Button label="Mark paid" variant="tonal" onPress={() => void markPaid(sub)}

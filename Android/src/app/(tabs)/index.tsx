@@ -6,7 +6,7 @@ import { CACHE_KEYS } from '@/lib/cache';
 import { useLoader, useOffline } from '@/lib/hooks';
 import { asyncState } from '@/lib/loading';
 import {
-  burnRateWarning, categoryShares, daysUntil, describeRelative, dueSoon, formatDayDate, formatLongDate, formatMoney,
+  burnRateWarning, categoryShares, daysUntil, describeRelative, dueSoon, formatDayDate, formatMoney, formatShortDate,
   homeEquivalent, topSpendSummary,
 } from '@/lib/logic';
 import { useSubscriptionActions } from '@/lib/subscriptionActions';
@@ -104,7 +104,8 @@ export default function Dashboard() {
                 {dueRows.map((sub) => {
                   const overdue = due.overdue.includes(sub);
                   const id = category(sub.categoryName);
-                  const when = overdue ? `Overdue · was due ${formatLongDate(sub.nextBillingDate)}`
+                  // Short: the row also holds Mark paid, and a full date with the year was cut off.
+                  const when = overdue ? `Overdue since ${formatShortDate(sub.nextBillingDate)}`
                     : `${formatDayDate(sub.nextBillingDate)} · ${describeRelative(sub.nextBillingDate)}`;
                   const equivalent = homeEquivalent(sub);
                   return (
@@ -131,7 +132,7 @@ export default function Dashboard() {
                     </Tap>
                   );
                 })}
-                <Button label="See all subscriptions" variant="text" icon="chevron-right" onPress={() => openList()} style={{ alignSelf: 'flex-start' }} />
+                <Button label="See all subscriptions" variant="text" onPress={() => openList()} style={{ alignSelf: 'flex-start' }} />
               </Card>
             ) : null}
 
