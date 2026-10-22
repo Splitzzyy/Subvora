@@ -4,6 +4,7 @@ import { useConfirm } from '@/ui/sheets';
 import { useSnackbar } from '@/ui/snackbar';
 import * as haptics from './haptics';
 import { useOffline } from './hooks';
+import { resyncReminders } from './reminders';
 import { useSession } from './session';
 
 const STALE_CHARGE = 'Not marked paid: this charge changed on another device. The list now shows what is due.';
@@ -31,6 +32,8 @@ export function useSubscriptionActions() {
       await action();
       haptics.confirm();
       dataChanged();
+      // Wherever the write came from - the list, Home or the details screen.
+      void resyncReminders();
       snackbar({ text: success });
       after?.();
     } catch (e) {
@@ -55,7 +58,10 @@ export function useSubscriptionActions() {
     } catch (e) {
       // The charge on screen is no longer the one due - settled on another device, or its date
       // edited. Nothing was recorded: reload to show what is due now, and say why.
-      if (isStatus(e, 409)) dataChanged();
+      if (isStatus(e, 409)) {
+        dataChanged();
+        void resyncReminders();
+      }
       throw e;
     }
   });

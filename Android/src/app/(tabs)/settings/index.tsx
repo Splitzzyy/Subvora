@@ -1,6 +1,6 @@
 import Constants from 'expo-constants';
 import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, View } from 'react-native';
 import { API_BASE_URL, categoriesApi, isRetryable, paymentSourcesApi, subscriptionsApi, usersApi, writeErrorMessage } from '@/api';
 import { CACHE_KEYS } from '@/lib/cache';
@@ -50,27 +50,49 @@ export default function Settings() {
   const defaultDays = profile?.defaultAlertDaysAdvance ?? SERVER_DEFAULT_DAYS;
   const dayOptions = [...new Set([...PRESET_DAYS, defaultDays])].sort((a, b) => a - b);
 
-  /** One PUT carries both preferences; `undoOf` marks the undo of a currency change. */
-  const update = async (kind: 'currency' | 'reminder', nextCurrency: string, nextDays: number | null, undoOf?: string) => {
-    if (!profile) return;
+  // The profile as last saved, read when a write is sent rather than when its button was drawn: one
+  // PUT carries both preferences, so a currency Undo or a Retry built from an older render would
+  // also put back a reminder choice made since.
+  const latest = useRef(profile);
+  useEffect(() => { latest.current = profile; }, [profile]);
+  /** One preference write at a time; Undo and Retry come from snackbars the disabled controls do not cover. */
+  const inFlight = useRef(false);
+
+  /** Changes one preference and keeps the other as last saved. `undoOf` marks the undo of a currency change. */
+  const update = async (change: { currency: string } | { days: number | null }, undoOf?: string) => {
+    const base = latest.current;
+    if (!base || inFlight.current) return;
+    const kind = 'currency' in change ? 'currency' : 'reminder';
+    const nextCurrency = 'currency' in change ? change.currency : base.preferredCurrency;
+    const nextDays = 'days' in change ? change.days : base.defaultAlertDaysAdvance;
+    inFlight.current = true;
     setSaving(kind);
     try {
-      setProfile(await usersApi.updateMe(nextCurrency, nextDays));
+      const saved = await usersApi.updateMe(nextCurrency, nextDays);
+      latest.current = saved;
+      setProfile(saved);
       haptics.confirm();
       // The home currency is what every burn-rate figure converts into.
       dataChanged();
       if (kind === 'reminder') snackbar({ text: `New subscriptions remind you ${daysLabel(nextDays ?? SERVER_DEFAULT_DAYS)} before.` });
       else if (undoOf) snackbar({ text: `Home currency set back to ${nextCurrency}.` });
-      else snackbar({ text: `Home currency set to ${nextCurrency}.`, actionLabel: 'Undo', onAction: () => void update('currency', currency, nextDays, nextCurrency) });
+      else snackbar({ text: `Home currency set to ${nextCurrency}.`, actionLabel: 'Undo', onAction: () => undoCurrency(base.preferredCurrency, nextCurrency) });
     } catch (e) {
       haptics.reject();
       snackbar({
         tone: 'error', text: writeErrorMessage(e),
-        ...(isRetryable(e) ? { actionLabel: 'Retry', onAction: () => void update(kind, nextCurrency, nextDays, undoOf) } : {}),
+        ...(isRetryable(e) ? { actionLabel: 'Retry', onAction: () => void update(change, undoOf) } : {}),
       });
     } finally {
+      inFlight.current = false;
       setSaving(null);
     }
+  };
+
+  /** Puts the earlier currency back - unless a later change replaced this one, which leaves nothing to undo. */
+  const undoCurrency = (previous: string, changedTo: string) => {
+    if (latest.current?.preferredCurrency !== changedTo) return;
+    void update({ currency: previous }, changedTo);
   };
 
   const turnOnNotifications = async () => {
@@ -137,7 +159,7 @@ export default function Settings() {
           <Text variant="bodyMedium" color={colors.onSurfaceVariant}>Remind me before each renewal</Text>
           <ButtonGroup<string>
             value={String(defaultDays)}
-            onChange={(v) => void update('reminder', currency, Number(v))}
+            onChange={(v) => void update({ days: Number(v) })}
             disabled={!profile || offline || saving !== null}
             options={dayOptions.map((d) => ({ value: String(d), label: daysLabel(d) }))}
           />
@@ -197,7 +219,7 @@ export default function Settings() {
         title="Home currency"
         options={currencies}
         selected={currency}
-        onSelect={(code) => { if (profile && code !== currency) void update('currency', code, profile.defaultAlertDaysAdvance); }}
+        onSelect={(code) => { if (code !== currency) void update({ currency: code }); }}
         onClose={() => setPickingCurrency(false)}
         searchable
         custom={customCurrency}

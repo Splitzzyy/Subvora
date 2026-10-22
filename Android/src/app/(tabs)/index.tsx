@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { dashboardApi, subscriptionsApi, type BurnRate, type Subscription } from '@/api';
 import { CACHE_KEYS } from '@/lib/cache';
@@ -9,6 +9,7 @@ import {
   burnRateWarning, categoryShares, daysUntil, describeRelative, dueSoon, formatDayDate, formatMoney, formatShortDate,
   homeEquivalent, topSpendSummary,
 } from '@/lib/logic';
+import { syncReminders } from '@/lib/reminders';
 import { useSubscriptionActions } from '@/lib/subscriptionActions';
 import { shape, space, useTheme } from '@/theme';
 import { Banner, Button, ButtonGroup, Card, EmptyState, FadeIn, ProgressBar, Tap, Text, Tile } from '@/ui';
@@ -29,6 +30,8 @@ export default function Dashboard() {
   const actions = useSubscriptionActions();
   const [period, setPeriod] = useState<Period>('monthly');
   const refresh = () => { void reload(); void subs.reload(); };
+  // Home is often the only screen opened: reschedule from its list as the Subscriptions tab does.
+  useEffect(() => { if (subs.data) void syncReminders(subs.data); }, [subs.data]);
 
   const warning = data ? burnRateWarning(data.unresolvedSubscriptionIds.length, data.oldestRateFetchedAt) : null;
   const topSource = data ? topSpendSummary(data.byPaymentSource) : null;
@@ -47,11 +50,64 @@ export default function Dashboard() {
     : null;
   const openList = (params?: Record<string, string>) => router.navigate({ pathname: '/subscriptions', params });
 
+  // Due soon (#275): what is about to charge, with the overdue ones payable from here. Outside the
+  // spend layout too: a free trial costs nothing, so an account with only a trial has no burn rate
+  // but does have a deadline to show.
+  const dueCard = due && dueRows.length > 0 ? (
+    <Card>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: space.sm }}>
+        <Text variant="titleLargeEmphasized" accessibilityRole="header">Due soon</Text>
+        <Text variant="labelLarge" color={colors.onSurfaceVariant}>
+          {dueTotal ? `${dueTotal} to pay this week` : `${dueRows.length} due this week`}
+        </Text>
+      </View>
+      {dueRows.map((sub) => {
+        const overdue = due.overdue.includes(sub);
+        const id = category(sub.categoryName);
+        // Short: the row also holds Mark paid, and a full date with the year was cut off.
+        const when = overdue ? `Overdue since ${formatShortDate(sub.nextBillingDate)}`
+          : `${sub.isFreeTrial ? 'Trial ends ' : ''}${formatDayDate(sub.nextBillingDate)} · ${describeRelative(sub.nextBillingDate)}`;
+        const equivalent = homeEquivalent(sub);
+        return (
+          <Tap key={sub.id} radius={shape.medium} scaleOnPress={false} onPress={() => router.push(`/subscription/${sub.id}`)}
+            accessibilityRole="button" accessibilityLabel={`${sub.customName}, ${formatMoney(sub.costAmount, sub.currency)}, ${when}`}
+            accessibilityActions={overdue && actions.canWrite ? [{ name: 'pay', label: 'Mark as paid' }] : undefined}
+            onAccessibilityAction={() => void actions.markPaid(sub)}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56, paddingVertical: space.xs }}>
+            <Logo url={sub.catalogLogoUrl} name={sub.customName} color={id.ink} background={id.soft} size={40} />
+            <View style={{ flex: 1 }}>
+              <Text variant="titleMedium" numberOfLines={1}>{sub.customName}</Text>
+              <Text variant="bodyMedium" numberOfLines={1}
+                color={overdue ? colors.renewalWarning : daysUntil(sub.nextBillingDate) === 0 ? colors.primary : colors.onSurfaceVariant}>{when}</Text>
+            </View>
+            {overdue ? (
+              <Button label="Mark paid" variant="tonal" onPress={() => void actions.markPaid(sub)}
+                loading={actions.busy === `pay:${sub.id}`} disabled={!actions.canWrite} />
+            ) : (
+              <View style={{ alignItems: 'flex-end' }}>
+                <Text variant="amountLabel">{formatMoney(sub.costAmount, sub.currency)}</Text>
+                {equivalent ? <Text variant="labelMedium" color={colors.onSurfaceVariant}>{equivalent}</Text> : null}
+              </View>
+            )}
+          </Tap>
+        );
+      })}
+      <Button label="See all subscriptions" variant="text" onPress={() => openList()} style={{ alignSelf: 'flex-start' }} />
+    </Card>
+  ) : null;
+
   return (
     <Screen title="Overview" subtitle="Burn rate" refreshing={(loading && !!data) || (subs.loading && !!subs.data)} onRefresh={refresh}>
-      {cached ? <CachedBanner savedAt={cachedAt} status={errorStatus} offline={offline} onRetry={reload} /> : null}
-      {/* A failed reload over live figures: keep them, say so. */}
-      {error && data ? <Banner tone="error" text={error} actionLabel="Retry" onAction={reload} /> : null}
+      {/* Two requests feed this screen: either one showing its mirror makes the screen a mirror,
+          and Retry reloads both. */}
+      {cached || subs.cached ? (
+        <CachedBanner savedAt={cached ? cachedAt : subs.cachedAt} status={errorStatus ?? subs.errorStatus} offline={offline} onRetry={refresh} />
+      ) : null}
+      {/* A failed reload over live figures: keep them, say so. The list failing alone is said here
+          too, or Due soon would vanish without a word. */}
+      {data && (error || subs.error) ? (
+        <Banner tone="error" text={error ?? `${subs.data ? "Due soon isn't up to date." : "Due soon couldn't load."} ${subs.error}`} actionLabel="Retry" onAction={refresh} />
+      ) : null}
       {warning ? <Banner tone="info" text={warning} /> : null}
 
       <AsyncView
@@ -61,9 +117,12 @@ export default function Dashboard() {
         errorStatus={errorStatus}
         onRetry={reload}
         empty={trackedCount ? (
-          <EmptyState icon="pause-circle-outline" title="No active spend"
+          <View style={{ gap: space.md }}>
+            {dueCard}
+            <EmptyState icon="pause-circle-outline" title="No active spend"
             body={`Your ${trackedCount === 1 ? 'subscription is a free trial or paused' : `${trackedCount} subscriptions are free trials or paused`}, so nothing counts towards your burn rate yet.`}
             action={<Button label="View subscriptions" icon="calendar-sync-outline" variant="tonal" onPress={() => router.navigate('/subscriptions')} />} />
+          </View>
         ) : (
           <EmptyState icon="rocket-launch-outline" title="Nothing tracked yet"
             body="Add your first subscription and your burn rate shows up here."
@@ -92,49 +151,7 @@ export default function Dashboard() {
               />
             </Card>
 
-            {/* Due soon (#275): what is about to charge, with the overdue ones payable from here. */}
-            {due && dueRows.length > 0 ? (
-              <Card>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: space.sm }}>
-                  <Text variant="titleLargeEmphasized" accessibilityRole="header">Due soon</Text>
-                  <Text variant="labelLarge" color={colors.onSurfaceVariant}>
-                    {dueTotal ? `${dueTotal} to pay this week` : `${dueRows.length} due this week`}
-                  </Text>
-                </View>
-                {dueRows.map((sub) => {
-                  const overdue = due.overdue.includes(sub);
-                  const id = category(sub.categoryName);
-                  // Short: the row also holds Mark paid, and a full date with the year was cut off.
-                  const when = overdue ? `Overdue since ${formatShortDate(sub.nextBillingDate)}`
-                    : `${sub.isFreeTrial ? 'Trial ends ' : ''}${formatDayDate(sub.nextBillingDate)} · ${describeRelative(sub.nextBillingDate)}`;
-                  const equivalent = homeEquivalent(sub);
-                  return (
-                    <Tap key={sub.id} radius={shape.medium} scaleOnPress={false} onPress={() => router.push(`/subscription/${sub.id}`)}
-                      accessibilityRole="button" accessibilityLabel={`${sub.customName}, ${formatMoney(sub.costAmount, sub.currency)}, ${when}`}
-                      accessibilityActions={overdue && actions.canWrite ? [{ name: 'pay', label: 'Mark as paid' }] : undefined}
-                      onAccessibilityAction={() => void actions.markPaid(sub)}
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: space.md, minHeight: 56, paddingVertical: space.xs }}>
-                      <Logo url={sub.catalogLogoUrl} name={sub.customName} color={id.ink} background={id.soft} size={40} />
-                      <View style={{ flex: 1 }}>
-                        <Text variant="titleMedium" numberOfLines={1}>{sub.customName}</Text>
-                        <Text variant="bodyMedium" numberOfLines={1}
-                          color={overdue ? colors.renewalWarning : daysUntil(sub.nextBillingDate) === 0 ? colors.primary : colors.onSurfaceVariant}>{when}</Text>
-                      </View>
-                      {overdue ? (
-                        <Button label="Mark paid" variant="tonal" onPress={() => void actions.markPaid(sub)}
-                          loading={actions.busy === `pay:${sub.id}`} disabled={!actions.canWrite} />
-                      ) : (
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text variant="amountLabel">{formatMoney(sub.costAmount, sub.currency)}</Text>
-                          {equivalent ? <Text variant="labelMedium" color={colors.onSurfaceVariant}>{equivalent}</Text> : null}
-                        </View>
-                      )}
-                    </Tap>
-                  );
-                })}
-                <Button label="See all subscriptions" variant="text" onPress={() => openList()} style={{ alignSelf: 'flex-start' }} />
-              </Card>
-            ) : null}
+            {dueCard}
 
             {/* Spend by category as one ring (#284): every category, in the bars' colours. */}
             {shares.length > 0 ? (

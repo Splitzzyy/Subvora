@@ -13,6 +13,7 @@ import { asyncState } from '@/lib/loading';
 import {
   CYCLE_LABEL, CYCLES_ORDERED, formatDayDate, formatMoney, nextBillingDate, reminderDate, todayDateOnly, type BillingCycle,
 } from '@/lib/logic';
+import { resyncReminders } from '@/lib/reminders';
 import { useSession } from '@/lib/session';
 import { shape, space, useTheme } from '@/theme';
 import { Banner, Button, ButtonGroup, Card, Icon, IconButton, OfflineBanner, ProgressBar, SelectField, SwitchRow, Tap, Text, TextField, Tile } from '@/ui';
@@ -255,6 +256,7 @@ export function SubscriptionForm({ editId }: { editId: string | null }) {
       else await subscriptionsApi.create({ ...request, id: createId });
       haptics.confirm();
       dataChanged();
+      void resyncReminders();
       snackbar({ text: editId ? 'Changes saved.' : `${request.customName} added.` });
       leaving.current = true;
       router.back();

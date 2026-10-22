@@ -45,9 +45,8 @@ export default function Subscriptions() {
     Storage.setItemAsync(SORT_KEY, next).catch(() => undefined);
   };
 
-  // Reminders are re-derived from whichever list won - live or the offline mirror.
-  // ponytail: only refreshed when this screen loads; move behind dataVersion if reminders must follow
-  // edits made without visiting the list.
+  // Reminders are re-derived from whichever list won - live or the offline mirror. Writes reschedule
+  // on their own (resyncReminders), so this covers changes made on another device.
   useEffect(() => { if (data) void syncReminders(data); }, [data]);
 
   const filter = { categoryId: params.categoryId ?? null, paymentSourceId: params.paymentSourceId ?? null };
