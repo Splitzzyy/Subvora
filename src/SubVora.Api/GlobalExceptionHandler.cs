@@ -53,6 +53,11 @@ public class GlobalExceptionHandler : IExceptionHandler
             httpContext.Request.Path,
             traceId);
 
+        // The trace shows which exception failed the request, not only that it returned 500. The
+        // type alone: a message can quote an email address (an SMTP reply, a constraint value), and
+        // the span leaves the process without the log's masking.
+        Activity.Current?.SetTag("error.type", exception.GetType().FullName);
+
         // Nothing can be written once the response is on the wire - assigning StatusCode below would
         // throw and replace a partial response with a second, less legible failure. Returning false
         // hands it back to the server, which aborts the connection so the client sees a truncated

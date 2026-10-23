@@ -57,16 +57,34 @@ builder.Host.UseSerilog((_, cfg) => cfg
 //
 // Logs are deliberately not exported: EmailMaskingFormatter only guards the console sink, and an
 // OTLP log exporter would ship raw messages and exception text, addresses included. Exceptions are
-// not recorded on spans for the same reason - a 500 still marks its span as an error, and the
-// detail stays in the stdout log.
+// not recorded on spans for the same reason - a 500 carries only the exception's type
+// (GlobalExceptionHandler), and the detail stays in the stdout log under the same trace id.
 if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
 {
     builder.Services.AddOpenTelemetry()
-        .ConfigureResource(resource => resource.AddService("subvora-api"))
+        // service.version is the deployed commit (Render sets RENDER_GIT_COMMIT), so a regression lines
+        // up with the deploy that caused it.
+        .ConfigureResource(resource => resource
+            .AddService("subvora-api", serviceVersion: builder.Configuration["RENDER_GIT_COMMIT"] is { Length: >= 7 } commit ? commit[..7] : null)
+            .AddAttributes([new("deployment.environment.name", builder.Environment.EnvironmentName)]))
         .WithTracing(tracing => tracing
-            // Render polls /health/live every few seconds and the keep-warm cron adds more: as spans
-            // they would bury every real request.
-            .AddAspNetCoreInstrumentation(options => options.Filter = context => !context.Request.Path.StartsWithSegments("/health"))
+            .AddAspNetCoreInstrumentation(options =>
+            {
+                // Render polls /health/live every few seconds and the keep-warm cron adds more: as
+                // spans they would bury every real request.
+                options.Filter = context => !context.Request.Path.StartsWithSegments("/health");
+
+                // The account id, never the email: enough to pull up one user's requests when they
+                // report a problem, and the same id the request log carries as UserId. Read when the
+                // response is done, because authentication has not run yet when the span starts.
+                options.EnrichWithHttpResponse = (activity, response) =>
+                {
+                    if (response.HttpContext.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } userId)
+                    {
+                        activity.SetTag("enduser.id", userId);
+                    }
+                };
+            })
             // Built-in sources: Npgsql gives each query its own span, so a slow request shows whether
             // the time went to the database; System.Net.Http covers the FX provider calls.
             .AddSource("Npgsql", "System.Net.Http")

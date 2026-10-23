@@ -205,6 +205,21 @@ Traces appear under the service name `subvora-api`, with one span per database q
 each request. `/health/*` requests are not traced - Render's health check alone would bury
 everything else.
 
+Every request span also carries:
+
+| Attribute | Source | Use |
+|---|---|---|
+| `enduser.id` | the account id from the access token | pull up one user's requests when they report a problem; matches `UserId` in the request log |
+| `error.type` | the exception's type name, on a 500 | which failure it was, without opening the log |
+| `service.version` | the first 7 characters of `RENDER_GIT_COMMIT` | tie a regression to the deploy that caused it |
+| `deployment.environment.name` | `ASPNETCORE_ENVIRONMENT` | keep a staging service apart from production |
+
+The trace id is the bridge to everything else: Render's log lines carry it as `@tr`, and a 500's
+body returns it as `traceId`. Search either in the other tool to find the matching record.
+
+Never the email address: it is personal data the log masks, and `site/privacy.html` tells users
+Middleware does not receive it. Anything new sent there has to keep that promise, or update the page.
+
 **Logs are not exported**, on purpose. `EmailMaskingFormatter` masks addresses only in the console
 sink; an OTLP log exporter would send raw messages and exception text. For the same reason
 exceptions are not recorded on spans - a 500 still shows as a failed span, and the detail is in
