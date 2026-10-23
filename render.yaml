@@ -55,3 +55,13 @@ services:
         sync: false
       - key: Smtp__FromAddress
         sync: false
+
+      # Traces and metrics over OTLP (docs/DEPLOYMENT.md, "Traces and metrics"). Leave the endpoint
+      # unset and nothing is exported. The endpoint is https://<uid>.middleware.io:443; the
+      # headers value is authorization=<Middleware API key>, which is why both stay out of here.
+      - key: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: http/protobuf
+      - key: OTEL_EXPORTER_OTLP_ENDPOINT
+        sync: false
+      - key: OTEL_EXPORTER_OTLP_HEADERS
+        sync: false

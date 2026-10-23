@@ -20,6 +20,7 @@ repo is iOS-specific enough to block adding it later.
 | Android APK + AAB | GitHub Releases | unlimited |
 | Privacy policy, account deletion page | GitHub Pages (`site/`, `.github/workflows/pages.yml`) | unlimited for a public repo |
 | Keep-warm ping | cron-job.org | 5-minute interval |
+| Traces and metrics (optional) | Middleware.io, over OTLP | free tier |
 
 No container registry: Render builds the image from the repo. No push service, no object storage,
 no cache — see the architectural rules in [CLAUDE.md](../CLAUDE.md).
@@ -182,6 +183,32 @@ Then add four secrets to the `production` GitHub environment:
 | `ANDROID_KEYSTORE_PASSWORD` | store password from `keytool` |
 | `ANDROID_KEY_ALIAS` | `subvora` |
 | `ANDROID_KEY_PASSWORD` | key password from `keytool` |
+
+### 7. Traces and metrics (optional)
+
+The API exports OpenTelemetry traces and metrics over OTLP when `OTEL_EXPORTER_OTLP_ENDPOINT` is
+set, and does nothing otherwise. Middleware.io is the backend in use; any OTLP receiver works with
+the same three variables. Middleware's own .NET setup (the `MW.APM` package, or its host agent)
+is deliberately not used: there is nowhere to run an agent on Render's free tier, and `MW.APM`
+wants the API key in `appsettings.json` and adds its own console logger beside Serilog.
+
+In Middleware, open the .NET installation page and take the `TargetURL` and `ApiKey` it shows.
+Then set, on the Render service (Environment):
+
+| Variable | Value |
+|---|---|
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `http/protobuf` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | the `TargetURL`, e.g. `https://<uid>.middleware.io:443` |
+| `OTEL_EXPORTER_OTLP_HEADERS` | `authorization=<ApiKey>` |
+
+Traces appear under the service name `subvora-api`, with one span per database query underneath
+each request. `/health/*` requests are not traced - Render's health check alone would bury
+everything else.
+
+**Logs are not exported**, on purpose. `EmailMaskingFormatter` masks addresses only in the console
+sink; an OTLP log exporter would send raw messages and exception text. For the same reason
+exceptions are not recorded on spans - a 500 still shows as a failed span, and the detail is in
+Render's log. Exporting logs needs that masking moved in front of the exporter first.
 
 ## Per-release
 
