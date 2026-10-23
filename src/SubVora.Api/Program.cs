@@ -5,6 +5,9 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -33,8 +36,8 @@ using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Structured JSON logs to console, provider-agnostic (no APM vendor chosen yet - just makes
-// logs parseable by whatever log aggregator ends up watching stdout). Levels mirror the
+// Structured JSON logs to console, provider-agnostic (traces and metrics go out over OTLP below;
+// logs stay on stdout, where the hosting platform collects them). Levels mirror the
 // previous default Logging:LogLevel values (Default: Information, Microsoft.AspNetCore: Warning).
 //
 // Set here rather than read from configuration - the IConfiguration argument is discarded on
@@ -47,6 +50,32 @@ builder.Host.UseSerilog((_, cfg) => cfg
     // Email addresses, tokens and reset codes must not reach the log sink. Addresses are masked
     // here, once, rather than left to every call site and every exception message to get right.
     .WriteTo.Console(new EmailMaskingFormatter(new CompactJsonFormatter())));
+
+// Traces and metrics to any OTLP backend (Middleware.io in production - docs/DEPLOYMENT.md),
+// configured entirely by the standard OTEL_EXPORTER_OTLP_* variables. Off unless an endpoint is
+// set, so local runs and tests export nothing.
+//
+// Logs are deliberately not exported: EmailMaskingFormatter only guards the console sink, and an
+// OTLP log exporter would ship raw messages and exception text, addresses included. Exceptions are
+// not recorded on spans for the same reason - a 500 still marks its span as an error, and the
+// detail stays in the stdout log.
+if (!string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+{
+    builder.Services.AddOpenTelemetry()
+        .ConfigureResource(resource => resource.AddService("subvora-api"))
+        .WithTracing(tracing => tracing
+            // Render polls /health/live every few seconds and the keep-warm cron adds more: as spans
+            // they would bury every real request.
+            .AddAspNetCoreInstrumentation(options => options.Filter = context => !context.Request.Path.StartsWithSegments("/health"))
+            // Built-in sources: Npgsql gives each query its own span, so a slow request shows whether
+            // the time went to the database; System.Net.Http covers the FX provider calls.
+            .AddSource("Npgsql", "System.Net.Http")
+            .AddOtlpExporter())
+        .WithMetrics(metrics => metrics
+            .AddAspNetCoreInstrumentation()
+            .AddMeter("Npgsql", "System.Net.Http", "System.Runtime")
+            .AddOtlpExporter());
+}
 
 // Add services to the container.
 
