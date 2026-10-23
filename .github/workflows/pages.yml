@@ -1,7 +1,7 @@
 name: Pages
 
-# Publishes site/ (privacy policy + account deletion page, both required by the Play listing) to
-# GitHub Pages. One-time: repo Settings -> Pages -> Source: GitHub Actions.
+# Publishes site/ (beta landing page, plus the privacy policy and account deletion page the Play
+# listing requires) to GitHub Pages. One-time: repo Settings -> Pages -> Source: GitHub Actions.
 on:
   push:
     branches: [main]

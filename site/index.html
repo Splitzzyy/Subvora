@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SubVora · Join the Android beta</title>
+<meta name="description" content="SubVora tracks your subscriptions, reminds you before renewals hit, and shows your real monthly spend across currencies. Join the Android beta on Google Play.">
+<meta property="og:title" content="SubVora · Join the Android beta">
+<meta property="og:description" content="Every renewal, before it lands. Track subscriptions, get reminded before charges, see your real spend.">
+<meta property="og:image" content="screens/overview.webp">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+  /* Plus Jakarta Sans, the app's typeface - self-hosted so the page makes no third-party requests. */
+  @font-face { font-family: "Jakarta"; src: url(fonts/PlusJakartaSans-Regular.ttf) format("truetype"); font-weight: 400; font-display: swap; }
+  @font-face { font-family: "Jakarta"; src: url(fonts/PlusJakartaSans-Bold.ttf) format("truetype"); font-weight: 700; font-display: swap; }
+  @font-face { font-family: "Jakarta"; src: url(fonts/PlusJakartaSans-ExtraBold.ttf) format("truetype"); font-weight: 800; font-display: swap; }
+
+  :root {
+    --violet: #7b5cff; --cyan: #38c6ff; --amber: #ff8a4c; --midnight: #0b0a1f;
+    --bg: #fcf8ff; --surface: #ffffff; --surface-2: #f2edfb; --ink: #1b1b21; --muted: #5d5a6b;
+    --line: #e4def0; --accent: #5b3fd6; --on-accent: #ffffff; --shadow: 0 18px 50px rgba(59, 31, 143, .14);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0a1f; --surface: #15132b; --surface-2: #1d1a38; --ink: #ece8f6; --muted: #aaa4bf;
+      --line: #2a2648; --accent: #b9a6ff; --on-accent: #1a0f4d; --shadow: 0 18px 50px rgba(0, 0, 0, .45);
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font: 400 16px/1.6 "Jakarta", system-ui, sans-serif; color: var(--ink); background: var(--bg); }
+  a { color: var(--accent); }
+  img { display: block; max-width: 100%; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+  section { padding: 56px 0; scroll-margin-top: 64px; }
+  h1, h2, h3 { line-height: 1.15; margin: 0 0 12px; }
+  h2 { font-size: clamp(26px, 4vw, 34px); font-weight: 800; letter-spacing: -.01em; }
+  .lead { color: var(--muted); font-size: 18px; max-width: 60ch; }
+
+  /* Header */
+  header { position: sticky; top: 0; z-index: 2; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  header .wrap { display: flex; align-items: center; gap: 12px; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 20px; color: var(--ink); text-decoration: none; }
+  .brand img { width: 36px; height: 36px; border-radius: 10px; }
+  .pill { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; background: color-mix(in srgb, var(--amber) 18%, transparent); color: var(--amber); }
+  header nav { margin-left: auto; }
+
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 22px; border-radius: 999px; font-weight: 700; text-decoration: none; transition: transform .15s; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn-primary { background: linear-gradient(135deg, var(--violet), var(--cyan)); color: #fff; }
+  .btn-tonal { background: var(--surface-2); color: var(--ink); }
+  header .btn { min-height: 40px; padding: 0 16px; font-size: 14px; }
+
+  /* Hero */
+  .hero .wrap { display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; }
+  .hero h1 { font-size: clamp(36px, 6vw, 60px); font-weight: 800; letter-spacing: -.02em; }
+  .hero h1 span { background: linear-gradient(90deg, var(--violet), var(--cyan)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .hero .meta { margin-top: 18px; color: var(--muted); font-size: 14px; }
+
+  .phone { border-radius: 34px; padding: 10px; background: #050412; box-shadow: var(--shadow); }
+  .phone img { border-radius: 26px; width: 100%; height: auto; }
+  .hero .phone { max-width: 320px; margin-left: auto; transform: rotate(2deg); }
+
+  /* Features */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 28px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 22px; }
+  .card h3 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .icon { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; margin-bottom: 14px; font-size: 22px; background: var(--surface-2); }
+
+  /* Screens */
+  .shots { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(220px, 1fr); gap: 20px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 12px 4px 20px; margin-top: 20px; }
+  .shots figure { margin: 0; scroll-snap-align: start; }
+  .shots figcaption { margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .shots figcaption strong { display: block; color: var(--ink); font-size: 15px; }
+
+  /* Join */
+  .join { background: linear-gradient(160deg, color-mix(in srgb, var(--violet) 14%, var(--bg)), var(--bg)); }
+  .steps { list-style: none; padding: 0; margin: 28px 0 0; display: grid; gap: 16px; counter-reset: step; }
+  .steps li { counter-increment: step; display: grid; grid-template-columns: 56px 1fr auto; gap: 18px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 20px 22px; }
+  .steps li::before { content: counter(step); width: 56px; height: 56px; border-radius: 18px; display: grid; place-items: center; font-weight: 800; font-size: 22px; color: #fff; background: linear-gradient(135deg, var(--violet), var(--cyan)); }
+  .steps h3 { font-size: 19px; margin-bottom: 4px; }
+  .steps p { margin: 0; color: var(--muted); font-size: 15px; }
+  .note { margin-top: 20px; padding: 16px 20px; border-radius: 18px; background: color-mix(in srgb, var(--amber) 12%, var(--surface)); border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent); font-size: 15px; }
+  .note ul { margin: 6px 0 0; padding-left: 20px; }
+
+  /* FAQ */
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 16px 20px; margin-top: 12px; }
+  summary { cursor: pointer; font-weight: 700; }
+  details p { margin: 10px 0 0; color: var(--muted); }
+
+  footer { border-top: 1px solid var(--line); padding: 28px 0 40px; color: var(--muted); font-size: 14px; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; }
+  footer .links { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-left: auto; }
+
+  @media (max-width: 860px) {
+    .hero .wrap { grid-template-columns: 1fr; }
+    .hero .phone { margin: 8px auto 0; transform: none; max-width: 280px; }
+    .grid { grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 560px) {
+    section { padding: 40px 0; }
+    .grid { grid-template-columns: 1fr; }
+    header .pill { display: none; }
+    .steps li { grid-template-columns: 44px 1fr; }
+    .steps li::before { width: 44px; height: 44px; border-radius: 14px; font-size: 18px; }
+    .steps li .btn { grid-column: 1 / -1; width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .btn { transition: none; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.svg" alt="">SubVora</a>
+    <span class="pill">Android beta</span>
+    <nav><a class="btn btn-primary" href="#join">Join the beta</a></nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <h1>Every renewal, <span>before it lands.</span></h1>
+        <p class="lead">SubVora keeps every subscription you pay for in one place, reminds you before the next charge,
+          and shows what you really spend each month, even when you pay in more than one currency.</p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#join">Join the beta on Google Play</a>
+          <a class="btn btn-tonal" href="#screens">See the app</a>
+        </div>
+        <p class="meta">Android 7.0 or newer · Free · No ads, no tracking SDKs</p>
+      </div>
+      <div class="phone"><img src="screens/overview.webp" width="540" height="1150"
+        alt="SubVora's Overview screen: monthly spend of ₹4,539.61 and a Due soon list with Netflix overdue, Spotify, YouTube Premium and a Notion trial"></div>
+    </div>
+  </section>
+
+  <section id="about">
+    <div class="wrap">
+      <h2>What SubVora does</h2>
+      <p class="lead">Streaming, music, software, the gym: small charges that are easy to lose track of.
+        SubVora puts them on one screen and tells you before each one comes out of your account.</p>
+      <div class="grid">
+        <div class="card"><div class="icon" aria-hidden="true">📊</div><h3>Burn rate</h3>
+          <p>Your total spend per week, month and year, split by category and by the card or account each charge lands on.</p></div>
+        <div class="card"><div class="icon" aria-hidden="true">🔔</div><h3>Renewal reminders</h3>
+          <p>A notification 1, 3 or 7 days before each charge, scheduled on your phone, so it arrives even with the app closed.</p></div>
+        <div class="card"><div class="icon" aria-hidden="true">📅</div><h3>Due soon</h3>
+          <p>See what charges this week, which payments are overdue, and when a free trial ends. Mark a charge paid in one tap.</p></div>
+        <div class="card"><div class="icon" aria-hidden="true">🌍</div><h3>Any currency</h3>
+          <p>Enter each subscription in the currency you pay it in. Totals convert to your home currency, and your entries stay as you typed them.</p></div>
+        <div class="card"><div class="icon" aria-hidden="true">🏷️</div><h3>Recognises brands</h3>
+          <p>Start typing "Netflix" or "Spotify" and SubVora suggests the service, its logo and its category.</p></div>
+        <div class="card"><div class="icon" aria-hidden="true">📴</div><h3>Readable offline</h3>
+          <p>Your last synced list and totals stay on the phone, so you can check them without a connection.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="screens">
+    <div class="wrap">
+      <h2>A look at the app</h2>
+      <p class="lead">Real screens from the current beta, with demo data.</p>
+      <div class="shots" tabindex="0" aria-label="App screenshots, scroll sideways">
+        <figure><div class="phone"><img src="screens/overview.webp" width="540" height="1150" loading="lazy"
+          alt="Overview: monthly spend total with Week, Month and Year toggle, and the Due soon list"></div>
+          <figcaption><strong>Overview</strong>Your monthly spend and everything due this week.</figcaption></figure>
+        <figure><div class="phone"><img src="screens/spending.webp" width="540" height="1150" loading="lazy"
+          alt="Spending breakdown: a ring chart by category, then bars by category and by payment source"></div>
+          <figcaption><strong>Where it goes</strong>By category and by card or account.</figcaption></figure>
+        <figure><div class="phone"><img src="screens/subscriptions.webp" width="540" height="1150" loading="lazy"
+          alt="Subscriptions list sorted by due date, grouped into Overdue, Next 7 days and Later"></div>
+          <figcaption><strong>Subscriptions</strong>Grouped by when they charge next. Sort by category or cost too.</figcaption></figure>
+        <figure><div class="phone"><img src="screens/details.webp" width="540" height="1150" loading="lazy"
+          alt="Spotify details: ₹119 a month, next charge, reminder, payment source, start date and a Mark as paid button"></div>
+          <figcaption><strong>Details</strong>Next charge, reminder and how it's paid.</figcaption></figure>
+        <figure><div class="phone"><img src="screens/add.webp" width="540" height="1150" loading="lazy"
+          alt="Add subscription form suggesting Disney+ after typing Disney, with amount, currency and billing cycle"></div>
+          <figcaption><strong>Add in seconds</strong>Type a name, pick the match, set the price.</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="join" class="join">
+    <div class="wrap">
+      <h2>Join the beta</h2>
+      <p class="lead">The beta runs through Google Play's testing program. It takes about two minutes. Use the same
+        Google account for all three steps: the one signed in to the Play Store on your phone.</p>
+      <ol class="steps">
+        <li>
+          <div><h3>Join the testers group</h3>
+            <p>Google lets testers in through this group. Open it and tap <strong>Join group</strong>.</p></div>
+          <a class="btn btn-tonal" href="https://groups.google.com/g/subvora-testers" target="_blank" rel="noopener">Open Google Group</a>
+        </li>
+        <li>
+          <div><h3>Become a tester</h3>
+            <p>Opt in to the testing program, then tap <strong>Become a tester</strong>.</p></div>
+          <a class="btn btn-tonal" href="https://play.google.com/apps/testing/com.subvora.mobile" target="_blank" rel="noopener">Become a tester</a>
+        </li>
+        <li>
+          <div><h3>Install from Google Play</h3>
+            <p>Open SubVora on the Play Store and tap <strong>Install</strong>. Then create an account inside the app.</p></div>
+          <a class="btn btn-primary" href="https://play.google.com/store/apps/details?id=com.subvora.mobile" target="_blank" rel="noopener">Get it on Google Play</a>
+        </li>
+      </ol>
+      <div class="note">
+        <strong>If the Play Store says the app isn't available</strong>
+        <ul>
+          <li>Check that you joined the group and opted in with the same Google account the Play Store uses.</li>
+          <li>Wait a few minutes after opting in, then open the Play Store link again. Access can take a little while to appear.</li>
+          <li>Already using the APK from GitHub? Installing from Play updates the same app. If Play refuses, uninstall the old copy first:
+            your subscriptions are stored on the server, so you only need to sign in again.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq">
+    <div class="wrap">
+      <h2>Questions</h2>
+      <details><summary>What does "beta" mean here?</summary>
+        <p>The app works and is used every day, but it is still changing. Updates arrive through the Play Store as usual. Things may move around between versions.</p></details>
+      <details><summary>How do I send feedback or report a bug?</summary>
+        <p>Post in the <a href="https://groups.google.com/g/subvora-testers">testers group</a> or email
+          <a href="mailto:gaurav2000ashish@gmail.com?subject=SubVora%20beta%20feedback">gaurav2000ashish@gmail.com</a>.
+          A screenshot and what you tapped help most. You can also leave private feedback on the Play Store listing.</p></details>
+      <details><summary>Do I need a Google Play account?</summary>
+        <p>Yes for the beta, since it is delivered by Google Play. Prefer not to? The
+          <a href="https://github.com/Splitzzyy/Subvora/releases/latest">APK on GitHub Releases</a> installs the same app directly.</p></details>
+      <details><summary>Is there an iPhone version?</summary>
+        <p>Not yet. SubVora is Android only for now.</p></details>
+      <details><summary>What happens to my data?</summary>
+        <p>Only what you enter is stored, to run the app. No ads, no selling data. Read the
+          <a href="privacy.html">privacy policy</a>, or <a href="delete-account.html">delete your account</a> at any time.</p></details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 SubVora</span>
+    <div class="links">
+      <a href="privacy.html">Privacy policy</a>
+      <a href="delete-account.html">Delete account</a>
+      <a href="https://github.com/Splitzzyy/Subvora">Source on GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

@@ -4,7 +4,19 @@
 
 SubVora is a cross-platform mobile app that tracks all your subscriptions, warns you before renewals hit, and shows your real spend — across currencies — in one dashboard.
 
+## Join the beta
+
+SubVora is in beta on Google Play. **[Beta page: screens, features and how to join →](https://splitzzyy.github.io/Subvora/)**
+
+1. Join the Google Group: https://groups.google.com/g/subvora-testers
+2. Become a tester: https://play.google.com/apps/testing/com.subvora.mobile
+3. Install: https://play.google.com/store/apps/details?id=com.subvora.mobile
+
+Use the same Google account for all three steps, the one signed in to the Play Store on your phone.
+
 ## Download
+
+Prefer not to use Google Play? Install the APK directly:
 
 **[⬇ Get the Android APK — latest release](https://github.com/Splitzzyy/Subvora/releases/latest)**
 
