@@ -10,8 +10,9 @@ namespace SubVora.Infrastructure.Auth;
 
 /// <summary>
 /// Deletes refresh tokens and password-reset codes that are far enough past their expiry to be
-/// useless. Nothing else ever removed a row from either table: AuthService only sets RevokedAt/UsedAt
-/// and filters on ExpiresAt at read time, so both grew without bound.
+/// useless, and every refresh token of a sign-in that has ended. Nothing else ever removed a row from
+/// either table: AuthService only sets RevokedAt/UsedAt and filters on ExpiresAt at read time, so both
+/// grew without bound.
 ///
 /// <para>
 /// refresh_tokens is the fastest-growing table in the schema. Access tokens live 15 minutes and
@@ -97,15 +98,35 @@ public class ExpiredCredentialCleanupBackgroundService : BackgroundService
             .Where(t => t.ExpiresAt < now - RefreshTokenRetention)
             .ExecuteDeleteAsync(cancellationToken);
 
+        // Every row of a family with no live token left: the sign-in ended (logout, password change,
+        // reuse revoke, absolute lifetime, idled out). The retention above exists so a rotated token
+        // can still trip reuse detection, but in a dead family that revokes nothing and the replay
+        // fails either way. A live family always has a live member - rotation revokes the old row and
+        // inserts its successor in one transaction - so this never reaches a session still in use.
+        // "Live" is exactly what RefreshAsync would still rotate, boundaries included.
+        //
+        // Accepted cost: a replay from an ended sign-in used to log "reuse detected" before failing,
+        // and once its rows are gone it fails without that line. The client sees the same 401; only
+        // the trail of a stolen token tried after logout or a password change is lost.
+        var familyStartCutoff = now - AuthService.AbsoluteSessionLifetime;
+        var deadFamilyTokensDeleted = await dbContext.RefreshTokens
+            .Where(t => !dbContext.RefreshTokens.Any(l =>
+                l.FamilyId == t.FamilyId
+                && l.RevokedAt == null
+                && l.ExpiresAt > now
+                && l.FamilyStartedAt >= familyStartCutoff))
+            .ExecuteDeleteAsync(cancellationToken);
+
         var resetCodesDeleted = await dbContext.PasswordResetCodes
             .Where(c => c.ExpiresAt < now - PasswordResetCodeRetention)
             .ExecuteDeleteAsync(cancellationToken);
 
-        if (refreshTokensDeleted > 0 || resetCodesDeleted > 0)
+        if (refreshTokensDeleted > 0 || deadFamilyTokensDeleted > 0 || resetCodesDeleted > 0)
         {
             _logger.LogInformation(
-                "Credential cleanup removed {RefreshTokenCount} expired refresh token(s) and {ResetCodeCount} expired password reset code(s).",
+                "Credential cleanup removed {RefreshTokenCount} expired refresh token(s), {DeadFamilyTokenCount} refresh token(s) of ended sessions and {ResetCodeCount} expired password reset code(s).",
                 refreshTokensDeleted,
+                deadFamilyTokensDeleted,
                 resetCodesDeleted);
         }
     }

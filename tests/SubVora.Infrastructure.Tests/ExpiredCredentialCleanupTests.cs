@@ -56,14 +56,22 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
         return user.Id;
     }
 
-    private async Task<Guid> SeedRefreshTokenAsync(Guid userId, DateTimeOffset expiresAt)
+    private async Task<Guid> SeedRefreshTokenAsync(
+        Guid userId,
+        DateTimeOffset expiresAt,
+        Guid? familyId = null,
+        DateTimeOffset? revokedAt = null,
+        DateTimeOffset? familyStartedAt = null)
     {
         var token = new RefreshToken
         {
             UserId = userId,
             TokenHash = Guid.NewGuid().ToString("N"),
             ExpiresAt = expiresAt,
+            RevokedAt = revokedAt,
             CreatedAt = expiresAt.AddDays(-30),
+            FamilyId = familyId ?? Guid.NewGuid(),
+            FamilyStartedAt = familyStartedAt ?? DateTimeOffset.UtcNow.AddDays(-1),
         };
         _dbContext.RefreshTokens.Add(token);
         await _dbContext.SaveChangesAsync();
@@ -87,8 +95,13 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
     [Fact]
     public async Task CleanupOnceAsync_DeletesRefreshTokensExpiredBeyondTheRetentionWindow()
     {
+        // A rotated ancestor in a family that is still in use, so only the retention window can
+        // delete it - alone in its family, the ended-session delete would take it either way.
         var userId = await SeedUserAsync();
-        var longExpired = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(-30));
+        var familyId = Guid.NewGuid();
+        var longExpired = await SeedRefreshTokenAsync(
+            userId, DateTimeOffset.UtcNow.AddDays(-30), familyId, revokedAt: DateTimeOffset.UtcNow.AddDays(-60));
+        await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(30), familyId);
 
         await BuildService().CleanupOnceAsync();
 
@@ -99,10 +112,13 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
     public async Task CleanupOnceAsync_KeepsRecentlyExpiredRefreshTokensSoReuseDetectionStillWorks()
     {
         var userId = await SeedUserAsync();
+        var familyId = Guid.NewGuid();
 
-        // Inside the 7-day window. Deleting this would make a replayed token look like one that
-        // never existed, and RefreshAsync distinguishes those two cases.
-        var recentlyExpired = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(-1));
+        // Inside the 7-day window, in a family that is still in use. Deleting this would make a
+        // replayed token look like one that never existed, and RefreshAsync distinguishes those two cases.
+        var recentlyExpired = await SeedRefreshTokenAsync(
+            userId, DateTimeOffset.UtcNow.AddDays(-1), familyId, revokedAt: DateTimeOffset.UtcNow.AddDays(-31));
+        await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(30), familyId);
 
         await BuildService().CleanupOnceAsync();
 
@@ -128,14 +144,59 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
         // and ends the attacker's chain - however long the phone sat idle. Deleted early, it would
         // look like a token that never existed, fail quietly, and leave the attacker signed in.
         var userId = await SeedUserAsync();
-        var rotated = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(22));
-        await _dbContext.RefreshTokens
-            .Where(t => t.Id == rotated)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.RevokedAt, DateTimeOffset.UtcNow.AddDays(-8)));
+        var familyId = Guid.NewGuid();
+        var rotated = await SeedRefreshTokenAsync(
+            userId, DateTimeOffset.UtcNow.AddDays(22), familyId, revokedAt: DateTimeOffset.UtcNow.AddDays(-8));
+        await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(30), familyId);
 
         await BuildService().CleanupOnceAsync();
 
         Assert.True(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == rotated));
+    }
+
+    [Fact]
+    public async Task CleanupOnceAsync_DeletesEveryTokenOfAFamilyWithNoLiveToken()
+    {
+        // A logged-out sign-in: the rotated ancestor and the token logout revoked, both unexpired.
+        // Nothing in the family can mint a token again, so neither row protects anything.
+        var userId = await SeedUserAsync();
+        var familyId = Guid.NewGuid();
+        var rotated = await SeedRefreshTokenAsync(
+            userId, DateTimeOffset.UtcNow.AddDays(20), familyId, revokedAt: DateTimeOffset.UtcNow.AddDays(-10));
+        var loggedOut = await SeedRefreshTokenAsync(
+            userId, DateTimeOffset.UtcNow.AddDays(29), familyId, revokedAt: DateTimeOffset.UtcNow);
+
+        await BuildService().CleanupOnceAsync();
+
+        Assert.False(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == rotated || t.Id == loggedOut));
+    }
+
+    [Fact]
+    public async Task CleanupOnceAsync_DeletesAFamilyThatIdledOut()
+    {
+        // Never revoked, but the chain head expired yesterday: still inside the retention window,
+        // yet nothing in the family can be refreshed again.
+        var userId = await SeedUserAsync();
+        var idledOut = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(-1));
+
+        await BuildService().CleanupOnceAsync();
+
+        Assert.False(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == idledOut));
+    }
+
+    [Fact]
+    public async Task CleanupOnceAsync_DeletesFamiliesPastTheAbsoluteSessionLifetime()
+    {
+        // Unrevoked and unexpired, but RefreshAsync refuses it on age alone.
+        var userId = await SeedUserAsync();
+        var tooOld = await SeedRefreshTokenAsync(
+            userId,
+            DateTimeOffset.UtcNow.AddDays(20),
+            familyStartedAt: DateTimeOffset.UtcNow - AuthService.AbsoluteSessionLifetime - TimeSpan.FromDays(1));
+
+        await BuildService().CleanupOnceAsync();
+
+        Assert.False(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == tooOld));
     }
 
     [Fact]
