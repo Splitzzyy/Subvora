@@ -10,8 +10,9 @@ namespace SubVora.Infrastructure.Auth;
 
 /// <summary>
 /// Deletes refresh tokens and password-reset codes that are far enough past their expiry to be
-/// useless. Nothing else ever removed a row from either table: AuthService only sets RevokedAt/UsedAt
-/// and filters on ExpiresAt at read time, so both grew without bound.
+/// useless, and every refresh token of a sign-in that has ended. Nothing else ever removed a row from
+/// either table: AuthService only sets RevokedAt/UsedAt and filters on ExpiresAt at read time, so both
+/// grew without bound.
 ///
 /// <para>
 /// refresh_tokens is the fastest-growing table in the schema. Access tokens live 15 minutes and
@@ -102,13 +103,18 @@ public class ExpiredCredentialCleanupBackgroundService : BackgroundService
         // can still trip reuse detection, but in a dead family that revokes nothing and the replay
         // fails either way. A live family always has a live member - rotation revokes the old row and
         // inserts its successor in one transaction - so this never reaches a session still in use.
+        // "Live" is exactly what RefreshAsync would still rotate, boundaries included.
+        //
+        // Accepted cost: a replay from an ended sign-in used to log "reuse detected" before failing,
+        // and once its rows are gone it fails without that line. The client sees the same 401; only
+        // the trail of a stolen token tried after logout or a password change is lost.
         var familyStartCutoff = now - AuthService.AbsoluteSessionLifetime;
         var deadFamilyTokensDeleted = await dbContext.RefreshTokens
             .Where(t => !dbContext.RefreshTokens.Any(l =>
                 l.FamilyId == t.FamilyId
                 && l.RevokedAt == null
                 && l.ExpiresAt > now
-                && l.FamilyStartedAt > familyStartCutoff))
+                && l.FamilyStartedAt >= familyStartCutoff))
             .ExecuteDeleteAsync(cancellationToken);
 
         var resetCodesDeleted = await dbContext.PasswordResetCodes

@@ -79,7 +79,7 @@ The schema itself is defined by the EF Core entity configurations and migrations
 - `user_subscriptions` — per-user subscription record: `cost_amount`, `currency`, `cycle_cadence` (Weekly/Monthly/Quarterly/Yearly/OneTime), `purchase_date`, `next_billing_date`, `last_paid_date` (null until first marked paid), `alert_days_advance`, `payment_source_id` (nullable, see `payment_sources`), `is_free_trial`, `is_active`.
 - `payment_sources` — a user's cards, accounts and wallets (`label`, `source_type`), referenced by `user_subscriptions.payment_source_id`. Replaced the original free-text `deduction_source` column.
 - `fx_rates` — `base_currency`, `target_currency`, `rate`, `fetched_at` — cached exchange rates for burn-rate conversion.
-- `refresh_tokens`, `password_reset_codes` — auth state; only hashes are stored, and `ExpiredCredentialCleanupBackgroundService` deletes rows past their retention window, and every refresh token of a sign-in with no live token left.
+- `refresh_tokens`, `password_reset_codes` — auth state; only hashes are stored, and `ExpiredCredentialCleanupBackgroundService` deletes rows past their retention window and every refresh token of a sign-in with no live token left.
 
 Indexes: `next_billing_date` (partial, `is_active = TRUE`), `user_id`. No trigram index — the catalog is ~54 rows, where a sequential scan is microseconds; add a GiST `gist_trgm_ops` index past a few thousand.
 

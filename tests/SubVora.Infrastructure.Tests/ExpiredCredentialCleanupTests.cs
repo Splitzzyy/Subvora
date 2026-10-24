@@ -95,8 +95,13 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
     [Fact]
     public async Task CleanupOnceAsync_DeletesRefreshTokensExpiredBeyondTheRetentionWindow()
     {
+        // A rotated ancestor in a family that is still in use, so only the retention window can
+        // delete it - alone in its family, the ended-session delete would take it either way.
         var userId = await SeedUserAsync();
-        var longExpired = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(-30));
+        var familyId = Guid.NewGuid();
+        var longExpired = await SeedRefreshTokenAsync(
+            userId, DateTimeOffset.UtcNow.AddDays(-30), familyId, revokedAt: DateTimeOffset.UtcNow.AddDays(-60));
+        await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(30), familyId);
 
         await BuildService().CleanupOnceAsync();
 
@@ -164,6 +169,19 @@ public class ExpiredCredentialCleanupTests : IClassFixture<PostgresContainerFixt
         await BuildService().CleanupOnceAsync();
 
         Assert.False(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == rotated || t.Id == loggedOut));
+    }
+
+    [Fact]
+    public async Task CleanupOnceAsync_DeletesAFamilyThatIdledOut()
+    {
+        // Never revoked, but the chain head expired yesterday: still inside the retention window,
+        // yet nothing in the family can be refreshed again.
+        var userId = await SeedUserAsync();
+        var idledOut = await SeedRefreshTokenAsync(userId, DateTimeOffset.UtcNow.AddDays(-1));
+
+        await BuildService().CleanupOnceAsync();
+
+        Assert.False(await _dbContext.RefreshTokens.AsNoTracking().AnyAsync(t => t.Id == idledOut));
     }
 
     [Fact]
