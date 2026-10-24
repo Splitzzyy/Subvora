@@ -97,15 +97,30 @@ public class ExpiredCredentialCleanupBackgroundService : BackgroundService
             .Where(t => t.ExpiresAt < now - RefreshTokenRetention)
             .ExecuteDeleteAsync(cancellationToken);
 
+        // Every row of a family with no live token left: the sign-in ended (logout, password change,
+        // reuse revoke, absolute lifetime, idled out). The retention above exists so a rotated token
+        // can still trip reuse detection, but in a dead family that revokes nothing and the replay
+        // fails either way. A live family always has a live member - rotation revokes the old row and
+        // inserts its successor in one transaction - so this never reaches a session still in use.
+        var familyStartCutoff = now - AuthService.AbsoluteSessionLifetime;
+        var deadFamilyTokensDeleted = await dbContext.RefreshTokens
+            .Where(t => !dbContext.RefreshTokens.Any(l =>
+                l.FamilyId == t.FamilyId
+                && l.RevokedAt == null
+                && l.ExpiresAt > now
+                && l.FamilyStartedAt > familyStartCutoff))
+            .ExecuteDeleteAsync(cancellationToken);
+
         var resetCodesDeleted = await dbContext.PasswordResetCodes
             .Where(c => c.ExpiresAt < now - PasswordResetCodeRetention)
             .ExecuteDeleteAsync(cancellationToken);
 
-        if (refreshTokensDeleted > 0 || resetCodesDeleted > 0)
+        if (refreshTokensDeleted > 0 || deadFamilyTokensDeleted > 0 || resetCodesDeleted > 0)
         {
             _logger.LogInformation(
-                "Credential cleanup removed {RefreshTokenCount} expired refresh token(s) and {ResetCodeCount} expired password reset code(s).",
+                "Credential cleanup removed {RefreshTokenCount} expired refresh token(s), {DeadFamilyTokenCount} refresh token(s) of ended sessions and {ResetCodeCount} expired password reset code(s).",
                 refreshTokensDeleted,
+                deadFamilyTokensDeleted,
                 resetCodesDeleted);
         }
     }
